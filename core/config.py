@@ -1,0 +1,112 @@
+"""Morphic-Agent configuration — pydantic-settings based."""
+
+from __future__ import annotations
+
+from enum import Enum
+from pathlib import Path
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Environment(str, Enum):
+    DEVELOPMENT = "development"
+    STAGING = "staging"
+    PRODUCTION = "production"
+
+
+class ApprovalMode(str, Enum):
+    FULL_AUTO = "full-auto"
+    CONFIRM_DESTRUCTIVE = "confirm-destructive"
+    CONFIRM_ALL = "confirm-all"
+
+
+class PlanningMode(str, Enum):
+    INTERACTIVE = "interactive"
+    AUTO = "auto"
+    DISABLED = "disabled"
+
+
+class Settings(BaseSettings):
+    """Central configuration. Reads from .env file and environment variables."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # ── LLM APIs ──
+    anthropic_api_key: str = ""
+    openai_api_key: str = ""
+    google_gemini_api_key: str = ""
+
+    # ── Ollama (LOCAL_FIRST) ──
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_default_model: str = "qwen3:8b"
+    ollama_coding_model: str = "qwen3-coder:30b"
+    local_first: bool = True
+
+    # ── Agent CLI Orchestration ──
+    openhands_base_url: str = "http://localhost:3000"
+    openhands_model: str = "claude-sonnet-4-6"
+    claude_code_sdk_enabled: bool = True
+    gemini_cli_enabled: bool = True
+    codex_cli_enabled: bool = True
+    agent_default_engine: str = "claude_code"
+
+    # ── Database ──
+    database_url: str = "postgresql+asyncpg://morphic:morphic_dev@localhost:5432/morphic_agent"
+    database_url_sync: str = "postgresql://morphic:morphic_dev@localhost:5432/morphic_agent"
+    redis_url: str = "redis://localhost:6379"
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "morphic_dev"
+
+    # ── Semantic Memory ──
+    semantic_memory_backend: str = "mem0"
+    mem0_api_key: str = ""
+    memory_target_tokens: int = 800
+    memory_retention_threshold: float = 0.3
+
+    # ── Cost Control ──
+    default_monthly_budget_usd: float = 50.0
+    default_task_budget_usd: float = 1.0
+    auto_downgrade_on_budget: bool = True
+    cache_breakpoints_enabled: bool = True
+
+    # ── LAEE (v0.4) ──
+    laee_enabled: bool = True
+    laee_approval_mode: ApprovalMode = ApprovalMode.CONFIRM_DESTRUCTIVE
+    laee_audit_log_path: Path = Path(".morphic/audit_log.jsonl")
+    laee_undo_enabled: bool = True
+    laee_max_concurrent_shells: int = 10
+    laee_browser_headless: bool = True
+    laee_gui_enabled: bool = True
+    laee_cron_enabled: bool = True
+
+    # ── General ──
+    morphic_agent_env: Environment = Environment.DEVELOPMENT
+    auto_tool_install: bool = False
+    evolution_enabled: bool = True
+    planning_mode: PlanningMode = PlanningMode.INTERACTIVE
+
+    @property
+    def is_development(self) -> bool:
+        return self.morphic_agent_env == Environment.DEVELOPMENT
+
+    @property
+    def has_anthropic(self) -> bool:
+        return bool(self.anthropic_api_key)
+
+    @property
+    def has_openai(self) -> bool:
+        return bool(self.openai_api_key)
+
+    @property
+    def has_gemini(self) -> bool:
+        return bool(self.google_gemini_api_key)
+
+
+# Singleton — import from here
+settings = Settings()

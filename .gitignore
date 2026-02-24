@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (ui/)
+ui/node_modules/
+ui/.next/
+ui/out/
+
+# Morphic-Agent runtime
+.morphic/
+todo.md
+
+# Docker
+pgdata/
+neo4jdata/
+
+# uv
+uv.lock
