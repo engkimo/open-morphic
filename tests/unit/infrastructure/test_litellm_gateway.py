@@ -153,6 +153,34 @@ class TestComplete:
             call_kwargs = mock_litellm.acompletion.call_args[1]
             assert "api_base" in call_kwargs
 
+    async def test_strips_temperature_for_o_series(self, gateway: LiteLLMGateway) -> None:
+        with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
+            mock_litellm.acompletion = AsyncMock(
+                return_value=_mock_litellm_response(cost=0.01)
+            )
+            await gateway.complete(
+                messages=[{"role": "user", "content": "test"}],
+                model="o4-mini",
+                temperature=0.7,
+            )
+
+            call_kwargs = mock_litellm.acompletion.call_args[1]
+            assert "temperature" not in call_kwargs
+
+    async def test_keeps_temperature_for_non_o_series(self, gateway: LiteLLMGateway) -> None:
+        with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
+            mock_litellm.acompletion = AsyncMock(
+                return_value=_mock_litellm_response(cost=0.003)
+            )
+            await gateway.complete(
+                messages=[{"role": "user", "content": "test"}],
+                model="claude-sonnet-4-6",
+                temperature=0.5,
+            )
+
+            call_kwargs = mock_litellm.acompletion.call_args[1]
+            assert call_kwargs["temperature"] == 0.5
+
     async def test_no_api_base_for_cloud_models(self, gateway: LiteLLMGateway) -> None:
         with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
             mock_litellm.acompletion = AsyncMock(
@@ -226,7 +254,7 @@ class TestIsAvailable:
     ) -> None:
         assert await gateway.is_available("claude-sonnet-4-6") is False
 
-    async def test_gpt_available_with_key(
+    async def test_o4_mini_available_with_key(
         self, ollama: AsyncMock, cost_tracker: AsyncMock
     ) -> None:
         s = Settings(
@@ -235,7 +263,18 @@ class TestIsAvailable:
             google_gemini_api_key="",
         )
         gw = LiteLLMGateway(ollama, cost_tracker, s)
-        assert await gw.is_available("gpt-4o") is True
+        assert await gw.is_available("o4-mini") is True
+
+    async def test_o3_available_with_key(
+        self, ollama: AsyncMock, cost_tracker: AsyncMock
+    ) -> None:
+        s = Settings(
+            anthropic_api_key="",
+            openai_api_key="sk-test",
+            google_gemini_api_key="",
+        )
+        gw = LiteLLMGateway(ollama, cost_tracker, s)
+        assert await gw.is_available("o3") is True
 
     async def test_gemini_available_with_key(
         self, ollama: AsyncMock, cost_tracker: AsyncMock
@@ -246,7 +285,7 @@ class TestIsAvailable:
             google_gemini_api_key="key-test",
         )
         gw = LiteLLMGateway(ollama, cost_tracker, s)
-        assert await gw.is_available("gemini/gemini-2.0-flash") is True
+        assert await gw.is_available("gemini/gemini-3-flash-preview") is True
 
     async def test_unknown_model_unavailable(self, gateway: LiteLLMGateway) -> None:
         assert await gateway.is_available("some-unknown-model") is False
@@ -269,8 +308,27 @@ class TestListModels:
         assert DEFAULT_OLLAMA in models
         assert "ollama/qwen3:8b" in models
         assert "claude-sonnet-4-6" in models
-        assert "gpt-4o" not in models
+        assert "o3" not in models  # no OpenAI key
         assert len(models) == 7
+
+    async def test_returns_all_providers(
+        self, ollama: AsyncMock, cost_tracker: AsyncMock
+    ) -> None:
+        s = Settings(
+            anthropic_api_key="sk-test",
+            openai_api_key="sk-test",
+            google_gemini_api_key="key-test",
+        )
+        gw = LiteLLMGateway(ollama, cost_tracker, s)
+        ollama.is_running.return_value = True
+
+        models = await gw.list_models()
+        # 4 Ollama + 3 Claude + 2 OpenAI (o4-mini, o3) + 2 Gemini = 11
+        assert "o4-mini" in models
+        assert "o3" in models
+        assert "gemini/gemini-3-flash-preview" in models
+        assert "gemini/gemini-3-pro-preview" in models
+        assert len(models) == 11
 
     async def test_empty_when_nothing_available(
         self, gateway: LiteLLMGateway, ollama: AsyncMock

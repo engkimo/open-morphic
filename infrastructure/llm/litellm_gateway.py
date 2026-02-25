@@ -30,16 +30,16 @@ class LiteLLMGateway(LLMGateway):
         ],
         ModelTier.LOW: [
             "claude-haiku-4-5-20251001",
-            "gemini/gemini-2.0-flash",
+            "gemini/gemini-3-flash-preview",
         ],
         ModelTier.MEDIUM: [
             "claude-sonnet-4-6",
-            "gpt-4o-mini",
-            "gemini/gemini-2.5-pro",
+            "o4-mini",
+            "gemini/gemini-3-pro-preview",
         ],
         ModelTier.HIGH: [
             "claude-opus-4-6",
-            "gpt-4o",
+            "o3",
         ],
     }
 
@@ -102,6 +102,10 @@ class LiteLLMGateway(LLMGateway):
             "max_tokens": max_tokens,
         }
 
+        # O-series models (o3, o4-mini) only support temperature=1
+        if resolved.startswith("o3") or resolved.startswith("o4"):
+            kwargs.pop("temperature", None)
+
         if resolved.startswith("ollama/"):
             kwargs["api_base"] = self._settings.ollama_base_url
             # Disable qwen3 thinking mode — litellm cannot capture the
@@ -137,7 +141,7 @@ class LiteLLMGateway(LLMGateway):
             return any(ollama_name in m for m in installed)
         if "claude" in model:
             return self._settings.has_anthropic
-        if "gpt" in model:
+        if "gpt" in model or model.startswith("o3") or model.startswith("o4"):
             return self._settings.has_openai
         if "gemini" in model:
             return self._settings.has_gemini

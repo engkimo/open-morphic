@@ -416,6 +416,71 @@ TestLAEELive:
 
 ---
 
+### Verification: Cloud API Integration Tests (Step A) — COMPLETE
+
+> Date: 2026-02-25
+> All 4 providers verified. 11/11 tests pass. 181 unit tests + 11 cloud integration tests.
+
+#### Test Results
+
+| Provider | Model | Tier | Result | Cost | Notes |
+|---|---|---|---|---|---|
+| **Anthropic** | claude-haiku-4-5-20251001 | LOW | PASS | $0.000045 | Cheapest API |
+| **Anthropic** | claude-sonnet-4-6 | MEDIUM | PASS | $0.000135 | Primary API model |
+| **Anthropic** | COMPLEX_REASONING route | — | PASS | — | Correctly routes to Sonnet |
+| **OpenAI** | o4-mini | MEDIUM | PASS | $0.000104 | O-series reasoning model |
+| **OpenAI** | o3 | HIGH | PASS | $0.000190 | O-series reasoning model |
+| **Gemini** | gemini-3-flash-preview | LOW | PASS | $0.000010 | Cheapest Gemini |
+| **Gemini** | gemini-3-pro-preview | MEDIUM | PASS | $0.001264 | Gemini Pro |
+| **Ollama** | qwen3-coder:30b | FREE | PASS | $0.000000 | Local, cost $0 |
+| **Cost** | API call records cost > 0 | — | PASS | — | CostTracker verified |
+| **Cost** | Ollama records cost == 0 | — | PASS | — | CostTracker verified |
+| **Routing** | All providers route correctly | — | PASS | — | LOCAL_FIRST + task-type routing |
+
+#### Available Models (9 total across 4 providers)
+
+```
+FREE:   ollama/qwen3-coder:30b, ollama/qwen3:8b
+LOW:    claude-haiku-4-5-20251001, gemini/gemini-3-flash-preview
+MEDIUM: claude-sonnet-4-6, o4-mini, gemini/gemini-3-pro-preview
+HIGH:   claude-opus-4-6, o3
+```
+
+#### Routing Results (LOCAL_FIRST=true, budget=$50)
+
+```
+simple_qa           -> ollama/qwen3-coder:30b  (FREE — local)
+code_generation     -> ollama/qwen3-coder:30b  (FREE — local)
+complex_reasoning   -> claude-sonnet-4-6       (MEDIUM — API)
+file_operation      -> ollama/qwen3-coder:30b  (FREE — local)
+long_context        -> claude-sonnet-4-6       (MEDIUM — API)
+multimodal          -> claude-sonnet-4-6       (MEDIUM — API)
+```
+
+#### Issues Encountered & Fixed
+
+| Issue | Root Cause | Fix | TD |
+|---|---|---|---|
+| Gemini 2.0 Flash 404 | `gemini-2.0-flash` deprecated by Google | Updated to `gemini-3-*-preview` | TD-016 |
+| OpenAI temperature error | O-series (o3, o4-mini) only supports temperature=1 | Strip temperature param for O-series | TD-016 |
+| OpenAI GPT-4o replaced | User requested O-series models | `gpt-4o-mini` → `o4-mini`, `gpt-4o` → `o3` | TD-016 |
+| Codex API models | `codex-mini-latest` is Responses API only (not Chat Completions) | Use o3/o4-mini via standard Chat Completions API | TD-016 |
+
+#### Test File
+
+```
+tests/integration/test_cloud_llm.py — 11 tests
+  _try_complete() helper: gracefully skips on auth/quota errors (pytest.skip)
+  GEMINI_API_KEY env var: auto-set from settings for litellm compatibility
+```
+
+#### Next Steps
+
+- **Step B**: E2E Pipeline Test (Goal → DAG → Result with real LLM)
+- **Step C**: Sprint 1.4 Context Engineering
+
+---
+
 ### Sprint 1.4: Context Engineering (Day 10-11)
 
 **Goal**: Foundation of Manus 5 principles. KV-Cache optimization + tool masking + todo.md

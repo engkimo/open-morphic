@@ -651,3 +651,62 @@ if resolved.startswith("ollama/"):
 - This disables reasoning capability of qwen3 models. For tasks requiring deep reasoning, cloud models (Claude Sonnet/Opus) are routed via task type
 - If a future LiteLLM version adds native thinking output support, this workaround can be removed
 - IntentAnalyzer also strips `<think>...</think>` tags via regex as a defense-in-depth measure
+
+---
+
+## TD-016: Model Tier Update — Gemini 3, O-series, Codex API
+
+**Date**: 2026-02-25
+**Status**: Accepted
+
+### Decision
+
+Update MODEL_TIERS to use latest models: Gemini 3 series, OpenAI O-series reasoning models. Add O-series temperature handling.
+
+### Changes
+
+| Tier | Before | After | Reason |
+|---|---|---|---|
+| LOW | `gemini/gemini-2.0-flash` | `gemini/gemini-3-flash-preview` | gemini-2.0-flash deprecated ("no longer available to new users") |
+| MEDIUM | `gpt-4o-mini` | `o4-mini` | User requested O-series reasoning models |
+| MEDIUM | `gemini/gemini-2.5-pro` | `gemini/gemini-3-pro-preview` | Gemini 3 is current generation |
+| HIGH | `gpt-4o` | `o3` | User requested O-series reasoning models |
+
+### O-series Temperature Handling
+
+O-series models (o3, o4-mini) only support `temperature=1`. Passing any other value raises `UnsupportedParamsError`.
+
+```python
+# infrastructure/llm/litellm_gateway.py — complete() method
+if resolved.startswith("o3") or resolved.startswith("o4"):
+    kwargs.pop("temperature", None)
+```
+
+### is_available() Update
+
+O-series model names don't contain "gpt", requiring prefix-based detection:
+
+```python
+if "gpt" in model or model.startswith("o3") or model.startswith("o4"):
+    return self._settings.has_openai
+```
+
+### Codex API Models — Not Adopted
+
+OpenAI Codex models (`codex-mini-latest`, `gpt-5-codex`, `gpt-5.1-codex`) were investigated but not adopted:
+
+| Model | Issue |
+|---|---|
+| `codex-mini-latest` | Responses API only (not Chat Completions). LiteLLM bridge exists but is a workaround |
+| `gpt-5-codex` family | Optimized for long-running agentic coding. Overkill for simple LLM completions |
+
+O-series models (o3, o4-mini) are the correct choice for standard Chat Completions API usage. Codex models are designed for the Codex CLI agent runtime, not for direct API calls.
+
+### Verification
+
+All 11 cloud integration tests pass (0 skipped):
+- Anthropic: 3/3 (Haiku, Sonnet, routing)
+- OpenAI: 2/2 (o4-mini, o3)
+- Gemini: 2/2 (3-flash, 3-pro)
+- Cost tracking: 2/2
+- Routing: 2/2

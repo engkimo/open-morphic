@@ -249,12 +249,13 @@ morphic-agent/
 │       └── infrastructure/
 │           ├── test_ollama_manager.py   # 14 tests (health, list, ensure, recommend)
 │           ├── test_cost_tracker.py     # 13 tests (record, queries, budget)
-│           ├── test_litellm_gateway.py  # 22 tests (route, complete, available, model check)
+│           ├── test_litellm_gateway.py  # 24 tests (route, complete, available, O-series temp)
 │           ├── test_intent_analyzer.py  # 6 tests (decompose, deps, JSON parse)
 │           ├── test_task_graph_engine.py # 9 tests (parallel, retry, cascade)
 │           └── test_local_execution.py  # 35 tests (8 completion criteria)
 │   └── integration/
-│       └── test_live_smoke.py           # 10 tests (real Ollama + real filesystem)
+│       ├── test_live_smoke.py           # 10 tests (real Ollama + real filesystem)
+│       └── test_cloud_llm.py            # 11 tests (Anthropic + OpenAI + Gemini + cost + routing)
 │
 ├── migrations/                      # Alembic async migrations
 ├── docker-compose.yml               # PostgreSQL+pgvector, Redis, Neo4j
@@ -344,6 +345,7 @@ Mapping between domain entities and ORM models happens in repository implementat
 2. Green:    Write minimum code to pass
 3. Refactor: Clean up while tests protect
 
-Current: 177 unit tests (1.30s) + 10 integration tests (17.79s), 100% pass
+Current: 181 unit tests (1.36s) + 21 integration tests (10+11), 100% pass
 Default model: qwen3-coder:30b (thinking mode disabled via extra_body)
+Cloud providers verified: Anthropic (Haiku/Sonnet), OpenAI (o4-mini/o3), Gemini (3-flash/3-pro)
 ```
