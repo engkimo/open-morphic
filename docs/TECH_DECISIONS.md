@@ -873,3 +873,56 @@ Two methods added to support API needs:
 - Data lost on server restart (acceptable for Phase 1)
 - No concurrent access safety (acceptable for single-process)
 - Keyword search is crude (replaced by pgvector in Phase 3)
+
+---
+
+## TD-020: Phase 1 Foundation Complete — Architecture Retrospective
+
+**Date**: 2026-02-25
+**Status**: Record
+
+### Summary
+
+Phase 1 Foundation (7 sprints, 1.1→1.7) is complete. 298 unit tests + 26 integration tests, all passing.
+
+### What Was Built
+
+| Sprint | Deliverable | Tests |
+|---|---|---|
+| 1.1 Infrastructure | Domain entities, value objects, ports (ABC), services, config | 67 |
+| 1.2 LLM Layer | OllamaManager, LiteLLMGateway, CostTracker, multi-provider routing | 51 |
+| 1.3 Task Graph | LangGraphTaskEngine (DAG), IntentAnalyzer, CreateTask/ExecuteTask use cases | 16 |
+| 1.3b LAEE | LocalExecutor, ApprovalEngine, RiskAssessor, AuditLog, UndoManager, 4 tool modules | 35 |
+| 1.4 Context Eng. | KVCacheOptimizer, ObservationDiversifier, TodoManager, FileContext (Manus 5 principles) | 40 |
+| 1.5 Semantic Memory | MemoryHierarchy (L1-L4), KnowledgeGraph, ContextZipper | 36 |
+| 1.6 API + UI | FastAPI (4 routers + WebSocket), AppContainer DI, Next.js 15 dashboard | 34 |
+| 1.7 E2E Tests | Failure recovery (retry/cascade/fallback), API round-trip (POST→GET→WS) | 19 |
+
+### Architecture Decisions That Proved Correct
+
+1. **Clean Architecture 4-layer**: Domain ports as ABCs enabled InMemory → (future) PostgreSQL swap with zero use-case changes
+2. **Pydantic strict=True**: Caught type bugs at construction time, not at runtime
+3. **TaskEntity by reference** (TD-012): Avoided serialization issues with LangGraph state
+4. **Separate decompose/execute** (TD-013): Made retry logic clean — engine can re-execute without re-decomposing
+5. **AppContainer DI** (TD-018): Single swap point for testing; TestClient gets full mock stack
+6. **In-memory repos** (TD-019): Zero-dependency startup, no Docker needed for dev
+
+### Technical Debt to Address in Phase 2
+
+1. **No persistent storage**: In-memory repos lose data on restart → PostgreSQL + pgvector
+2. **No Celery queue**: BackgroundTasks is single-process → Celery + Redis for production
+3. **Keyword search only**: InMemoryMemoryRepository uses string matching → pgvector embeddings
+4. **No auth/rate limiting**: API is fully open → add middleware in Phase 2
+5. **Single Ollama model**: Always uses default model → implement full ModelTier routing
+
+### Key Metrics
+
+```
+Unit tests:        298 (1.72s)
+Integration tests:  26 (Ollama required)
+Python files:      ~55
+TypeScript files:  ~11
+Domain ports:       8 ABC interfaces
+Infrastructure:     6 port implementations (all in-memory for Phase 1)
+API endpoints:     10 (4 task + 2 model + 2 cost + 1 memory + 1 health)
+```
