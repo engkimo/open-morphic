@@ -283,72 +283,62 @@ class CostTracker:
 
 **Goal**: Goal input → LLM decomposition → DAG generation → execution → result
 
-#### Files to Create
+#### Files Created
 
 ```
-application/use_cases/execute_task.py      # ExecuteTaskUseCase
-application/use_cases/create_task.py       # CreateTaskUseCase
-infrastructure/task_graph/__init__.py
-infrastructure/task_graph/engine.py        # TaskGraphEngine (LangGraph)
-infrastructure/task_graph/scheduler.py     # TaskScheduler (parallel execution)
-infrastructure/task_graph/intent_analyzer.py # IntentAnalyzer (goal → subtask decomposition)
-tests/unit/application/test_execute_task.py
+domain/ports/task_engine.py                # TaskEngine ABC (decompose + execute)
+application/use_cases/create_task.py       # CreateTaskUseCase (decompose → persist)
+application/use_cases/execute_task.py      # ExecuteTaskUseCase (DAG → status → persist)
+infrastructure/task_graph/__init__.py      # Re-exports
+infrastructure/task_graph/state.py         # AgentState TypedDict
+infrastructure/task_graph/intent_analyzer.py # IntentAnalyzer (LLM goal → subtasks)
+infrastructure/task_graph/engine.py        # LangGraphTaskEngine (DAG + parallel + retry)
+tests/unit/application/__init__.py
+tests/unit/application/test_create_task.py      # 5 tests
+tests/unit/application/test_execute_task.py     # 6 tests
+tests/unit/infrastructure/test_intent_analyzer.py    # 6 tests
+tests/unit/infrastructure/test_task_graph_engine.py  # 9 tests
 ```
 
-#### AgentState Model
+#### AgentState Model (Implemented)
 
 ```python
 class AgentState(TypedDict):
-    goal: str                              # User's original goal
-    tasks: list[TaskNode]                  # Subtask list
-    current_task_index: int                # Currently executing task
-    history: Annotated[list[dict], add]    # Append-only execution history
-    context: str                           # Compressed context
-    status: str                            # Overall status
-    cost_so_far: float                     # Cumulative cost
+    ready_ids: list[str]                       # Subtask IDs ready to execute
+    history: Annotated[list[dict], operator.add]  # Append-only execution history
+    status: str                                # "running" | "done" | "failed"
+    cost_so_far: float                         # Cumulative cost
+# Note: TaskEntity held by reference on engine instance
+# to avoid Pydantic strict-mode serialization issues
 ```
 
-#### TaskGraphEngine Spec
+#### LangGraphTaskEngine (Implemented)
 
 ```python
-class TaskGraphEngine:
-    def build_graph(self) -> StateGraph:
-        """Build LangGraph StateGraph"""
+class LangGraphTaskEngine(TaskEngine):
+    MAX_RETRIES = 2
+
+    def _build_graph(self) -> CompiledStateGraph:
         graph = StateGraph(AgentState)
-        graph.add_node("analyze_intent",   self.analyze_intent)
-        graph.add_node("plan_tasks",       self.plan_tasks)
-        graph.add_node("execute_task",     self.execute_task)
-        graph.add_node("observe_result",   self.observe_result)
-        graph.add_node("handle_failure",   self.handle_failure)
-        graph.add_node("complete",         self.complete)
+        graph.add_node("select_ready",   self._select_ready)    # Find ready subtasks
+        graph.add_node("execute_batch",  self._execute_batch)   # Parallel via asyncio.gather
+        graph.add_node("finalize",       self._finalize)
 
-        graph.set_entry_point("analyze_intent")
-        graph.add_edge("analyze_intent", "plan_tasks")
-        graph.add_edge("plan_tasks", "execute_task")
-
+        graph.set_entry_point("select_ready")
+        graph.add_edge("select_ready", "execute_batch")
         graph.add_conditional_edges(
-            "execute_task",
-            self.route_after_execution,
-            {"success": "observe_result", "failure": "handle_failure"}
+            "execute_batch",
+            self._route_after_execution,
+            {"continue": "select_ready", "done": "finalize", "failed": "finalize"},
         )
-
-        graph.add_conditional_edges(
-            "observe_result",
-            self.has_next_task,
-            {"continue": "execute_task", "done": "complete"}
-        )
-
-        graph.add_conditional_edges(
-            "handle_failure",
-            self.failure_strategy,
-            {"retry": "execute_task", "fallback": "execute_task", "abort": "complete"}
-        )
-
-        graph.add_edge("complete", END)
+        graph.add_edge("finalize", END)
         return graph.compile()
 
-    async def run(self, goal: str) -> AgentState:
-        """Accept a goal, execute full DAG, return final state"""
+# Key design decisions:
+# - Decomposition separated into IntentAnalyzer (called by CreateTaskUseCase)
+# - Execution graph only handles subtask running (no decomposition nodes)
+# - Independent subtasks execute in parallel via asyncio.gather
+# - Failed subtasks retry up to MAX_RETRIES=2 then cascade failure to dependents
 ```
 
 #### Completion Criteria

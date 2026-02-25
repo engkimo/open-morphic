@@ -466,6 +466,108 @@ Both `api/routes/tasks.py` and `cli/commands/task.py` call the same `CreateTaskU
 - **Phase 2**: CLI foundation (task, model, cost commands)
 - **Phase 3+**: CLI-only workflows, REPL mode, piping support
 
+---
+
+## TD-012: Task Graph Engine — Entity Reference Pattern
+
+**Date**: 2026-02-25
+**Status**: Accepted
+
+### Decision
+
+Hold TaskEntity by reference on the LangGraphTaskEngine instance during execution, rather than serializing it into the LangGraph AgentState.
+
+### Problem
+
+LangGraph's StateGraph requires state to be a TypedDict. Domain entities use Pydantic `strict=True` which rejects string→Enum coercion during deserialization. Serializing TaskEntity into the state would require:
+1. `model_dump()` → loses Enum instances (becomes strings)
+2. `model_validate()` from dict → fails under strict mode for Enum fields
+
+### Solution
+
+```python
+class LangGraphTaskEngine(TaskEngine):
+    _task: TaskEntity | None = None  # Held by reference during execute()
+
+    async def execute(self, task: TaskEntity) -> TaskEntity:
+        self._task = task  # Reference, not copy
+        graph = self._build_graph()
+        await graph.ainvoke(minimal_state)  # State has ready_ids, history, cost only
+        return self._task  # Mutated in-place by graph nodes
+```
+
+AgentState is minimal (no domain objects):
+```python
+class AgentState(TypedDict):
+    ready_ids: list[str]
+    history: Annotated[list[dict], operator.add]
+    status: str
+    cost_so_far: float
+```
+
+### Rationale
+
+| Aspect | Benefit |
+|---|---|
+| No serialization overhead | Avoids Pydantic strict-mode issues entirely |
+| Domain integrity | TaskEntity stays valid throughout execution |
+| Simple graph | AgentState is trivial, no complex reducers needed |
+| No race conditions | asyncio.gather touches different SubTask objects (GIL safe) |
+
+### Trade-offs
+
+- Engine is not stateless during execution (holds `_task` reference)
+- Cannot use LangGraph checkpointing with TaskEntity (acceptable — we persist via TaskRepository)
+- Not suitable for distributed execution (single-process only — acceptable for Phase 1)
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| Serialize TaskEntity to dict in state | Pydantic strict-mode rejects string Enum on reconstruct |
+| Use `strict=False` for SubTask | Weakens domain validation guarantees |
+| Add `from_state_dict()` to SubTask | Pollutes domain entity with infrastructure concerns |
+
+---
+
+## TD-013: Decomposition + Execution Separation
+
+**Date**: 2026-02-25
+**Status**: Accepted
+
+### Decision
+
+Separate task decomposition (goal → subtasks) from task execution (run subtasks through DAG) into two distinct use cases.
+
+### Architecture
+
+```
+CreateTaskUseCase                    ExecuteTaskUseCase
+    │                                    │
+    ▼                                    ▼
+TaskEngine.decompose()              TaskEngine.execute()
+    │                                    │
+    ▼                                    ▼
+IntentAnalyzer (LLM call)           LangGraph DAG
+    │                                    │
+    ▼                                    ▼
+list[SubTask]                        TaskEntity (updated)
+    │
+    ▼
+TaskEntity (persisted)
+```
+
+### Rationale
+
+- **Single Responsibility**: Each use case has one job
+- **Flexible scheduling**: Create now, execute later (or re-execute on failure)
+- **Testability**: Decomposition tested independently from DAG execution
+- **Clean graph**: LangGraph only handles execution flow, not decomposition (simpler state machine)
+
+### Implementation
+
+The original IMPLEMENTATION_PLAN had decomposition nodes (`analyze_intent`, `plan_tasks`) inside the graph. The implemented design moves these to `IntentAnalyzer.decompose()`, called by `CreateTaskUseCase`. The graph only has execution nodes (`select_ready` → `execute_batch` → `finalize`).
+
 ### Rejected Alternatives
 
 | Alternative | Rejection Reason |
