@@ -216,10 +216,19 @@ morphic-agent/
 │   │   ├── ollama_manager.py        # Ollama lifecycle (health, model pull, RAM recommend)
 │   │   ├── litellm_gateway.py       # LLMGateway impl (LOCAL_FIRST routing + LiteLLM)
 │   │   └── cost_tracker.py          # CostRepository wrapper + budget checking
-│   └── task_graph/                  # Sprint 1.3: Task Graph Engine
-│       ├── state.py                 # AgentState TypedDict (LangGraph state)
-│       ├── intent_analyzer.py       # LLM goal → subtask decomposition
-│       └── engine.py                # LangGraphTaskEngine (DAG + parallel + retry)
+│   ├── task_graph/                  # Sprint 1.3: Task Graph Engine
+│   │   ├── state.py                 # AgentState TypedDict (LangGraph state)
+│   │   ├── intent_analyzer.py       # LLM goal → subtask decomposition
+│   │   └── engine.py                # LangGraphTaskEngine (DAG + parallel + retry)
+│   └── local_execution/             # Sprint 1.3b: LAEE
+│       ├── executor.py              # LocalExecutor (risk → approve → execute → audit)
+│       ├── audit_log.py             # JsonlAuditLogger (append-only JSONL)
+│       ├── undo_manager.py          # Stack-based undo for reversible ops
+│       └── tools/
+│           ├── shell_tools.py       # shell_exec, shell_background, shell_stream, shell_pipe
+│           ├── fs_tools.py          # fs_read, fs_write, fs_edit, fs_delete, fs_move, fs_glob, fs_tree
+│           ├── system_tools.py      # process_list, process_kill, resource_info, clipboard, notify
+│           └── dev_tools.py         # dev_git, dev_docker, dev_pkg_install, dev_env_setup
 │
 ├── interface/                       # Layer 4: Entry Points
 │   ├── api/                         # (stub — Sprint 1.6)
@@ -242,7 +251,8 @@ morphic-agent/
 │           ├── test_cost_tracker.py     # 13 tests (record, queries, budget)
 │           ├── test_litellm_gateway.py  # 21 tests (route, complete, available)
 │           ├── test_intent_analyzer.py  # 6 tests (decompose, deps, JSON parse)
-│           └── test_task_graph_engine.py # 9 tests (parallel, retry, cascade)
+│           ├── test_task_graph_engine.py # 9 tests (parallel, retry, cascade)
+│           └── test_local_execution.py  # 35 tests (8 completion criteria)
 │
 ├── migrations/                      # Alembic async migrations
 ├── docker-compose.yml               # PostgreSQL+pgvector, Redis, Neo4j
@@ -331,5 +341,5 @@ Mapping between domain entities and ORM models happens in repository implementat
 2. Green:    Write minimum code to pass
 3. Refactor: Clean up while tests protect
 
-Current: 141 tests, 1.64s, 100% pass
+Current: 176 tests, 1.24s, 100% pass
 ```

@@ -355,19 +355,19 @@ class LangGraphTaskEngine(TaskEngine):
 
 **Goal**: Foundation for agent to directly operate user's local PC
 
-#### Files to Create
+#### Files Created
 
 ```
-infrastructure/local_execution/__init__.py
-infrastructure/local_execution/executor.py       # LocalExecutor implementation
-infrastructure/local_execution/audit_log.py      # Append-only JSONL audit log
-infrastructure/local_execution/undo_manager.py   # Reversible operation undo
-infrastructure/local_execution/tools/__init__.py
+infrastructure/local_execution/__init__.py            # Re-exports
+infrastructure/local_execution/executor.py            # LocalExecutor (risk→approve→execute→audit)
+infrastructure/local_execution/audit_log.py           # JsonlAuditLogger (append-only JSONL)
+infrastructure/local_execution/undo_manager.py        # Stack-based undo for reversible ops
+infrastructure/local_execution/tools/__init__.py      # ToolRegistry (25 tools)
 infrastructure/local_execution/tools/shell_tools.py   # shell_exec/background/stream/pipe
-infrastructure/local_execution/tools/fs_tools.py      # fs_read/write/edit/delete/move/glob/watch/tree
-infrastructure/local_execution/tools/system_tools.py  # process/resource/clipboard/notify/screenshot
+infrastructure/local_execution/tools/fs_tools.py      # fs_read/write/edit/delete/move/glob/tree
+infrastructure/local_execution/tools/system_tools.py  # process_list/kill, resource, clipboard, notify
 infrastructure/local_execution/tools/dev_tools.py     # git/docker/pkg_install/env_setup
-tests/unit/infrastructure/test_local_execution.py
+tests/unit/infrastructure/test_local_execution.py     # 35 tests (all 8 completion criteria)
 ```
 
 Note: Domain logic (RiskAssessor, ApprovalEngine) is already implemented in `domain/services/`.
@@ -381,14 +381,14 @@ LAEE tools are thin wrappers around OSS/stdlib:
 
 #### Completion Criteria
 
-- [ ] `shell_exec("echo hello")` → returns "hello"
-- [ ] `fs_write` + `fs_read` round-trip test
-- [ ] `fs_delete(recursive=True)` requires confirmation in `confirm-destructive` mode
-- [ ] `full-auto` mode executes all operations without confirmation
-- [ ] `confirm-all` mode requires confirmation for everything except SAFE
-- [ ] All operations logged to `.morphic/audit_log.jsonl`
-- [ ] `undo_last()` reverts a `fs_write` operation
-- [ ] Commands containing `sudo` auto-classified as CRITICAL
+- [x] `shell_exec("echo hello")` → returns "hello"
+- [x] `fs_write` + `fs_read` round-trip test
+- [x] `fs_delete(recursive=True)` requires confirmation in `confirm-destructive` mode
+- [x] `full-auto` mode executes all operations without confirmation
+- [x] `confirm-all` mode requires confirmation for everything except SAFE
+- [x] All operations logged to `.morphic/audit_log.jsonl`
+- [x] `undo_last()` reverts a `fs_write` operation
+- [x] Commands containing `sudo` auto-classified as CRITICAL
 
 ---
 
