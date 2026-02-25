@@ -10,10 +10,16 @@ from infrastructure.llm.litellm_gateway import LiteLLMGateway
 from infrastructure.llm.ollama_manager import OllamaManager
 from shared.config import Settings
 
+# Default model returned when Ollama is running and has qwen3-coder:30b
+DEFAULT_OLLAMA = "ollama/qwen3-coder:30b"
+ALL_OLLAMA_MODELS = ["qwen3-coder:30b", "qwen3:8b", "deepseek-r1:8b", "llama3.2:3b"]
+
 
 @pytest.fixture
 def ollama() -> AsyncMock:
-    return AsyncMock(spec=OllamaManager)
+    mock = AsyncMock(spec=OllamaManager)
+    mock.list_models.return_value = ALL_OLLAMA_MODELS
+    return mock
 
 
 @pytest.fixture
@@ -56,26 +62,26 @@ class TestRoute:
     ) -> None:
         ollama.is_running.return_value = True
         model = await gateway.route(TaskType.SIMPLE_QA, budget_remaining=50.0)
-        assert model == "ollama/qwen3:8b"
+        assert model == DEFAULT_OLLAMA
 
     async def test_forces_free_when_budget_exhausted(
         self, gateway: LiteLLMGateway
     ) -> None:
         model = await gateway.route(TaskType.COMPLEX_REASONING, budget_remaining=0.0)
-        assert model == "ollama/qwen3:8b"
+        assert model == DEFAULT_OLLAMA
 
     async def test_forces_free_when_negative_budget(
         self, gateway: LiteLLMGateway
     ) -> None:
         model = await gateway.route(TaskType.COMPLEX_REASONING, budget_remaining=-5.0)
-        assert model == "ollama/qwen3:8b"
+        assert model == DEFAULT_OLLAMA
 
     async def test_falls_back_to_free_when_no_api_keys(
         self, gateway: LiteLLMGateway, ollama: AsyncMock
     ) -> None:
         ollama.is_running.return_value = False
         model = await gateway.route(TaskType.COMPLEX_REASONING, budget_remaining=50.0)
-        assert model == "ollama/qwen3:8b"
+        assert model == DEFAULT_OLLAMA
 
     async def test_routes_to_api_when_available(
         self, ollama: AsyncMock, cost_tracker: AsyncMock
@@ -112,7 +118,7 @@ class TestRoute:
         """CODE_GENERATION = (FREE, MEDIUM). With local_first, routes to Ollama."""
         ollama.is_running.return_value = True
         model = await gateway.route(TaskType.CODE_GENERATION, budget_remaining=50.0)
-        assert model == "ollama/qwen3:8b"
+        assert model == DEFAULT_OLLAMA
 
 
 class TestComplete:
@@ -168,7 +174,7 @@ class TestComplete:
             result = await gateway.complete(
                 messages=[{"role": "user", "content": "test"}],
             )
-            assert result.model == "ollama/qwen3:8b"
+            assert result.model == DEFAULT_OLLAMA
 
     async def test_extracts_cost_from_response(
         self, gateway: LiteLLMGateway, cost_tracker: AsyncMock
@@ -185,11 +191,18 @@ class TestComplete:
 
 
 class TestIsAvailable:
-    async def test_ollama_available_when_running(
+    async def test_ollama_available_when_running_and_installed(
         self, gateway: LiteLLMGateway, ollama: AsyncMock
     ) -> None:
         ollama.is_running.return_value = True
         assert await gateway.is_available("ollama/qwen3:8b") is True
+
+    async def test_ollama_unavailable_when_not_installed(
+        self, gateway: LiteLLMGateway, ollama: AsyncMock
+    ) -> None:
+        ollama.is_running.return_value = True
+        ollama.list_models.return_value = ["qwen3:8b"]  # no coder model
+        assert await gateway.is_available("ollama/qwen3-coder:30b") is False
 
     async def test_ollama_unavailable_when_down(
         self, gateway: LiteLLMGateway, ollama: AsyncMock
@@ -252,11 +265,12 @@ class TestListModels:
         ollama.is_running.return_value = True
 
         models = await gw.list_models()
-        # Available: 3 Ollama + 3 Claude (haiku, sonnet, opus) = 6
+        # Available: 4 Ollama + 3 Claude (haiku, sonnet, opus) = 7
+        assert DEFAULT_OLLAMA in models
         assert "ollama/qwen3:8b" in models
         assert "claude-sonnet-4-6" in models
         assert "gpt-4o" not in models
-        assert len(models) == 6
+        assert len(models) == 7
 
     async def test_empty_when_nothing_available(
         self, gateway: LiteLLMGateway, ollama: AsyncMock

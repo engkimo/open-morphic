@@ -23,6 +23,7 @@ class LiteLLMGateway(LLMGateway):
 
     MODEL_TIERS: dict[ModelTier, list[str]] = {
         ModelTier.FREE: [
+            "ollama/qwen3-coder:30b",
             "ollama/qwen3:8b",
             "ollama/deepseek-r1:8b",
             "ollama/llama3.2:3b",
@@ -129,7 +130,11 @@ class LiteLLMGateway(LLMGateway):
     async def is_available(self, model: str) -> bool:
         """Check if a specific model is usable."""
         if model.startswith("ollama/"):
-            return await self._ollama.is_running()
+            if not await self._ollama.is_running():
+                return False
+            ollama_name = model.removeprefix("ollama/")
+            installed = await self._ollama.list_models()
+            return any(ollama_name in m for m in installed)
         if "claude" in model:
             return self._settings.has_anthropic
         if "gpt" in model:

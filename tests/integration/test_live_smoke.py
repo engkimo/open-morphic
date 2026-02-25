@@ -1,7 +1,7 @@
 """Live smoke tests — real Ollama + real filesystem.
 
 Run with: uv run pytest tests/integration/test_live_smoke.py -v -s
-Requires: Ollama running with qwen3:8b
+Requires: Ollama running with a qwen3 model (qwen3-coder:30b or qwen3:8b)
 """
 
 from __future__ import annotations
@@ -46,6 +46,15 @@ async def ollama():
     return mgr
 
 
+@pytest.fixture(scope="module")
+async def qwen3_model(ollama: OllamaManager) -> str:
+    """Return the best available qwen3 model name (prefer coder:30b)."""
+    models = await ollama.list_models()
+    if any("qwen3-coder" in m for m in models):
+        return "qwen3-coder:30b"
+    return "qwen3:8b"
+
+
 # ══════════════════════════════════════════════════════════
 # Sprint 1.2: OllamaManager live test
 # ══════════════════════════════════════════════════════════
@@ -60,7 +69,9 @@ class TestOllamaLive:
         assert len(models) > 0
         print(f"\n  Installed models: {models}")
 
-    async def test_direct_inference(self, ollama: OllamaManager) -> None:
+    async def test_direct_inference(
+        self, ollama: OllamaManager, qwen3_model: str
+    ) -> None:
         """Direct Ollama API call to verify inference works."""
         import httpx
 
@@ -68,17 +79,20 @@ class TestOllamaLive:
             base_url="http://127.0.0.1:11434", timeout=120.0
         ) as client:
             resp = await client.post(
-                "/api/generate",
+                "/api/chat",
                 json={
-                    "model": "qwen3:8b",
-                    "prompt": "What is 2+2? Answer with just the number.",
+                    "model": qwen3_model,
+                    "messages": [
+                        {"role": "user", "content": "What is 2+2? Answer with just the number."},
+                    ],
                     "stream": False,
+                    "think": False,
                 },
             )
             assert resp.status_code == 200
             data = resp.json()
-            answer = data["response"]
-            print(f"\n  Ollama response: {answer[:100]}")
+            answer = data["message"]["content"]
+            print(f"\n  Ollama ({qwen3_model}) response: {answer[:100]}")
             assert "4" in answer
 
 
