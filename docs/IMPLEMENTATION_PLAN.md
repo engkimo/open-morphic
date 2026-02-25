@@ -476,8 +476,62 @@ tests/integration/test_cloud_llm.py — 11 tests
 
 #### Next Steps
 
-- **Step B**: E2E Pipeline Test (Goal → DAG → Result with real LLM)
+- ~~**Step A**: Cloud API Integration Tests~~ — COMPLETE
+- ~~**Step B**: E2E Pipeline Test~~ — COMPLETE (below)
 - **Step C**: Sprint 1.4 Context Engineering
+
+---
+
+### Verification: E2E Pipeline Test (Step B) — COMPLETE
+
+> Date: 2026-02-25
+> Full pipeline verified: Goal → LLM Decompose → DAG Execute → Result. 5/5 tests pass.
+
+#### Test Results
+
+| Test | LLM | Subtasks | Result | Cost | Key Verification |
+|---|---|---|---|---|---|
+| Create + Execute (is_prime) | Ollama qwen3-coder:30b | 5 (with deps) | PASS | $0.00 | Full DAG with dependency chain |
+| Parallel execution (fib+fact) | Ollama qwen3-coder:30b | 5 (2 independent) | PASS | $0.00 | Independent subtasks run in parallel |
+| Subtask results contain code | Ollama qwen3-coder:30b | 5 | PASS | $0.00 | Actual Python code generated |
+| Cost tracking ($0 local) | Ollama qwen3-coder:30b | 5 | PASS | $0.00 | Sum of subtask costs == total_cost_usd |
+| Cloud pipeline (Haiku) | Claude Haiku | 2 | PASS | $0.000512 | Non-zero cost, model=claude-haiku |
+
+#### Pipeline Flow Verified
+
+```
+CreateTaskUseCase.execute(goal)
+  └─ IntentAnalyzer.decompose(goal)     # LLM generates 2-5 subtasks with deps
+     └─ TaskEntity created + persisted
+
+ExecuteTaskUseCase.execute(task_id)
+  └─ TaskRepository.get_by_id()         # Load from persistence
+  └─ LangGraphTaskEngine.execute(task)
+     └─ select_ready                    # Find subtasks with all deps completed
+     └─ execute_batch                   # asyncio.gather for parallel execution
+     └─ route_after_execution           # continue | done | failed
+     └─ finalize                        # Set final status
+  └─ TaskRepository.update()            # Persist final state
+```
+
+#### What Was Confirmed
+
+- **LLM decomposition**: IntentAnalyzer correctly breaks goals into atomic subtasks
+- **Dependency resolution**: Subtasks with deps wait for predecessors to complete
+- **Parallel execution**: Independent subtasks execute simultaneously via asyncio.gather
+- **DAG state machine**: select_ready → execute_batch → route cycles correctly
+- **Cost tracking**: Ollama=$0, Claude Haiku=$0.0005 accurately recorded
+- **Persistence round-trip**: save → get_by_id → update all work correctly
+- **Status management**: PENDING → RUNNING → SUCCESS/FALLBACK/FAILED transitions
+
+#### Test File
+
+```
+tests/integration/test_e2e_pipeline.py — 5 tests (208s total, Ollama inference-bound)
+  In-memory TaskRepository + CostRepository for persistence simulation
+  TestE2EPipelineLocal: 4 tests with Ollama ($0)
+  TestE2EPipelineCloud: 1 test with Claude Haiku (cost verification)
+```
 
 ---
 
