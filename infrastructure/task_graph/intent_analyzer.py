@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from domain.entities.task import SubTask
 from domain.ports.llm_gateway import LLMGateway
@@ -37,9 +38,25 @@ class IntentAnalyzer:
         return self._parse_response(response.content)
 
     @staticmethod
+    def _extract_json(content: str) -> str:
+        """Extract JSON array from LLM output that may contain think tags or markdown."""
+        text = content.strip()
+        # Strip <think>...</think> blocks (qwen3 reasoning)
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        # Extract from ```json ... ``` code blocks
+        md_match = re.search(r"```(?:json)?\s*(\[.*?])\s*```", text, re.DOTALL)
+        if md_match:
+            return md_match.group(1)
+        # Find first JSON array
+        arr_match = re.search(r"\[.*]", text, re.DOTALL)
+        if arr_match:
+            return arr_match.group(0)
+        return text
+
+    @staticmethod
     def _parse_response(content: str) -> list[SubTask]:
         """Parse LLM JSON response into SubTask list with resolved deps."""
-        raw_tasks = json.loads(content.strip())
+        raw_tasks = json.loads(IntentAnalyzer._extract_json(content))
 
         subtasks: list[SubTask] = []
         id_map: dict[int, str] = {}

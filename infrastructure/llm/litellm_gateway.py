@@ -103,6 +103,9 @@ class LiteLLMGateway(LLMGateway):
 
         if resolved.startswith("ollama/"):
             kwargs["api_base"] = self._settings.ollama_base_url
+            # Disable qwen3 thinking mode — litellm cannot capture the
+            # thinking output from Ollama, causing empty content responses.
+            kwargs.setdefault("extra_body", {})["think"] = False
 
         response = await litellm.acompletion(**kwargs)
 
