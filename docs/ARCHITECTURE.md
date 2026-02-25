@@ -192,6 +192,7 @@ morphic-agent/
 │   │   └── model_tier.py           # ModelTier, TaskType
 │   ├── ports/
 │   │   ├── task_repository.py      # TaskRepository ABC
+│   │   ├── task_engine.py          # TaskEngine ABC (decompose + execute)
 │   │   ├── llm_gateway.py          # LLMGateway ABC + LLMResponse
 │   │   ├── local_executor.py       # LocalExecutor ABC (LAEE)
 │   │   ├── audit_logger.py         # AuditLogger ABC
@@ -202,13 +203,23 @@ morphic-agent/
 │       └── approval_engine.py      # 3-mode × 5-risk approval matrix
 │
 ├── application/                     # Layer 3: Use Cases
-│   ├── use_cases/                   # (stub — Sprint 1.3)
-│   └── dto/                         # (stub — Sprint 1.3)
+│   ├── use_cases/
+│   │   ├── create_task.py          # CreateTaskUseCase (decompose + persist)
+│   │   └── execute_task.py         # ExecuteTaskUseCase (run DAG + persist)
+│   └── dto/                         # (stub — Sprint 1.4)
 │
 ├── infrastructure/                  # Layer 2: Port Implementations
-│   └── persistence/
-│       ├── database.py              # Async SQLAlchemy engine + session
-│       └── models.py                # ORM models (separate from domain entities)
+│   ├── persistence/
+│   │   ├── database.py              # Async SQLAlchemy engine + session
+│   │   └── models.py                # ORM models (separate from domain entities)
+│   ├── llm/                         # Sprint 1.2: LLM Layer
+│   │   ├── ollama_manager.py        # Ollama lifecycle (health, model pull, RAM recommend)
+│   │   ├── litellm_gateway.py       # LLMGateway impl (LOCAL_FIRST routing + LiteLLM)
+│   │   └── cost_tracker.py          # CostRepository wrapper + budget checking
+│   └── task_graph/                  # Sprint 1.3: Task Graph Engine
+│       ├── state.py                 # AgentState TypedDict (LangGraph state)
+│       ├── intent_analyzer.py       # LLM goal → subtask decomposition
+│       └── engine.py                # LangGraphTaskEngine (DAG + parallel + retry)
 │
 ├── interface/                       # Layer 4: Entry Points
 │   ├── api/                         # (stub — Sprint 1.6)
@@ -218,10 +229,20 @@ morphic-agent/
 │   └── config.py                    # pydantic-settings (all env vars)
 │
 ├── tests/
-│   └── unit/domain/
-│       ├── test_entities.py         # 37 tests (16 behavior + 21 strict validation)
-│       ├── test_risk_assessor.py    # 19 tests (5 risk tiers + escalation)
-│       └── test_approval_engine.py  # 11 tests (3 modes × risk levels)
+│   └── unit/
+│       ├── domain/
+│       │   ├── test_entities.py         # 37 tests (16 behavior + 21 strict validation)
+│       │   ├── test_risk_assessor.py    # 19 tests (5 risk tiers + escalation)
+│       │   └── test_approval_engine.py  # 11 tests (3 modes × risk levels)
+│       ├── application/
+│       │   ├── test_create_task.py      # 5 tests (decompose, save, status, deps)
+│       │   └── test_execute_task.py     # 6 tests (success, fallback, failed, cost)
+│       └── infrastructure/
+│           ├── test_ollama_manager.py   # 14 tests (health, list, ensure, recommend)
+│           ├── test_cost_tracker.py     # 13 tests (record, queries, budget)
+│           ├── test_litellm_gateway.py  # 21 tests (route, complete, available)
+│           ├── test_intent_analyzer.py  # 6 tests (decompose, deps, JSON parse)
+│           └── test_task_graph_engine.py # 9 tests (parallel, retry, cascade)
 │
 ├── migrations/                      # Alembic async migrations
 ├── docker-compose.yml               # PostgreSQL+pgvector, Redis, Neo4j
@@ -310,5 +331,5 @@ Mapping between domain entities and ORM models happens in repository implementat
 2. Green:    Write minimum code to pass
 3. Refactor: Clean up while tests protect
 
-Current: 67 tests, 0.03s, 100% pass
+Current: 141 tests, 1.64s, 100% pass
 ```
