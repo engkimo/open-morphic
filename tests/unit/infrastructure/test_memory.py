@@ -13,46 +13,10 @@ from typing import Any
 
 import pytest
 
-from domain.entities.memory import MemoryEntry
 from domain.ports.knowledge_graph import KnowledgeGraphPort
-from domain.ports.memory_repository import MemoryRepository
-from domain.value_objects.status import MemoryType
 from infrastructure.memory.context_zipper import ContextZipper
 from infrastructure.memory.memory_hierarchy import MemoryHierarchy, _estimate_tokens
-
-
-# ═══════════════════════════════════════════════════════════════
-# In-memory fakes
-# ═══════════════════════════════════════════════════════════════
-
-
-class InMemoryMemoryRepo(MemoryRepository):
-    """In-memory MemoryRepository for unit tests."""
-
-    def __init__(self) -> None:
-        self._store: dict[str, MemoryEntry] = {}
-
-    async def add(self, entry: MemoryEntry) -> None:
-        self._store[entry.id] = entry
-
-    async def search(self, query: str, top_k: int = 5) -> list[MemoryEntry]:
-        """Simple keyword-based search (no embeddings)."""
-        query_lower = query.lower()
-        scored: list[tuple[float, MemoryEntry]] = []
-        for entry in self._store.values():
-            words = set(entry.content.lower().split())
-            query_words = set(query_lower.split())
-            overlap = len(words & query_words)
-            if overlap > 0:
-                scored.append((overlap, entry))
-        scored.sort(key=lambda x: x[0], reverse=True)
-        return [e for _, e in scored[:top_k]]
-
-    async def get_by_id(self, memory_id: str) -> MemoryEntry | None:
-        return self._store.get(memory_id)
-
-    async def delete(self, memory_id: str) -> None:
-        self._store.pop(memory_id, None)
+from infrastructure.persistence.in_memory import InMemoryMemoryRepository as InMemoryMemoryRepo
 
 
 class InMemoryKnowledgeGraph(KnowledgeGraphPort):

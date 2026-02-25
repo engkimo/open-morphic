@@ -2,32 +2,9 @@
 
 import pytest
 
-from domain.entities.cost import CostRecord
-from domain.ports.cost_repository import CostRepository
 from domain.ports.llm_gateway import LLMResponse
 from infrastructure.llm.cost_tracker import CostTracker
-
-
-class InMemoryCostRepository(CostRepository):
-    """Test double implementing CostRepository port."""
-
-    def __init__(self) -> None:
-        self.records: list[CostRecord] = []
-
-    async def save(self, record: CostRecord) -> None:
-        self.records.append(record)
-
-    async def get_daily_total(self) -> float:
-        return sum(r.cost_usd for r in self.records)
-
-    async def get_monthly_total(self) -> float:
-        return sum(r.cost_usd for r in self.records)
-
-    async def get_local_usage_rate(self) -> float:
-        if not self.records:
-            return 0.0
-        local = sum(1 for r in self.records if r.is_local)
-        return local / len(self.records)
+from infrastructure.persistence.in_memory import InMemoryCostRepository
 
 
 @pytest.fixture

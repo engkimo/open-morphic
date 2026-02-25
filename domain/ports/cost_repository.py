@@ -19,3 +19,6 @@ class CostRepository(ABC):
 
     @abstractmethod
     async def get_local_usage_rate(self) -> float: ...
+
+    @abstractmethod
+    async def list_recent(self, limit: int = 50) -> list[CostRecord]: ...

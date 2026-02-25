@@ -49,6 +49,9 @@ class _InMemoryTaskRepo(TaskRepository):
     async def update(self, task: TaskEntity) -> None:
         self._store[task.id] = task
 
+    async def list_all(self) -> list[TaskEntity]:
+        return list(self._store.values())
+
     async def delete(self, task_id: str) -> None:
         self._store.pop(task_id, None)
 
@@ -73,6 +76,9 @@ class _InMemoryCostRepo:
             return 0.0
         local = sum(1 for r in self._records if r.is_local)
         return local / len(self._records)
+
+    async def list_recent(self, limit: int = 50) -> list:
+        return sorted(self._records, key=lambda r: r.timestamp, reverse=True)[:limit]
 
 
 # ── Fixtures ──
