@@ -766,3 +766,110 @@ score = recency_weight * 0.4 + keyword_overlap * 0.6
 - CC#1: add() → retrieve() returns relevant memories (5 tests)
 - CC#4: 5000-token history → ≤500 tokens compression (2 tests)
 - Total unit test suite: 221 → 257 tests, all passing (1.70s)
+
+---
+
+## TD-018: API DI Pattern — AppContainer over FastAPI Depends
+
+**Date**: 2026-02-25
+**Status**: Accepted
+
+### Decision
+
+Use a single `AppContainer` class stored on `app.state.container` for dependency injection, instead of FastAPI's `Depends()` chain pattern.
+
+### Rationale
+
+| Aspect | AppContainer | FastAPI Depends |
+|---|---|---|
+| Testability | Swap entire container in one line | Override individual dependencies |
+| Simplicity | One class, explicit wiring | Chains of `Depends()` with closures |
+| Visibility | All deps visible in constructor | Scattered across route decorators |
+| Phase 1 fit | In-memory repos, no DB sessions | Depends shines with DB session lifecycle |
+
+### Implementation
+
+```python
+class AppContainer:
+    def __init__(self, settings: Settings | None = None) -> None:
+        self.settings = settings or Settings()
+        self.task_repo = InMemoryTaskRepository()
+        self.cost_repo = InMemoryCostRepository()
+        self.memory_repo = InMemoryMemoryRepository()
+        self.ollama = OllamaManager(base_url=self.settings.ollama_base_url)
+        self.cost_tracker = CostTracker(self.cost_repo)
+        self.llm = LiteLLMGateway(ollama=self.ollama, cost_tracker=self.cost_tracker, settings=self.settings)
+        self.intent_analyzer = IntentAnalyzer(llm=self.llm)
+        self.task_engine = LangGraphTaskEngine(llm=self.llm, analyzer=self.intent_analyzer)
+        self.create_task = CreateTaskUseCase(engine=self.task_engine, repo=self.task_repo)
+        self.execute_task = ExecuteTaskUseCase(engine=self.task_engine, repo=self.task_repo)
+        self.memory = MemoryHierarchy(memory_repo=self.memory_repo)
+```
+
+Routes access via `request.app.state.container`:
+```python
+def _container(request: Request):
+    return request.app.state.container
+```
+
+Tests swap the container entirely:
+```python
+app = create_app(container=mock_container)
+client = TestClient(app)
+```
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| FastAPI `Depends()` chains | Over-engineering for in-memory repos. Better suited for DB session lifecycle |
+| Module-level singletons | Untestable, no isolation between test cases |
+| `dependency-injector` library | External dependency for a simple wiring problem |
+
+### Future Migration Path
+
+When PostgreSQL repos replace in-memory repos (Phase 3+), `AppContainer.__init__` will create DB sessions and pass them to repo constructors. No route code changes needed.
+
+---
+
+## TD-019: In-Memory Repositories as Phase 1 Production Backend
+
+**Date**: 2026-02-25
+**Status**: Accepted
+
+### Decision
+
+Use `InMemoryTaskRepository`, `InMemoryCostRepository`, and `InMemoryMemoryRepository` as the Phase 1 production backend. No Docker/DB required to run the server.
+
+### Rationale
+
+- **Zero-dependency startup**: `uvicorn interface.api.main:app` works immediately
+- **Test reuse**: Same implementations used in unit tests — battle-tested
+- **Clean Architecture payoff**: Repositories implement domain port ABCs. Swapping to PostgreSQL requires only changing `AppContainer.__init__`
+- **Phase 1 scope**: Single-process, no persistence needed across restarts
+
+### Implementation
+
+```python
+# infrastructure/persistence/in_memory.py
+class InMemoryTaskRepository(TaskRepository):
+    """Dict-backed. Sorted by created_at desc for list_all()."""
+
+class InMemoryCostRepository(CostRepository):
+    """List-backed. Exposes .records property for test introspection."""
+
+class InMemoryMemoryRepository(MemoryRepository):
+    """Dict-backed. Keyword-overlap search (no embeddings)."""
+```
+
+### Domain Port Additions
+
+Two methods added to support API needs:
+- `TaskRepository.list_all() -> list[TaskEntity]` — needed for GET /api/tasks
+- `CostRepository.list_recent(limit: int = 50) -> list[CostRecord]` — needed for GET /api/cost/logs
+
+### Risks
+
+- Data lost on server restart (acceptable for Phase 1)
+- No concurrent access safety (acceptable for single-process)
+- Keyword search is crude (replaced by pgvector in Phase 3)

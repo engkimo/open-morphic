@@ -231,11 +231,36 @@ morphic-agent/
 │           └── dev_tools.py         # dev_git, dev_docker, dev_pkg_install, dev_env_setup
 │
 ├── interface/                       # Layer 4: Entry Points
-│   ├── api/                         # (stub — Sprint 1.6)
+│   ├── api/                         # Sprint 1.6: FastAPI + WebSocket
+│   │   ├── main.py                  # create_app() factory + lifespan + CORS
+│   │   ├── container.py             # AppContainer DI (Settings → repos → use cases)
+│   │   ├── schemas.py               # 10 Pydantic request/response models
+│   │   ├── websocket.py             # /ws/tasks/{id} (poll + delta-only sends)
+│   │   └── routes/
+│   │       ├── tasks.py             # POST, GET, GET/{id}, DELETE /api/tasks
+│   │       ├── models.py            # GET /api/models, GET /api/models/status
+│   │       ├── cost.py              # GET /api/cost, GET /api/cost/logs
+│   │       └── memory.py            # GET /api/memory/search?q=
 │   └── cli/                         # (stub — Phase 2)
 │
 ├── shared/
 │   └── config.py                    # pydantic-settings (all env vars)
+│
+├── ui/                              # Sprint 1.6: Next.js 15 (bun, Tailwind CSS 4)
+│   ├── lib/
+│   │   ├── theme.ts                 # morphicAgentTheme design tokens
+│   │   └── api.ts                   # Typed fetch wrappers + WebSocket client
+│   ├── app/
+│   │   ├── layout.tsx               # Dark theme root layout (Geist font)
+│   │   ├── globals.css              # CSS variables matching design spec
+│   │   ├── page.tsx                 # Dashboard (GoalInput + TaskList + sidebar)
+│   │   └── tasks/[id]/page.tsx      # Task detail with live WebSocket updates
+│   └── components/
+│       ├── GoalInput.tsx            # Textarea + Execute button (Enter to submit)
+│       ├── TaskList.tsx             # Task cards with status icons + FREE badge
+│       ├── TaskDetail.tsx           # Subtask tree with status dots
+│       ├── CostMeter.tsx            # Budget bar + daily/monthly/local stats
+│       └── ModelStatus.tsx          # Ollama status dot + model list
 │
 ├── tests/
 │   └── unit/
@@ -246,13 +271,16 @@ morphic-agent/
 │       ├── application/
 │       │   ├── test_create_task.py      # 5 tests (decompose, save, status, deps)
 │       │   └── test_execute_task.py     # 6 tests (success, fallback, failed, cost)
-│       └── infrastructure/
-│           ├── test_ollama_manager.py   # 14 tests (health, list, ensure, recommend)
-│           ├── test_cost_tracker.py     # 13 tests (record, queries, budget)
-│           ├── test_litellm_gateway.py  # 24 tests (route, complete, available, O-series temp)
-│           ├── test_intent_analyzer.py  # 6 tests (decompose, deps, JSON parse)
-│           ├── test_task_graph_engine.py # 9 tests (parallel, retry, cascade)
-│           └── test_local_execution.py  # 35 tests (8 completion criteria)
+│       ├── infrastructure/
+│       │   ├── test_ollama_manager.py   # 14 tests (health, list, ensure, recommend)
+│       │   ├── test_cost_tracker.py     # 13 tests (record, queries, budget)
+│       │   ├── test_litellm_gateway.py  # 24 tests (route, complete, available, O-series temp)
+│       │   ├── test_intent_analyzer.py  # 6 tests (decompose, deps, JSON parse)
+│       │   ├── test_task_graph_engine.py # 9 tests (parallel, retry, cascade)
+│       │   ├── test_local_execution.py  # 35 tests (8 completion criteria)
+│       │   └── test_memory.py           # 36 tests (hierarchy, zipper, knowledge graph)
+│       └── interface/
+│           └── test_api.py              # 22 tests (CRUD, WebSocket, CORS, models, cost, memory)
 │   └── integration/
 │       ├── test_live_smoke.py           # 10 tests (real Ollama + real filesystem)
 │       ├── test_cloud_llm.py            # 11 tests (Anthropic + OpenAI + Gemini + cost + routing)
@@ -335,7 +363,8 @@ Mapping between domain entities and ORM models happens in repository implementat
 |---|---|---|---|---|
 | **Unit/Domain** | `tests/unit/domain/` | None | ~0.03s (67 tests) | Entities, value objects, services |
 | **Unit/Application** | `tests/unit/application/` | Mocked ports | Fast (11 tests) | Use case orchestration |
-| **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.0s (99 tests) | LLM gateway, cost, task graph, LAEE |
+| **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.0s (179 tests) | LLM gateway, cost, task graph, LAEE, memory |
+| **Unit/Interface** | `tests/unit/interface/` | Mock container | ~1.3s (22 tests) | API endpoints, WebSocket, CORS |
 | **Integration** | `tests/integration/` | Ollama running | ~18s (10 tests) | Real LLM inference, real filesystem |
 | **E2E** | `tests/e2e/` | Full stack | Slowest | API/CLI → Use Case → DB round-trips |
 
@@ -346,7 +375,7 @@ Mapping between domain entities and ORM models happens in repository implementat
 2. Green:    Write minimum code to pass
 3. Refactor: Clean up while tests protect
 
-Current: 181 unit tests (1.36s) + 26 integration tests (10+11+5), 100% pass
+Current: 279 unit tests (1.71s) + 26 integration tests (10+11+5), 100% pass
 Default model: qwen3-coder:30b (thinking mode disabled via extra_body)
 Cloud providers verified: Anthropic (Haiku/Sonnet), OpenAI (o4-mini/o3), Gemini (3-flash/3-pro)
 ```

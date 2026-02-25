@@ -638,91 +638,107 @@ Integration tests: 8 tests (skip if services unavailable)
 
 ---
 
-### Sprint 1.6: API + UI (Day 14-15)
+### Sprint 1.6: API + UI (Day 14-15) — COMPLETE
 
 **Goal**: FastAPI backend + Next.js minimal UI
 
-#### Backend Files
+#### Design Decisions
+
+- **DI Pattern**: `AppContainer` class (not FastAPI `Depends` chains). Stored on `app.state.container`. Simpler, testable, swappable
+- **Background execution**: `POST /api/tasks` decomposes synchronously, launches DAG execution via `BackgroundTasks`. No Celery
+- **WebSocket MVP**: Poll `task_repo.get_by_id()` every 1s, send JSON snapshots (delta-only) until `is_complete`
+- **API schemas**: Separate from domain entities. Plain strings for enums (no strict-mode issues in JSON)
+- **Frontend**: Next.js 15 App Router + Tailwind CSS. Bun package manager. Minimal functional components
+- **No Docker/DB required**: In-memory repos serve as Phase 1 production backend
+
+#### Files Created
 
 ```
-interface/api/__init__.py
-interface/api/main.py                       # FastAPI app factory
-interface/api/deps.py                       # Dependency injection (DB session, router, etc.)
+# Backend (Python)
+domain/ports/task_repository.py            # +list_all() method
+domain/ports/cost_repository.py            # +list_recent() method
+infrastructure/persistence/in_memory.py    # InMemoryTaskRepository, InMemoryCostRepository, InMemoryMemoryRepository
+interface/api/schemas.py                   # 10 Pydantic request/response models
+interface/api/container.py                 # AppContainer DI wiring
+interface/api/main.py                      # create_app() factory + lifespan + CORS
+interface/api/websocket.py                 # /ws/tasks/{task_id} (poll + delta-only sends)
 interface/api/routes/__init__.py
-interface/api/routes/tasks.py               # POST/GET /api/tasks
-interface/api/routes/models.py              # GET /api/models
-interface/api/routes/cost.py                # GET /api/cost
-interface/api/routes/memory.py              # GET /api/memory/search
-interface/api/websocket.py                  # WebSocket /ws/tasks/{id}
+interface/api/routes/tasks.py              # POST, GET, GET/{id}, DELETE /api/tasks
+interface/api/routes/models.py             # GET /api/models, GET /api/models/status
+interface/api/routes/cost.py               # GET /api/cost, GET /api/cost/logs
+interface/api/routes/memory.py             # GET /api/memory/search?q=
+tests/unit/interface/__init__.py
+tests/unit/interface/test_api.py           # 22 tests (TestClient + mock AppContainer)
+
+# Frontend (TypeScript)
+ui/                                        # Next.js 15 (bun, Tailwind CSS 4)
+ui/lib/theme.ts                            # morphicAgentTheme design tokens
+ui/lib/api.ts                              # Typed fetch wrappers + WebSocket client
+ui/app/layout.tsx                          # Dark theme root layout (Geist font)
+ui/app/globals.css                         # CSS variables matching design spec
+ui/app/page.tsx                            # Dashboard (GoalInput + TaskList + sidebar)
+ui/app/tasks/[id]/page.tsx                 # Task detail with live WebSocket updates
+ui/components/GoalInput.tsx                # Textarea + Execute button (Enter to submit)
+ui/components/TaskList.tsx                 # Task cards with status icons + FREE badge
+ui/components/TaskDetail.tsx               # Subtask tree with status dots
+ui/components/CostMeter.tsx                # Budget bar + daily/monthly/local stats
+ui/components/ModelStatus.tsx              # Ollama status dot + model list
 ```
 
-#### API Endpoints
+#### API Endpoints (15 total)
 
 ```
-POST   /api/tasks              Create task (accept goal, generate DAG, start execution)
-GET    /api/tasks              List tasks (status filter support)
-GET    /api/tasks/{id}         Task detail (includes subtasks + execution logs)
-DELETE /api/tasks/{id}         Cancel task
+POST   /api/tasks              Create task → decompose → start background execution
+GET    /api/tasks              List tasks (sorted by created_at desc)
+GET    /api/tasks/{id}         Task detail (subtasks, cost, success_rate)
+DELETE /api/tasks/{id}         Delete task
 
-GET    /api/models             Available models list (Ollama + API)
-GET    /api/models/status      Ollama health check
+GET    /api/models             List available model names
+GET    /api/models/status      Ollama health + model list + default model
 
-GET    /api/cost               Cost summary (daily/monthly/local rate)
-GET    /api/cost/logs          Cost log list
+GET    /api/cost               Cost summary (daily/monthly/local rate/budget)
+GET    /api/cost/logs          Recent cost log entries
 
-GET    /api/memory/search?q=   Semantic memory search
+GET    /api/memory/search?q=   Semantic memory search via MemoryHierarchy
 
-WS     /ws/tasks/{id}          Real-time task execution progress
+GET    /api/health             Health check
+
+WS     /ws/tasks/{id}          Real-time task snapshots (1s poll, delta-only)
 ```
 
-#### Frontend Files
+#### AppContainer DI Wiring
 
 ```
-ui/                                     # npx create-next-app@latest
-ui/app/layout.tsx                       # Dark theme root layout
-ui/app/page.tsx                         # Dashboard (task list + cost)
-ui/app/tasks/[id]/page.tsx              # Task detail page
-ui/components/TaskList.tsx
-ui/components/TaskDetail.tsx
-ui/components/CostMeter.tsx
-ui/components/ModelStatus.tsx
-ui/components/GoalInput.tsx
-ui/lib/api.ts                           # API client
-ui/lib/theme.ts                         # morphicAgentTheme
+Settings → OllamaManager → CostTracker → LiteLLMGateway
+         → IntentAnalyzer → LangGraphTaskEngine
+         → CreateTaskUseCase, ExecuteTaskUseCase
+         → InMemory*Repository (task, cost, memory)
+         → MemoryHierarchy
 ```
 
-#### UI Phase 1 Scope
+#### Test Results
 
 ```
-┌─────────────────────────────────────────────────┐
-│ Morphic-Agent                          [Models] │
-├─────────────────────────────────────────────────┤
-│                                                 │
-│  ┌─ Goal Input ──────────────────────────────┐  │
-│  │ [Text area: enter your goal]    [Execute] │  │
-│  └───────────────────────────────────────────┘  │
-│                                                 │
-│  ┌─ Active Tasks ─────────────────────────────┐ │
-│  │ ● "Implement fibonacci"  [Running] qwen3   │ │
-│  │   ├ ✓ Algorithm design                     │ │
-│  │   ├ ⚡ Code implementation [Running]       │ │
-│  │   └ ○ Test creation [Pending]              │ │
-│  └────────────────────────────────────────────┘ │
-│                                                 │
-│  ┌─ Cost ──────────────┐  ┌─ Model Status ──┐  │
-│  │ Today:    $0.00     │  │ Ollama: ● ON    │  │
-│  │ Local:    100%      │  │ qwen3:8b ✓      │  │
-│  │ Budget:   ████░ 95% │  │ API Keys: 0     │  │
-│  └─────────────────────┘  └─────────────────┘  │
-└─────────────────────────────────────────────────┘
+22 API tests (TestClient + mock AppContainer):
+  TestTaskEndpoints:     9 tests (CRUD, validation, subtask response)
+  TestModelEndpoints:    3 tests (list, status, ollama down)
+  TestCostEndpoints:     3 tests (summary empty, with records, logs)
+  TestMemoryEndpoints:   2 tests (empty, with data)
+  TestWebSocket:         3 tests (not found, snapshot, stop on complete)
+  TestApp:               2 tests (health, CORS headers)
+
+Total unit test suite: 257 → 279 tests, all passing (1.71s)
+Next.js build: 0 TypeScript errors, static + dynamic routes
 ```
 
 #### Completion Criteria
 
-- [ ] `POST /api/tasks` sends goal → task execution starts
-- [ ] WebSocket receives real-time progress
-- [ ] Next.js UI displays task list + details
-- [ ] Cost meter displayed ($0 / Local 100%)
+- [x] `POST /api/tasks` sends goal → task decomposition + background execution starts
+- [x] WebSocket receives real-time progress (delta-only snapshots)
+- [x] Next.js UI displays dashboard with task list + detail page
+- [x] Cost meter displayed ($0.00 / Local 100% / budget bar)
+- [x] 22 backend tests pass (TestClient + mock LLM)
+- [x] `next build` succeeds with 0 TypeScript errors
 
 ---
 
