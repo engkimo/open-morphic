@@ -278,9 +278,11 @@ morphic-agent/
 │       │   ├── test_intent_analyzer.py  # 6 tests (decompose, deps, JSON parse)
 │       │   ├── test_task_graph_engine.py # 9 tests (parallel, retry, cascade)
 │       │   ├── test_local_execution.py  # 35 tests (8 completion criteria)
+│       │   ├── test_failure_recovery.py # 7 tests (retry, cascade, partial, persistence)
 │       │   └── test_memory.py           # 36 tests (hierarchy, zipper, knowledge graph)
 │       └── interface/
-│           └── test_api.py              # 22 tests (CRUD, WebSocket, CORS, models, cost, memory)
+│           ├── test_api.py              # 22 tests (CRUD, WebSocket, CORS, models, cost, memory)
+│           └── test_api_e2e.py          # 12 tests (HTTP round-trip: POST→execute→GET→verify)
 │   └── integration/
 │       ├── test_live_smoke.py           # 10 tests (real Ollama + real filesystem)
 │       ├── test_cloud_llm.py            # 11 tests (Anthropic + OpenAI + Gemini + cost + routing)
@@ -375,7 +377,7 @@ Mapping between domain entities and ORM models happens in repository implementat
 2. Green:    Write minimum code to pass
 3. Refactor: Clean up while tests protect
 
-Current: 279 unit tests (1.71s) + 26 integration tests (10+11+5), 100% pass
+Current: 298 unit tests (1.72s) + 26 integration tests (10+11+5), 100% pass
 Default model: qwen3-coder:30b (thinking mode disabled via extra_body)
 Cloud providers verified: Anthropic (Haiku/Sonnet), OpenAI (o4-mini/o3), Gemini (3-flash/3-pro)
 ```
