@@ -7,8 +7,10 @@ import re
 
 from domain.entities.task import SubTask
 from domain.ports.llm_gateway import LLMGateway
+from infrastructure.context_engineering.kv_cache_optimizer import KVCacheOptimizer
 
-DECOMPOSE_SYSTEM_PROMPT = """\
+# Task-specific instruction appended after the stable prefix
+_DECOMPOSE_INSTRUCTION = """\
 You are a task decomposition expert. Break down the given goal into \
 concrete, actionable subtasks.
 
@@ -21,15 +23,26 @@ Rules:
 - 2-5 subtasks for most goals
 - No markdown, no explanation — ONLY the JSON array"""
 
+# Keep for backward compatibility
+DECOMPOSE_SYSTEM_PROMPT = _DECOMPOSE_INSTRUCTION
+
 
 class IntentAnalyzer:
-    def __init__(self, llm: LLMGateway) -> None:
+    def __init__(
+        self,
+        llm: LLMGateway,
+        kv_cache: KVCacheOptimizer | None = None,
+    ) -> None:
         self._llm = llm
+        self._kv_cache = kv_cache or KVCacheOptimizer()
 
     async def decompose(self, goal: str) -> list[SubTask]:
         """Use LLM to decompose a goal into ordered subtasks."""
+        system_content = self._kv_cache.build_system_prompt(
+            {"role": "decomposer", "instruction": _DECOMPOSE_INSTRUCTION}
+        )
         messages = [
-            {"role": "system", "content": DECOMPOSE_SYSTEM_PROMPT},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": goal},
         ]
         response = await self._llm.complete(

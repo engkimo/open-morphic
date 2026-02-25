@@ -10,6 +10,10 @@ from domain.entities.task import SubTask, TaskEntity
 from domain.ports.llm_gateway import LLMGateway
 from domain.ports.task_engine import TaskEngine
 from domain.value_objects.status import SubTaskStatus
+from infrastructure.context_engineering.kv_cache_optimizer import KVCacheOptimizer
+from infrastructure.context_engineering.observation_diversifier import (
+    ObservationDiversifier,
+)
 from infrastructure.task_graph.intent_analyzer import IntentAnalyzer
 from infrastructure.task_graph.state import AgentState
 
@@ -29,9 +33,17 @@ class LangGraphTaskEngine(TaskEngine):
 
     MAX_RETRIES = 2
 
-    def __init__(self, llm: LLMGateway, analyzer: IntentAnalyzer) -> None:
+    def __init__(
+        self,
+        llm: LLMGateway,
+        analyzer: IntentAnalyzer,
+        kv_cache: KVCacheOptimizer | None = None,
+        observation_diversifier: ObservationDiversifier | None = None,
+    ) -> None:
         self._llm = llm
         self._analyzer = analyzer
+        self._kv_cache = kv_cache or KVCacheOptimizer()
+        self._diversifier = observation_diversifier or ObservationDiversifier()
         self._task: TaskEntity | None = None
         self._retry_counts: dict[str, int] = {}
 
@@ -91,8 +103,11 @@ class LangGraphTaskEngine(TaskEngine):
         async def execute_one(subtask_id: str) -> dict:
             subtask = subtask_map[subtask_id]
             subtask.status = SubTaskStatus.RUNNING
+            system_content = self._kv_cache.build_system_prompt(
+                {"goal": self._task.goal}
+            )
             messages = [
-                {"role": "system", "content": f"Goal: {self._task.goal}"},
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": subtask.description},
             ]
             try:
@@ -126,8 +141,11 @@ class LangGraphTaskEngine(TaskEngine):
 
         results = await asyncio.gather(*[execute_one(sid) for sid in ready_ids])
 
-        for r in results:
+        for idx, r in enumerate(results):
             cost += r.get("cost", 0.0)
+            r["formatted"] = self._diversifier.serialize(
+                r, len(state["history"]) + idx
+            )
             history.append(r)
 
         return {"cost_so_far": cost, "history": history}

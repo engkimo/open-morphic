@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     laee_gui_enabled: bool = True
     laee_cron_enabled: bool = True
 
+    # ── Context Engineering ──
+    context_todo_path: Path = Path("todo.md")
+    context_cache_dir: Path = Path(".morphic/cache")
+
     # ── General ──
     morphic_agent_env: Environment = Environment.DEVELOPMENT
     auto_tool_install: bool = False

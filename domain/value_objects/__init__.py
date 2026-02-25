@@ -9,6 +9,7 @@ from domain.value_objects.status import (
     SubTaskStatus,
     TaskStatus,
 )
+from domain.value_objects.tool_state import ToolState
 
 __all__ = [
     "ApprovalMode",
@@ -19,4 +20,5 @@ __all__ = [
     "SubTaskStatus",
     "TaskStatus",
     "TaskType",
+    "ToolState",
 ]
