@@ -2,7 +2,8 @@
 
 > Clean Architecture (4-layer) + TDD + Pydantic Strict Mode + OSS-First
 >
-> **Phase 1 Foundation: COMPLETE** (2026-02-25) — 298 unit tests + 26 integration tests, 7/7 sprints done
+> **Phase 1 Foundation: COMPLETE** (2026-02-25) — 7/7 sprints done
+> **Phase 2 CLI v1: COMPLETE** (2026-02-25) — Sprints 2.9-2.11, 318 unit tests + 26 integration tests
 
 ---
 
@@ -243,7 +244,13 @@ morphic-agent/
 │   │       ├── models.py            # GET /api/models, GET /api/models/status
 │   │       ├── cost.py              # GET /api/cost, GET /api/cost/logs
 │   │       └── memory.py            # GET /api/memory/search?q=
-│   └── cli/                         # (stub — Phase 2)
+│   └── cli/                         # Sprint 2.9-2.11: typer + rich
+│       ├── main.py                  # typer app, _get_container() lazy singleton, _run() async bridge
+│       ├── formatters.py            # Rich tables, trees, status styles (all output isolated here)
+│       └── commands/
+│           ├── task.py              # morphic task {create|list|show|cancel}
+│           ├── model.py             # morphic model {list|status|pull}
+│           └── cost.py              # morphic cost {summary|budget}
 │
 ├── shared/
 │   └── config.py                    # pydantic-settings (all env vars)
@@ -284,7 +291,8 @@ morphic-agent/
 │       │   └── test_memory.py           # 36 tests (hierarchy, zipper, knowledge graph)
 │       └── interface/
 │           ├── test_api.py              # 22 tests (CRUD, WebSocket, CORS, models, cost, memory)
-│           └── test_api_e2e.py          # 12 tests (HTTP round-trip: POST→execute→GET→verify)
+│           ├── test_api_e2e.py          # 12 tests (HTTP round-trip: POST→execute→GET→verify)
+│           └── test_cli.py              # 20 tests (3 foundation + 9 task + 5 model + 3 cost)
 │   └── integration/
 │       ├── test_live_smoke.py           # 10 tests (real Ollama + real filesystem)
 │       ├── test_cloud_llm.py            # 11 tests (Anthropic + OpenAI + Gemini + cost + routing)
@@ -368,7 +376,7 @@ Mapping between domain entities and ORM models happens in repository implementat
 | **Unit/Domain** | `tests/unit/domain/` | None | ~0.03s (67 tests) | Entities, value objects, services |
 | **Unit/Application** | `tests/unit/application/` | Mocked ports | Fast (11 tests) | Use case orchestration |
 | **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.0s (179 tests) | LLM gateway, cost, task graph, LAEE, memory |
-| **Unit/Interface** | `tests/unit/interface/` | Mock container | ~1.3s (22 tests) | API endpoints, WebSocket, CORS |
+| **Unit/Interface** | `tests/unit/interface/` | Mock container | ~1.4s (54 tests) | API, WebSocket, CORS, CLI commands |
 | **Integration** | `tests/integration/` | Ollama running | ~18s (10 tests) | Real LLM inference, real filesystem |
 | **E2E** | `tests/e2e/` | Full stack | Slowest | API/CLI → Use Case → DB round-trips |
 
@@ -379,7 +387,7 @@ Mapping between domain entities and ORM models happens in repository implementat
 2. Green:    Write minimum code to pass
 3. Refactor: Clean up while tests protect
 
-Current: 298 unit tests (1.72s) + 26 integration tests (10+11+5), 100% pass
+Current: 318 unit tests (1.74s) + 26 integration tests (10+11+5), 100% pass
 Default model: qwen3-coder:30b (thinking mode disabled via extra_body)
 Cloud providers verified: Anthropic (Haiku/Sonnet), OpenAI (o4-mini/o3), Gemini (3-flash/3-pro)
 ```

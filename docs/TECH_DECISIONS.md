@@ -926,3 +926,142 @@ Domain ports:       8 ABC interfaces
 Infrastructure:     6 port implementations (all in-memory for Phase 1)
 API endpoints:     10 (4 task + 2 model + 2 cost + 1 memory + 1 health)
 ```
+
+---
+
+## TD-021: CLI v1 — Reuse AppContainer with Lazy Singleton
+
+**Date**: 2026-02-25
+**Status**: Accepted
+**Sprint**: 2.9–2.11
+
+### Decision
+
+The CLI (`interface/cli/`) reuses the same `AppContainer` that the API uses, via a lazy singleton pattern in `main.py`. No separate CLI-specific container or DI framework.
+
+### Architecture
+
+```python
+# interface/cli/main.py
+_container_instance: Any = None
+
+def _get_container() -> Any:
+    global _container_instance
+    if _container_instance is None:
+        from interface.api.container import AppContainer
+        _container_instance = AppContainer()
+    return _container_instance
+```
+
+### Key Design Choices
+
+| Choice | Rationale |
+|---|---|
+| **Reuse AppContainer** | Zero logic duplication — CLI and API call the same use cases via the same wiring |
+| **Lazy singleton** | AppContainer is heavy (connects to Ollama). Only init when first command runs, not on `--help` |
+| **`_set_container()` for testing** | Monkeypatch `_container_instance` in tests, same mock pattern as `test_api.py` |
+| **`_run()` async wrapper** | typer commands are sync; `_run()` bridges to async use cases via `asyncio.run()` |
+| **Event loop fallback** | `_run()` detects running event loop (pytest-asyncio) and falls back to `loop.run_until_complete()` |
+
+### Async Bridge Pattern
+
+```python
+def _run(coro: Any) -> Any:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)       # Normal CLI execution
+    return loop.run_until_complete(coro)  # Inside pytest-asyncio
+```
+
+This avoids `asyncio.run() cannot be called from a running event loop` errors in tests.
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| Separate `CLIContainer` | Duplicates wiring logic. AppContainer has no API-specific code |
+| `click` instead of `typer` | typer provides type-safe arguments + auto-generated help. Wraps click underneath |
+| Custom DI framework | Over-engineering. Lazy singleton + monkeypatch covers all needs |
+| `nest_asyncio` for tests | Third-party dep for a test-only issue. Event loop detection is simpler |
+
+---
+
+## TD-022: CLI Test Strategy — Sync Store Access
+
+**Date**: 2026-02-25
+**Status**: Accepted
+**Sprint**: 2.9–2.11
+
+### Problem
+
+CLI commands use `_run(asyncio.run(coro))` internally. When tests are `async def` (pytest-asyncio), the event loop is already running. Even with `_run()` fallback to `loop.run_until_complete()`, this fails because the loop is already executing the test coroutine.
+
+### Decision
+
+Tests that need pre-populated data access in-memory store internals directly instead of using `await repo.save()`:
+
+```python
+# ✅ Sync test — works with typer CliRunner
+def test_list_populated(self, container):
+    task = _make_task("task A")
+    container.task_repo._store[task.id] = task  # Direct store access
+    result = runner.invoke(app, ["task", "list"])
+    assert "task A" in result.output
+
+# ❌ Async test — fails with "event loop already running"
+async def test_list_populated(self, container):
+    await container.task_repo.save(task)  # Needs running loop
+    result = runner.invoke(app, ["task", "list"])  # _run() can't nest
+```
+
+### Justification
+
+- InMemoryRepository internals (`_store`, `_records`) are stable and controlled by our codebase
+- Pattern is limited to CLI tests only — API tests use TestClient which handles async natively
+- No production behavior change; only test setup mechanism differs
+
+---
+
+## TD-023: In-Memory Repos — Cross-Process Data Loss (Known Limitation)
+
+**Date**: 2026-02-25
+**Status**: Accepted (Phase 1 limitation)
+
+### Behavior
+
+Each `morphic` CLI invocation starts a new OS process → new `AppContainer` → new `InMemoryTaskRepository`. Data created by one invocation is invisible to the next:
+
+```bash
+$ morphic task create "fibonacci" --no-wait
+Created: 980a5335-50fd-4a1c-...
+
+$ morphic task list
+No tasks found.    # ← Different process, empty store
+```
+
+### Why This Is Acceptable
+
+1. **Phase 1 scope**: In-memory repos were chosen for zero-dependency startup (TD-019)
+2. **Full flow works**: `morphic task create "..."` (without `--no-wait`) does create + execute + display in one process
+3. **API is persistent**: The FastAPI server (`uvicorn`) is a long-running process — data persists across HTTP requests
+4. **Clear migration path**: Replace `InMemory*Repository` with `Pg*Repository` in `AppContainer` — use cases and CLI commands require zero changes (Dependency Inversion)
+
+### Resolution Plan
+
+| Phase | Action |
+|---|---|
+| **Phase 2** (current) | CLI works end-to-end within a single invocation |
+| **Phase 2+** | PostgreSQL + pgvector repositories replace in-memory |
+| **Phase 2+** | `morphic task list` queries persistent DB — data survives across invocations |
+
+### Workaround (Phase 1)
+
+For cross-invocation persistence, use the API server:
+
+```bash
+uvicorn interface.api.main:app --host 0.0.0.0 --port 8000
+# In another terminal:
+curl -X POST localhost:8000/api/tasks -H 'Content-Type: application/json' -d '{"goal":"fibonacci"}'
+curl localhost:8000/api/tasks  # ← Returns the task
+```

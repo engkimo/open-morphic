@@ -868,9 +868,9 @@ Verification:
 | 2.6 | Tool State Machine enhancement | `infrastructure/context_engineering/tool_state_machine.py` | Phase 1 |
 | 2.7 | React Flow task graph UI | `ui/components/TaskGraph.tsx` | React Flow |
 | 2.8 | Planning View UI | `ui/components/PlanningView.tsx` | Phase 1 UI |
-| 2.9 | **CLI foundation (typer + rich)** | `interface/cli/main.py` | Use cases |
-| 2.10 | **CLI task commands** | `interface/cli/commands/task.py` | CLI foundation |
-| 2.11 | **CLI model/cost commands** | `interface/cli/commands/model.py, cost.py` | CLI foundation |
+| 2.9 | **CLI foundation (typer + rich)** ✅ | `interface/cli/main.py` | Use cases |
+| 2.10 | **CLI task commands** ✅ | `interface/cli/commands/task.py` | CLI foundation |
+| 2.11 | **CLI model/cost commands** ✅ | `interface/cli/commands/model.py, cost.py` | CLI foundation |
 | 2.12 | LAEE Browser Tools (Playwright) | `infrastructure/local_execution/tools/browser_tools.py` | LAEE |
 | 2.13 | LAEE GUI Tools (macOS) | `infrastructure/local_execution/tools/gui_tools.py` | LAEE |
 | 2.14 | LAEE Cron Tools (APScheduler) | `infrastructure/local_execution/tools/cron_tools.py` | LAEE |
@@ -880,8 +880,33 @@ Verification:
 - [ ] Interactive Planning: plan presented → user approves → execution starts
 - [ ] React Flow visualizes DAG in real-time
 - [ ] Background Planner continuously improves plan during execution
-- [ ] `morphic task create "..."` creates and executes task from CLI
-- [ ] `morphic cost summary` displays cost breakdown in terminal
+- [x] `morphic task create "..."` creates and executes task from CLI ✅ Sprint 2.9-2.10
+- [x] `morphic cost summary` displays cost breakdown in terminal ✅ Sprint 2.11
+
+### Sprint 2.9-2.11 Results: CLI v1 Complete (2026-02-25)
+
+**Delivered**: Full `morphic` CLI with 3 subcommand groups, 11 commands total.
+
+| Command | Description | Status |
+|---|---|---|
+| `morphic --version` | Show version (`morphic-agent 0.4.0a0`) | ✅ |
+| `morphic --help` | Show all subcommands | ✅ |
+| `morphic task create "goal"` | Create + execute with spinner (real Ollama) | ✅ |
+| `morphic task create "goal" --no-wait` | Create only, return ID | ✅ |
+| `morphic task list` | Rich table of all tasks | ✅ |
+| `morphic task show <id>` | Tree view with subtask results | ✅ |
+| `morphic task cancel <id>` | Set status to FAILED | ✅ |
+| `morphic model list` | Table of installed Ollama models + LOCAL tag | ✅ |
+| `morphic model status` | Ollama Running/Stopped + default model | ✅ |
+| `morphic model pull <name>` | Pull with spinner | ✅ |
+| `morphic cost summary` | Daily/monthly/local rate/budget table | ✅ |
+| `morphic cost budget <amount>` | Set monthly budget (in-memory) | ✅ |
+
+**Tests**: 20 new tests (3 foundation + 9 task + 5 model + 3 cost) → 318 total unit tests, all passing.
+
+**Tech Decisions**: TD-021 (AppContainer reuse), TD-022 (sync test strategy), TD-023 (cross-process data loss).
+
+**Known Limitation**: `morphic task list` returns empty after `morphic task create --no-wait` because each CLI invocation is a separate process with in-memory repos. Full create→execute→display works in a single invocation. Cross-invocation persistence requires PostgreSQL repos (planned for later in Phase 2). See TD-023.
 
 ---
 
