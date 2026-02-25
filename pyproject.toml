@@ -37,6 +37,10 @@ dependencies = [
     "apscheduler>=3.10",
     "psutil>=6.1",
 
+    # CLI
+    "typer>=0.15",
+    "rich>=13.9",
+
     # Utilities
     "python-dotenv>=1.0",
     "orjson>=3.10",
@@ -51,6 +55,9 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
 ]
+
+[project.scripts]
+morphic = "interface.cli.main:app"
 
 [build-system]
 requires = ["hatchling"]
