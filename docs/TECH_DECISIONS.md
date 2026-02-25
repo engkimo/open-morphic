@@ -1,234 +1,476 @@
 # Morphic-Agent Technical Decisions
 
-> 設計判断の根拠を記録する。後から「なぜこうしたか」を追跡可能にする。
+> Record the rationale behind design decisions. Enable future traceability of "why we chose this."
 
 ---
 
-## TD-001: ストレージ統合 — pgvector + Redis(queue) + Neo4j
+## TD-001: Storage Unification — pgvector + Redis (queue) + Neo4j
 
-**決定日**: 2026-02-24
-**ステータス**: Accepted
+**Date**: 2026-02-24
+**Status**: Accepted
 
-### 決定
+### Decision
 
-Phase 1 のストレージバックエンドを以下の3つに統合する:
+Unify Phase 1 storage backends into three services:
 
-| サービス | 役割 | 選定理由 |
+| Service | Role | Rationale |
 |---|---|---|
-| **PostgreSQL 16 + pgvector** | メインDB + ベクトル検索 | リレーショナルデータとベクトル検索を1サービスで。Qdrant不要 |
-| **Redis 7** | タスクキュー (Celery broker/backend) | キュー専用。汎用キャッシュには使わない |
-| **Neo4j 5 Community** | L3 知識グラフ | エンティティ・関係のグラフ走査に特化。Cypher クエリ、ACID、永続化 |
+| **PostgreSQL 16 + pgvector** | Main DB + vector search | Relational data and vector search in one service. No Qdrant needed |
+| **Redis 7** | Task queue (Celery broker/backend) | Queue-only. Not used as general cache |
+| **Neo4j 5 Community** | L3 Knowledge Graph | Graph traversal for entities/relations. Cypher queries, ACID, persistence |
 
-### 却下した選択肢
+### Rejected Alternatives
 
-| 選択肢 | 却下理由 |
+| Alternative | Rejection Reason |
 |---|---|
-| Qdrant (ベクトルDB) | pgvector で Phase 1 規模は十分。サービス数を減らして運用負荷軽減 |
-| Redis を汎用キャッシュにも使用 | 役割肥大化を防ぐ。KV-Cache最適化はLLM側（LiteLLM disk cache）で行う |
-| NetworkX (in-memory graph) | 永続化なし。プロセス再起動で消失。Neo4j は永続+クエリ言語あり |
-| SQLite | 並行アクセスに弱い。複数ワーカーでの非同期実行に不向き |
+| Qdrant (vector DB) | pgvector sufficient for Phase 1 scale. Fewer services = lower operational cost |
+| Redis as general cache | Prevents role bloat. KV-Cache optimization done at LLM layer (LiteLLM disk cache) |
+| NetworkX (in-memory graph) | No persistence. Lost on process restart. Neo4j has persistence + query language |
+| SQLite | Poor concurrent access. Not suitable for async multi-worker execution |
 
-### リスクと緩和策
+### Risks and Mitigations
 
-- **pgvector の検索精度**: Phase 1 規模（~100K vectors）では問題なし。Phase 3 で規模拡大時に Qdrant 移行を再評価
-- **Neo4j の運用コスト**: Community Edition で$0。Docker Compose で起動のみ
-- **Redis 単一障害点**: Phase 1 はローカル開発のみ。本番では Sentinel/Cluster を検討
-
----
-
-## TD-002: LangGraph を DAG エンジンに採用
-
-**決定日**: 2026-02-24
-**ステータス**: Accepted
-
-### 決定
-
-タスクグラフエンジンの基盤に LangGraph を採用する。
-
-### 根拠
-
-- **StateGraph**: 状態管理 + 条件分岐エッジ + チェックポイントを標準提供
-- **Human-in-the-Loop**: `interrupt_before` / `interrupt_after` でインタラクティブ計画に直結
-- **並列ノード実行**: `Send` API で動的並列タスク生成
-- **永続化**: PostgreSQL checkpointer でグラフ状態をDB保存可能
-
-### リスク
-
-- **LangChain エコシステム結合**: LangGraph は LangChain に依存する部分がある
-- **緩和策**: `core/task_graph/engine.py` に薄いラッパーを作り、LangGraph API を直接露出させない。将来の差し替えを可能にする
+- **pgvector search accuracy**: No issue at Phase 1 scale (~100K vectors). Re-evaluate Qdrant migration at Phase 3
+- **Neo4j operational cost**: Community Edition is $0. Docker Compose startup only
+- **Redis single point of failure**: Phase 1 is local dev only. Consider Sentinel/Cluster for production
 
 ---
 
-## TD-003: mem0 で Semantic Memory を Bootstrap
+## TD-002: LangGraph as DAG Engine
 
-**決定日**: 2026-02-24
-**ステータス**: Accepted (Phase 1 限定)
+**Date**: 2026-02-24
+**Status**: Accepted
 
-### 決定
+### Decision
 
-Phase 1 の L2 Semantic Cache は mem0 で実装する。Phase 3 で LSH + ContextZipper に段階移行。
+Adopt LangGraph as the foundation for the task graph engine.
 
-### 根拠
+### Rationale
 
-- mem0 は `pip install mem0ai` で即使用可能
-- 会話から自動的にファクト抽出 + ベクトルDB保存
-- pgvector をバックエンドに指定可能
-- 「8割の記憶問題を解決」できる（CLAUDE.md Phase 1 方針）
+- **StateGraph**: Built-in state management + conditional edges + checkpoints
+- **Human-in-the-Loop**: `interrupt_before` / `interrupt_after` for interactive planning
+- **Parallel node execution**: `Send` API for dynamic parallel task generation
+- **Persistence**: PostgreSQL checkpointer for saving graph state to DB
 
-### 移行パス
+### Risks
+
+- **LangChain ecosystem coupling**: LangGraph has some LangChain dependencies
+- **Mitigation**: Create a thin wrapper at `core/task_graph/engine.py`. Don't expose LangGraph API directly. Enable future replacement
+
+---
+
+## TD-003: Bootstrap Semantic Memory with mem0
+
+**Date**: 2026-02-24
+**Status**: Accepted (Phase 1 only)
+
+### Decision
+
+Implement L2 Semantic Cache using mem0 for Phase 1. Gradually migrate to LSH + ContextZipper in Phase 3.
+
+### Rationale
+
+- mem0 is `pip install mem0ai` — instant setup
+- Automatically extracts facts from conversations + stores in vector DB
+- Can use pgvector as backend
+- "Solves 80% of memory problems" (Phase 1 approach)
+
+### Migration Path
 
 ```
-Phase 1: mem0 (自動抽出 + pgvector)
+Phase 1: mem0 (auto-extraction + pgvector)
 Phase 3: mem0 + SemanticFingerprint(LSH) + ContextZipper
-Phase 3+: カスタム実装で mem0 を置換（必要な場合のみ）
+Phase 3+: Custom implementation to replace mem0 (only if needed)
 ```
 
 ---
 
-## TD-004: Ollama + LiteLLM の LOCAL_FIRST アーキテクチャ
+## TD-004: LOCAL_FIRST Architecture — Ollama + LiteLLM
 
-**決定日**: 2026-02-24
-**ステータス**: Accepted
+**Date**: 2026-02-24
+**Status**: Accepted
 
-### 決定
+### Decision
 
-LLM呼び出しは常に Ollama（ローカル）を最優先し、API は予算とタスク複雑度に応じてフォールバック。
+LLM calls always prioritize Ollama (local). API fallback based on budget and task complexity.
 
-### ルーティングロジック
+### Routing Logic
 
 ```
-1. Ollama が起動中 AND タスクが free tier 対応 → Ollama (コスト: $0)
-2. Ollama 非対応 or 品質不足 → LiteLLM で API ルーティング
+1. Ollama running AND task is free-tier compatible → Ollama (cost: $0)
+2. Ollama insufficient OR quality needed → LiteLLM API routing
    - low tier:  Claude Haiku / Gemini Flash
    - medium:    Claude Sonnet / GPT-4o-mini
    - high:      Claude Opus / GPT-4o
-3. 予算超過 → 強制 Ollama フォールバック（品質低下を許容）
+3. Budget exhausted → Force Ollama fallback (accept quality degradation)
 ```
 
-### LiteLLM の役割
+### LiteLLM's Role
 
-- 100+ モデルの統一 API
-- `completion()` でモデル名を差し替えるだけで切替可能
-- `success_callback` でコスト自動追跡
-- `cache={"type": "disk"}` で KV-Cache 最適化
-
----
-
-## TD-005: Python パッケージ管理に uv を採用
-
-**決定日**: 2026-02-24
-**ステータス**: Accepted
-
-### 決定
-
-pip / poetry / pdm ではなく uv を採用する。
-
-### 根拠
-
-- Rust 製で pip 比 10-100x 高速
-- lockfile (`uv.lock`) でビルド再現性保証
-- `uv run` でvirtualenv自動管理
-- `uv add` で依存追加が1コマンド
+- Unified API for 100+ models
+- Swap models by just changing model name in `completion()`
+- `success_callback` for automatic cost tracking
+- `cache={"type": "disk"}` for KV-Cache optimization
 
 ---
 
-## TD-006: フロントエンド — Next.js 15 + Shadcn/ui + React Flow
+## TD-005: Python Package Management with uv
 
-**決定日**: 2026-02-24
-**ステータス**: Accepted
+**Date**: 2026-02-24
+**Status**: Accepted
 
-### 決定
+### Decision
 
-| 技術 | 役割 |
+Adopt uv instead of pip / poetry / pdm.
+
+### Rationale
+
+- Rust-based, 10-100x faster than pip
+- Lockfile (`uv.lock`) guarantees build reproducibility
+- `uv run` auto-manages virtualenv
+- `uv add` for single-command dependency addition
+
+---
+
+## TD-006: Frontend — Next.js 15 + Shadcn/ui + React Flow
+
+**Date**: 2026-02-24
+**Status**: Accepted
+
+### Decision
+
+| Technology | Role |
 |---|---|
-| Next.js 15 (App Router) | フレームワーク。RSC でデータ重いダッシュボードに最適 |
-| Shadcn/ui | UIコンポーネント。ダークテーマとの親和性高い |
-| React Flow | タスクグラフDAGの可視化 (Phase 2 本格実装) |
-| Recharts | コスト推移グラフ |
+| Next.js 15 (App Router) | Framework. RSC optimal for data-heavy dashboards |
+| Shadcn/ui | UI components. High dark theme compatibility |
+| React Flow | Task graph DAG visualization (full implementation in Phase 2) |
+| Recharts | Cost trend graphs |
 
-### UI テーマ
+### UI Theme
 
-CLAUDE.md の `morphicAgentTheme` に準拠:
-- Background: `#0A0A0F` (深宇宙ブラック)
-- Accent: `#6366F1` (インディゴ)
-- LOCAL FREE バッジ: `#34D399` (ブライトグリーン)
+Per CLAUDE.md `morphicAgentTheme`:
+- Background: `#0A0A0F` (deep space black)
+- Accent: `#6366F1` (indigo)
+- LOCAL FREE badge: `#34D399` (bright green)
 
 ---
 
-## TD-007: モノレポ構成
+## TD-007: Monorepo Structure
 
-**決定日**: 2026-02-24
-**ステータス**: Accepted
+**Date**: 2026-02-24
+**Status**: Accepted
 
-### 決定
+### Decision
 
-Python バックエンド + Next.js フロントエンドを1リポジトリで管理する。
+Manage Python backend + Next.js frontend in a single repository.
 
-### 構造
+### Structure
 
 ```
 morphic-agent/
-├── core/          # Python バックエンド
-├── api/           # FastAPI
+├── domain/        # Pure business logic (Clean Architecture Layer 1)
+├── application/   # Use cases (Layer 3)
+├── infrastructure/# Port implementations (Layer 2)
+├── interface/     # API + CLI entry points (Layer 4)
+├── shared/        # Cross-cutting (config)
 ├── ui/            # Next.js 15
-├── tests/         # Python テスト
-├── docs/          # ドキュメント
+├── tests/         # Python tests
+├── docs/          # Documentation
 ├── docker-compose.yml
 ├── pyproject.toml
 └── CLAUDE.md
 ```
 
-### 根拠
+### Rationale
 
-- 開発初期は単一チーム。分割リポは管理コストが上回る
-- docker-compose で一発起動
-- CI/CD パイプラインが1本で済む
-- Phase 5+ で規模拡大時にモノレポツール (turborepo等) or リポ分割を再評価
+- Single team in early development. Split repos create more management overhead
+- docker-compose for one-command startup
+- Single CI/CD pipeline
+- Re-evaluate monorepo tools (turborepo etc.) or repo splitting at Phase 5+
 
 ---
 
-## TD-008: Local Autonomous Execution Engine (LAEE) — ローカルPC直接制御
+## TD-008: Local Autonomous Execution Engine (LAEE) — Direct Local PC Control
 
-**決定日**: 2026-02-25
-**ステータス**: Accepted
+**Date**: 2026-02-25
+**Status**: Accepted
 
-### 決定
+### Decision
 
-エージェントがユーザーのローカルPCを直接操作する実行レイヤー (LAEE) を Phase 1 から組み込む。Docker沙箱ではなく、**実マシン上で実行**し、ユーザーの自己責任のもと3段階承認モードで安全性を制御する。
+Build an execution layer (LAEE) that directly operates the user's local PC from Phase 1. Execute on the **real machine** (not Docker sandbox), with safety controlled by a 3-tier approval model under user's own responsibility.
 
-### 根拠
+### Rationale
 
-- 実際のユースケースの80%は「自分のPCで何かしてほしい」（環境構築、ファイル操作、ブラウザ自動化等）
-- OpenHands のDocker沙箱は安全だがローカル環境を触れない制約がある
-- OpenClaw的な「PCを手足にする」能力こそがAIエージェントの真のパワー
-- 3段階承認モードでリスクとユーザビリティのバランスを取る
+- 80% of real use cases are "do something on my PC" (env setup, file ops, browser automation)
+- OpenHands' Docker sandbox is safe but can't touch local environment
+- OpenClaw-style "PC as hands" ability is the true power of AI agents
+- 3-tier approval model balances risk and usability
 
-### 設計判断
+### Design Decisions
 
-| 判断項目 | 決定 | 理由 |
+| Decision | Choice | Reason |
 |---|---|---|
-| 承認モデル | 3-tier (full-auto / confirm-destructive / confirm-all) | Codex CLIの3段階モデルを参考。ユーザーが自分でリスクレベルを選択 |
-| リスク評価 | 5段階 (SAFE→CRITICAL) | ツール名+引数パターンから自動判定。sudo, rm -rf 等を検知 |
-| ログ形式 | JSONL append-only | Manus原則3準拠。grep/jqで即座にクエリ可能 |
-| Undo方式 | スタック型 | 可逆操作のみ。fs_delete はゴミ箱移動→本削除の2段階 |
-| ブラウザ | Playwright | Chromium/Firefox/WebKit対応。headless + headed両対応 |
-| GUI自動化 | AppleScript (macOS) | ネイティブ。Linux対応時に xdotool を追加 |
-| スケジューラ | APScheduler | Pythonネイティブ。cron式 + interval式 + ワンショット |
-| プロセス管理 | psutil | クロスプラットフォーム。CPU/メモリ/プロセス情報 |
+| Approval model | 3-tier (full-auto / confirm-destructive / confirm-all) | Inspired by Codex CLI 3-tier model. User selects own risk level |
+| Risk assessment | 5-tier (SAFE→CRITICAL) | Auto-detection from tool name + argument patterns. Detects sudo, rm -rf, etc. |
+| Log format | JSONL append-only | Manus principle 3 compliant. Queryable via grep/jq |
+| Undo approach | Stack-based | Reversible operations only. fs_delete uses trash→permanent two-stage |
+| Browser | Playwright (OSS) | Chromium/Firefox/WebKit support. Headless + headed |
+| GUI automation | AppleScript (macOS) | Native. Add xdotool for Linux support |
+| Scheduler | APScheduler (OSS) | Python-native. Cron + interval + one-shot |
+| Process management | psutil (OSS) | Cross-platform CPU/memory/process info |
 
-### 却下した選択肢
+### Rejected Alternatives
 
-| 選択肢 | 却下理由 |
+| Alternative | Rejection Reason |
 |---|---|
-| 全操作Docker沙箱内で実行 | ローカル環境を触れない。ユースケースの80%をカバーできない |
-| 承認なし完全自動 | 安全性の担保なし。初心者が rm -rf / を実行するリスク |
-| Selenium (ブラウザ) | Playwright の方が高速・安定・API設計が優れている |
-| macOS Accessibility APIのみ | AppleScriptの方が記述が簡潔。複雑な操作時にAccessibility APIにフォールバック |
+| All operations in Docker sandbox | Can't touch local environment. Covers only 20% of use cases |
+| No approval, full auto only | No safety guarantees. Risk of beginners running rm -rf / |
+| Selenium (browser) | Playwright is faster, more stable, better API design |
+| macOS Accessibility API only | AppleScript more concise. Fallback to Accessibility API for complex operations |
 
-### リスクと緩和策
+### Risks and Mitigations
 
-- **rm -rf等の致命的操作**: CRITICAL リスク自動検知 + confirm-destructive モードでデフォルト確認
-- **認証情報漏洩**: ~/.ssh, ~/.aws, .env 等のパスをCRITICALに自動分類
-- **ブラウザ操作のセキュリティ**: headlessモードデフォルト。認証サイトへの操作は MEDIUM 以上
-- **cron暴走**: 同時ジョブ数上限 (LAEE_MAX_CONCURRENT_SHELLS) で制御
-- **ユーザー自己責任の明示**: full-auto モード選択時に明示的な警告を表示
+- **rm -rf and fatal operations**: CRITICAL risk auto-detection + confirm-destructive mode default
+- **Credential leakage**: ~/.ssh, ~/.aws, .env paths auto-classified as CRITICAL
+- **Browser security**: Headless mode default. Auth site operations are MEDIUM+
+- **Cron runaway**: Max concurrent job limit (LAEE_MAX_CONCURRENT_SHELLS)
+- **User responsibility**: Explicit warning displayed when selecting full-auto mode
+
+---
+
+## TD-009: Clean Architecture + TDD
+
+**Date**: 2026-02-25
+**Status**: Accepted
+
+### Decision
+
+Build the entire project using Clean Architecture (4-layer separation) with TDD (Test-Driven Development).
+
+### 4-Layer Structure
+
+```
+domain/          Layer 1: Pure business logic (zero framework dependencies)
+                 - entities/ (pure Pydantic models, strict=True)
+                 - value_objects/ (Enum, immutable types)
+                 - ports/ (ABC — dependency inversion interfaces)
+                 - services/ (domain services — pure functions)
+
+application/     Layer 3: Use cases
+                 - use_cases/ (orchestration of domain operations)
+                 - dto/ (inter-layer data transfer)
+
+infrastructure/  Layer 2: Port implementations
+                 - persistence/ (SQLAlchemy ORM, pgvector, Neo4j)
+                 - llm/ (LiteLLM, Ollama)
+                 - local_execution/ (LAEE tool implementations)
+                 - memory/ (mem0, vector DB)
+
+interface/       Layer 4: Entry points
+                 - api/ (FastAPI routes)
+                 - cli/ (CLI commands — typer + rich)
+
+shared/          Cross-cutting concerns
+                 - config.py (pydantic-settings)
+
+tests/
+  unit/          Domain + application tests (no DB, fast)
+  integration/   Infrastructure tests (DB required)
+  e2e/           Full-stack integration tests
+```
+
+### Dependency Rules
+
+```
+Interface → Application → Domain ← Infrastructure
+                                    (Dependency Inversion)
+
+✅ infrastructure/ implements domain/ports/ ABCs
+✅ application/ uses domain/ entities and ports
+✅ interface/ calls application/ use cases
+❌ domain/ depends on NO other layer
+❌ domain/ never imports SQLAlchemy, FastAPI, LiteLLM
+```
+
+### TDD Process
+
+```
+1. Red:   Write tests first (domain layer is pure — immediately testable)
+2. Green: Minimum implementation to pass tests
+3. Refactor: Clean up (tests protect against regression)
+
+Test breakdown:
+- unit/domain/       → No DB, 0.03s for 67 tests (actual)
+- unit/application/  → Ports mocked, no DB
+- integration/       → Docker Compose required
+- e2e/               → Full infra + UI
+```
+
+### Rationale
+
+| Aspect | Reason |
+|---|---|
+| Testability | Domain layer needs no DB/API — immediately testable. TDD-friendly |
+| Swappability | LLM/DB/tools swappable via ports. Ollama→Claude API switch in infrastructure only |
+| Long-term maintainability | Business logic (domain) never polluted by framework concerns |
+| TDD fit | Pure domain layer needs no mocks for testing. Ideal TDD structure |
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| Flat package (everything in `core/`) | Domain and infra mix. SQLAlchemy changes cascade to business logic |
+| Hexagonal (Ports & Adapters only) | Clean Architecture has clearer layer responsibilities |
+| Full DDD (Domain-Driven Design) | Currently one Bounded Context — overkill. Re-evaluate at scale |
+
+---
+
+## TD-010: OSS-First Principle
+
+**Date**: 2026-02-25
+**Status**: Accepted
+
+### Decision
+
+Maximize use of established OSS libraries. Custom code is written ONLY for domain-specific logic that no OSS covers.
+
+### Rationale
+
+- Reduce code surface area → fewer bugs, less maintenance
+- OSS libraries are battle-tested by communities
+- Avoid the "single-file code generation" anti-pattern (generating large amounts of custom code that becomes unmaintainable)
+- Focus engineering effort on the unique value proposition (orchestration logic, memory hierarchy, risk assessment)
+
+### OSS Dependency Map
+
+| Component | OSS Library | Custom Code | Notes |
+|---|---|---|---|
+| Task DAG | **LangGraph** | Thin wrapper only | Use built-in StateGraph, Send, checkpointer |
+| LLM routing | **LiteLLM** | Routing logic only | 100+ model unified API, cost tracking callbacks |
+| Structured output | **Instructor** | None | Pydantic-validated LLM responses |
+| Semantic memory | **mem0** | Hierarchy management | Auto-extraction + pgvector backend |
+| Vector search | **pgvector** | None | PostgreSQL extension |
+| Knowledge graph | **Neo4j** driver | Query builder only | Cypher queries, ACID, persistence |
+| ORM | **SQLAlchemy** + **Alembic** | None | Async engine, migrations |
+| API framework | **FastAPI** | Route definitions | WebSocket support |
+| CLI framework | **typer** + **rich** | Command definitions | Auto-completion, beautiful output |
+| Browser automation | **Playwright** | None | Chromium/Firefox/WebKit |
+| File watching | **watchdog** | None | Cross-platform file system events |
+| Scheduling | **APScheduler** | None | Cron + interval + one-shot |
+| Process management | **psutil** | None | Cross-platform process/system info |
+| Configuration | **pydantic-settings** | None | Typed env var loading |
+| Task queue | **Celery** + **Redis** | None | Async distributed task execution |
+| Logging | **structlog** | None | Structured JSON logging |
+
+### What Remains Custom (and Why)
+
+| Custom Module | Why Not OSS |
+|---|---|
+| `domain/services/risk_assessor.py` | Project-specific 5-tier risk classification for 40+ LAEE tools |
+| `domain/services/approval_engine.py` | Project-specific 3-mode × 5-risk approval matrix |
+| `domain/entities/*` | Domain models are inherently project-specific |
+| `AgentCLIRouter` | No OSS covers multi-agent-CLI routing with cost awareness |
+| `ContextZipper` | Custom query-adaptive compression (Phase 3) |
+
+### Rules
+
+1. Before writing a new module, search PyPI/npm/MCP Registry for existing solutions
+2. If an OSS library covers 80%+ of the requirement, use it and adapt
+3. Custom code must be in `domain/` or `application/` — infrastructure should be OSS wrappers
+4. Prefer stdlib when external dependencies are unnecessary (e.g., `subprocess`, `pathlib`)
+5. Pin major versions in `pyproject.toml` to avoid breaking changes
+
+---
+
+## TD-011: CLI as First-Class Interface
+
+**Date**: 2026-02-25
+**Status**: Accepted (Design only — implementation in Phase 2)
+
+### Decision
+
+Design the CLI (`interface/cli/`) as a first-class interface alongside the API (`interface/api/`). Both call the same `application/use_cases/` layer. CLI implementation is planned for Phase 2.
+
+### Rationale
+
+- CLI enables scriptable automation, CI/CD integration, and power-user workflows
+- Clean Architecture makes this trivial — CLI is just another entry point calling use cases
+- Many users prefer terminal-based tools (Claude Code, Codex CLI, gh CLI precedent)
+- CLI can work without the UI server running (lighter resource usage)
+
+### Technology Choice
+
+| Library | Role | Why |
+|---|---|---|
+| **typer** | CLI framework | Auto-generates help/completion. Built on click. Type-safe with Python type hints |
+| **rich** | Terminal formatting | Tables, progress bars, syntax highlighting, markdown rendering |
+
+### Planned CLI Commands
+
+```bash
+# Task management
+morphic task create "Build a REST API"     # Create + execute task
+morphic task list                           # List tasks with status
+morphic task show <id>                      # Task detail + subtask tree
+morphic task cancel <id>                    # Cancel running task
+
+# LLM / Model management
+morphic model list                          # Available models (Ollama + API)
+morphic model status                        # Ollama health check
+morphic model pull <name>                   # Pull Ollama model
+
+# Cost management
+morphic cost summary                        # Daily/monthly cost + local rate
+morphic cost budget set 50                  # Set monthly budget
+
+# Memory
+morphic memory search "project deadline"    # Semantic memory search
+morphic memory stats                        # Memory hierarchy stats
+
+# LAEE (local execution)
+morphic exec "create test directory"        # Execute local action
+morphic exec --mode confirm-all "..."       # With approval mode
+morphic audit log                           # View audit log
+morphic audit stats                         # Execution statistics
+
+# Configuration
+morphic config show                         # Current config
+morphic config set LOCAL_FIRST true         # Update setting
+```
+
+### Architecture Integration
+
+```
+interface/
+├── api/              # FastAPI routes (HTTP/WebSocket)
+│   ├── routes/
+│   │   └── tasks.py  # POST /api/tasks → CreateTaskUseCase
+│   └── main.py
+│
+└── cli/              # typer commands (terminal)
+    ├── main.py       # typer.Typer() app
+    ├── commands/
+    │   ├── task.py   # morphic task ... → CreateTaskUseCase (same use case!)
+    │   ├── model.py  # morphic model ...
+    │   ├── cost.py   # morphic cost ...
+    │   ├── memory.py # morphic memory ...
+    │   └── exec.py   # morphic exec ...
+    └── formatters.py # rich-based output formatting
+```
+
+Both `api/routes/tasks.py` and `cli/commands/task.py` call the same `CreateTaskUseCase`. No logic duplication.
+
+### Implementation Timeline
+
+- **Phase 1**: API + UI (web-first for visual task graph)
+- **Phase 2**: CLI foundation (task, model, cost commands)
+- **Phase 3+**: CLI-only workflows, REPL mode, piping support
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| `click` alone | typer adds type-hint-based auto-generation on top of click |
+| `argparse` | Too low-level for complex subcommand structure |
+| CLI only (no API) | Task graph visualization requires web UI |
+| `textual` TUI | Over-engineering for Phase 2. Can add later if demand exists |

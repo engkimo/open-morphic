@@ -56,6 +56,9 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+packages = ["domain", "application", "infrastructure", "interface", "shared"]
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100

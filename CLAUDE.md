@@ -1603,102 +1603,122 @@ class AuditLog:
 
 ---
 
-## 📁 Project Structure
+## 📁 Project Structure — Clean Architecture (v0.4)
+
+> **4層分離 + TDD**: 依存は常に内側へ。domain層はフレームワーク依存ゼロ。
 
 ```
-morphic_agent/
-├── CLAUDE.md                          # このファイル（プロジェクトの"憲法"）
-├── morphic_agent_rules.md                     # プロジェクト固有ルール (.windsurfrules相当)
-├── AGENTS.md                          # Codex CLI向けリポジトリコンテキスト
-├── todo.md                            # エージェント自律管理タスクリスト
+morphic-agent/
+├── CLAUDE.md                          # プロジェクトの"憲法"
+├── pyproject.toml                     # uv プロジェクト定義
+├── docker-compose.yml                 # PostgreSQL+pgvector, Redis, Neo4j
 ├── .env.example
 │
-├── core/
-│   ├── task_graph/
-│   │   ├── engine.py                  # LangGraph DAGエンジン
-│   │   ├── optimizer.py               # 最適経路探索
-│   │   └── scheduler.py               # 並列スケジューリング
-│   ├── llm_router/
-│   │   ├── router.py                  # LiteLLMマルチLLMルーター
-│   │   ├── ollama_manager.py          # ローカルOllama管理
-│   │   └── cost_tracker.py            # KVキャッシュ含むコスト追跡
-│   ├── agent_orchestration/           # ★ v0.3 NEW
-│   │   ├── agent_cli_router.py        # どのエンジンか選ぶルーター
-│   │   ├── openhands_driver.py        # OpenHands REST+WebSocket
-│   │   ├── claude_code_driver.py      # Claude Code SDK/headless
-│   │   ├── gemini_adk_driver.py       # Gemini CLI + ADK ワークフロー
-│   │   ├── codex_cli_driver.py        # OpenAI Codex CLI / MCP server
-│   │   └── agent_engine_protocol.py   # 共通インターフェース定義
-│   ├── local_execution/               # ★ v0.4 NEW (LAEE)
-│   │   ├── executor.py               # LocalExecutor 中核
-│   │   ├── approval_engine.py         # 3段階承認モード
-│   │   ├── audit_log.py              # 全操作不変ログ
-│   │   ├── risk_assessor.py          # アクションリスク評価
-│   │   ├── tools/
-│   │   │   ├── shell_tools.py        # shell_* ツール群
-│   │   │   ├── fs_tools.py           # fs_* ツール群
-│   │   │   ├── browser_tools.py      # browser_* (Playwright)
-│   │   │   ├── system_tools.py       # system_* ツール群
-│   │   │   ├── dev_tools.py          # dev_* (git/docker/pkg)
-│   │   │   ├── gui_tools.py          # gui_* (macOS AppleScript)
-│   │   │   └── cron_tools.py         # cron_* スケジュール
-│   │   └── undo_manager.py           # 可逆操作のundo管理
-│   ├── context_engineering/
-│   │   ├── kv_cache_optimizer.py      # Manus原則1実装
-│   │   ├── tool_state_machine.py      # Manus原則2: マスキング
-│   │   ├── file_context.py            # Manus原則3: ファイル外部記憶
-│   │   ├── todo_manager.py            # Manus原則4: todo.md管理
-│   │   └── observation_diversifier.py # Manus原則5
-│   ├── semantic_memory/               # ★ v0.3 NEW
-│   │   ├── semantic_fingerprint.py    # LSH + SemanticHash
-│   │   ├── memory_hierarchy.py        # L1→L4階層管理
-│   │   ├── context_zipper.py          # クエリ適応型圧縮
-│   │   ├── forgetting_curve.py        # エビングハウス忘却
-│   │   ├── delta_encoder.py           # Git方式差分保存
-│   │   ├── hierarchical_summary.py    # 木構造圧縮
-│   │   └── knowledge_graph.py         # L3 エンティティ・関係DB
+├── domain/                            # Layer 1: 純粋ビジネスロジック（依存ゼロ）
+│   ├── entities/
+│   │   ├── task.py                    # TaskEntity, SubTask (純粋Pydantic)
+│   │   ├── execution.py              # Action, Observation, UndoAction
+│   │   ├── memory.py                 # MemoryEntry
+│   │   └── cost.py                   # CostRecord
+│   ├── value_objects/
+│   │   ├── risk_level.py             # RiskLevel (5段階)
+│   │   ├── approval_mode.py          # ApprovalMode (3段階)
+│   │   └── model_tier.py             # ModelTier, TaskType
+│   ├── ports/                         # ABC — 依存性逆転インターフェース
+│   │   ├── task_repository.py
+│   │   ├── llm_gateway.py
+│   │   ├── local_executor.py
+│   │   ├── audit_logger.py
+│   │   ├── memory_repository.py
+│   │   └── cost_repository.py
+│   └── services/                      # ドメインサービス（純粋関数）
+│       ├── risk_assessor.py           # LAEE リスク評価
+│       └── approval_engine.py         # LAEE 承認判定
+│
+├── application/                       # Layer 2: ユースケース
+│   ├── use_cases/
+│   │   ├── execute_task.py            # タスク実行フロー
+│   │   ├── run_local_action.py        # LAEE ローカル実行
+│   │   ├── route_to_model.py          # LLMルーティング
+│   │   └── search_memory.py           # セマンティック検索
+│   └── dto/                           # レイヤー間データ転送
+│
+├── infrastructure/                    # Layer 3: ポートの実装
+│   ├── persistence/
+│   │   ├── database.py                # SQLAlchemy async engine
+│   │   ├── models.py                  # ORM models (≠ domain entities)
+│   │   ├── task_repo.py               # TaskRepository 実装
+│   │   ├── cost_repo.py               # CostRepository 実装
+│   │   └── memory_repo.py             # MemoryRepository 実装
+│   ├── llm/
+│   │   ├── litellm_gateway.py         # LLMGateway 実装 (LiteLLM)
+│   │   ├── ollama_manager.py          # Ollama ライフサイクル管理
+│   │   └── cost_tracker.py            # LiteLLM callback コスト追跡
+│   ├── local_execution/               # LAEE ツール実装 (v0.4)
+│   │   ├── executor.py                # LocalExecutorPort 実装
+│   │   ├── audit_log.py               # AuditLogger 実装 (JSONL)
+│   │   └── tools/
+│   │       ├── shell_tools.py         # shell_exec/background/stream/pipe
+│   │       ├── fs_tools.py            # fs_read/write/edit/delete
+│   │       ├── browser_tools.py       # Playwright 自動化
+│   │       ├── system_tools.py        # process/resource/clipboard
+│   │       ├── dev_tools.py           # git/docker/pkg管理
+│   │       ├── gui_tools.py           # macOS AppleScript
+│   │       └── cron_tools.py          # APScheduler 定期実行
 │   ├── memory/
-│   │   ├── context_bridge.py          # クロスプラットフォーム
-│   │   ├── vector_store.py            # Qdrant
-│   │   └── episodic_memory.py
-│   └── evolution/
-│       ├── tactical_recovery.py       # Level 1
-│       ├── strategy_updater.py        # Level 2
-│       └── systemic_evolver.py    # Level 3
+│   │   ├── mem0_adapter.py            # mem0 → MemoryRepository
+│   │   ├── neo4j_adapter.py           # Neo4j → KnowledgeGraph
+│   │   └── context_bridge.py          # クロスプラットフォーム
+│   └── agent_cli/                     # Agent CLI ドライバー (v0.3)
+│       ├── openhands_driver.py
+│       ├── claude_code_driver.py
+│       ├── gemini_adk_driver.py
+│       └── codex_cli_driver.py
 │
-├── marketplace/
-│   ├── registry/
-│   ├── installer/
-│   │   └── ollama_installer.py    # ローカルモデル管理
-│   └── discovery/
-│       └── auto_discoverer.py
+├── interface/                         # Layer 4: エントリーポイント
+│   ├── api/
+│   │   ├── main.py                    # FastAPI app factory
+│   │   ├── deps.py                    # DI (ポート→実装の注入)
+│   │   ├── routes/
+│   │   │   ├── tasks.py
+│   │   │   ├── cost.py
+│   │   │   └── memory.py
+│   │   └── websocket.py
+│   └── cli/
+│       └── main.py                    # CLI エントリーポイント
 │
-├── agents/
-│   ├── base_agent.py              # 16ツール実装（vibe-local互換）
-│   ├── orchestrator.py
-│   ├── planner.py                 # バックグラウンド計画エージェント
-│   └── a2a/
-│       └── coordinator.py         # Google A2A Protocol
+├── shared/                            # 横断的関心事
+│   └── config.py                      # pydantic-settings 設定
 │
-├── integrations/
-│   ├── claude/, openai/, gemini/, ollama/
-│   ├── mcp/
-│   │   ├── server.py              # Morphic-AgentをMCPサーバーとして公開
-│   │   └── client.py
-│   └── browser_extension/
-│       └── context_injector.js    # コピペ時コンテキスト自動付与
+├── tests/                             # TDD テストスイート
+│   ├── unit/domain/                   # DB不要・高速 (45テスト, 0.06秒)
+│   │   ├── test_entities.py
+│   │   ├── test_risk_assessor.py
+│   │   └── test_approval_engine.py
+│   ├── unit/application/              # ポートをモック
+│   ├── integration/                   # Docker Compose必要
+│   └── e2e/                           # 全層統合テスト
 │
-└── ui/                            # Next.js 15 ダーク・シックUI
+├── migrations/                        # Alembic (async)
+│
+└── ui/                                # Next.js 15 ダーク・シックUI
     ├── app/
     │   ├── dashboard/
-    │   ├── task-graph/            # React Flowビジュアライザー
+    │   ├── task-graph/                # React Flowビジュアライザー
     │   ├── marketplace/
-    │   ├── cost-control/
     │   └── evolution/
     └── components/
-        ├── TaskNode/
-        ├── CostMeter/
-        └── PlanningView/          # Devin式計画確認UI
+```
+
+**依存ルール:**
+```
+Interface → Application → Domain ← Infrastructure
+                                    (依存性逆転)
+
+✅ domain/ はフレームワーク依存ゼロ（SQLAlchemy, FastAPI, LiteLLM を import しない）
+✅ infrastructure/ は domain/ports/ の ABC を実装する
+✅ application/ は domain/ のエンティティとポートだけ使う
+✅ interface/ は application/ のユースケースを呼ぶ（DI でポート→実装を注入）
 ```
 
 ---

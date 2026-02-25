@@ -1,34 +1,36 @@
 # Morphic-Agent Implementation Plan
 
-> Master implementation plan — 全7フェーズ、14週間
-> Phase 1 はスプリント単位の詳細計画、Phase 2-7 は週単位の計画
+> Master implementation plan — 7 phases, 14 weeks
+> Phase 1 has sprint-level detail. Phases 2-7 have week-level plans.
 
 ---
 
-## 設計原則（全フェーズ共通）
+## Design Principles (All Phases)
 
 ```
-1. $0で動かすことを最優先に証明する (LOCAL_FIRST)
-2. 独立タスクはデフォルト並列 (DEFAULT TO PARALLEL)
-3. Context Engineering (Manus 5原則) を Phase 1 から組込む
-4. 各フェーズ末に E2E テストで動作を保証する
-5. 「宣言したら即実行」— スタブだけ置いて先送りしない
+1. Prove $0 operation first (LOCAL_FIRST)
+2. Default independent tasks to parallel (DEFAULT TO PARALLEL)
+3. Embed Context Engineering (Manus 5 principles) from Phase 1
+4. Guarantee behavior with E2E tests at each phase end
+5. "If you declare it, execute it" — no stubs without follow-through
+6. OSS-First: use established libraries, custom code only for domain logic
+7. CLI + API: both are first-class interfaces calling the same use cases
 ```
 
 ---
 
-## 依存関係グラフ
+## Dependency Graph
 
 ```
 [Infrastructure]
   PostgreSQL+pgvector, Redis, Neo4j, Docker Compose
        │
        ▼
-[LLM Layer]  ←── Phase 1 最優先
+[LLM Layer]  ←── Phase 1 top priority
   Ollama Manager → LiteLLM Router → Cost Tracker
        │
        ▼
-[Task Graph Engine]  ←── Phase 1 コア
+[Task Graph Engine]  ←── Phase 1 core
   LangGraph DAG → Scheduler → Parallel Execution
        │
        ├──────────────────────┐
@@ -36,24 +38,25 @@
 [Context Engineering]    [Semantic Memory]
   KV-Cache Optimizer      mem0 + pgvector
   Tool State Machine      Neo4j Knowledge Graph
-  todo.md Manager         Context Zipper (簡易版)
+  todo.md Manager         Context Zipper (simple)
   Observation Diversifier
        │                      │
        └──────────┬───────────┘
                   ▼
-[API Layer]  FastAPI + WebSocket
+[API + CLI Layer]  FastAPI + WebSocket + typer
                   │
                   ▼
 [UI Layer]   Next.js 15 + Shadcn/ui
                   │
                   ▼
-         *** Phase 1 完了 ***
+         *** Phase 1 Complete ***
                   │
        ┌──────────┼──────────┐
        ▼          ▼          ▼
 [Phase 2]    [Phase 3]   [Phase 4]
 Parallel &   Memory &    Agent CLI
 Planning     Context     Orchestration
++ CLI v1
        │          │          │
        └──────────┼──────────┘
                   ▼
@@ -67,66 +70,54 @@ Marketplace  Evolution   A2A & Scale
 
 ## Phase 1: Foundation (Week 1-2)
 
-> **ゴール**: Ollama で $0 動作する最小エージェントループを完成させる
-> **成果物**: ユーザーがゴールを入力 → DAG生成 → Ollama実行 → 結果表示 + コスト$0
+> **Goal**: Complete a minimal agent loop that runs at $0 with Ollama
+> **Deliverable**: User inputs a goal → DAG generated → Ollama executes → results displayed + cost $0
 
 ### Sprint 1.1: Infrastructure (Day 1-2)
 
-**目標**: Docker Compose 一発でインフラ全起動、DB スキーマ完成
+**Goal**: All infrastructure starts with `docker compose up -d`, DB schema complete
 
-#### 作成ファイル
+#### Files to Create
 
 ```
-pyproject.toml                          # uv プロジェクト定義
+pyproject.toml                          # uv project definition
 docker-compose.yml                      # PostgreSQL+pgvector, Redis, Neo4j
-.env.example                            # 環境変数テンプレート
-alembic.ini                             # DB マイグレーション設定
-core/__init__.py
-core/config.py                          # pydantic-settings ベース設定
-core/database.py                        # SQLAlchemy async engine + pgvector
-core/models/__init__.py
-core/models/base.py                     # SQLAlchemy 宣言的ベースモデル
-core/models/task.py                     # Task, SubTask, TaskExecution
-core/models/memory.py                   # Memory (with pgvector embedding)
-core/models/cost.py                     # CostLog
-migrations/env.py                       # Alembic async 環境
-migrations/versions/001_initial.py      # 初期スキーマ
+.env.example                            # Environment variable template
+alembic.ini                             # DB migration config
+domain/                                 # Clean Architecture Layer 1
+infrastructure/persistence/database.py  # SQLAlchemy async engine + pgvector
+infrastructure/persistence/models.py    # ORM models
+shared/config.py                        # pydantic-settings config
+migrations/env.py                       # Alembic async environment
 ```
 
-#### Docker Compose サービス
+#### Docker Compose Services
 
 ```yaml
 services:
   postgres:
-    image: pgvector/pgvector:pg16        # pgvector 拡張プリインストール
+    image: pgvector/pgvector:pg16        # pgvector extension pre-installed
     ports: ["5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
-    environment:
-      POSTGRES_DB: morphic_agent
-      POSTGRES_USER: morphic
-      POSTGRES_PASSWORD: morphic_dev
 
   redis:
     image: redis:7-alpine
     ports: ["6379:6379"]
-    # キュー専用。永続化は不要（Phase 1）
+    # Queue only. No persistence needed (Phase 1)
 
   neo4j:
     image: neo4j:5-community
     ports: ["7474:7474", "7687:7687"]    # Browser + Bolt
-    environment:
-      NEO4J_AUTH: neo4j/morphic_dev
     volumes: [neo4jdata:/data]
 ```
 
-#### DB スキーマ (PostgreSQL)
+#### DB Schema (PostgreSQL)
 
 ```sql
--- tasks: タスクグラフのノード
 CREATE TABLE tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     goal TEXT NOT NULL,
-    status VARCHAR(20) DEFAULT 'pending',  -- pending|running|success|failed|fallback
+    status VARCHAR(20) DEFAULT 'pending',
     parent_id UUID REFERENCES tasks(id),
     depth INT DEFAULT 0,
     metadata JSONB DEFAULT '{}',
@@ -134,7 +125,6 @@ CREATE TABLE tasks (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- task_executions: 各タスクの実行記録
 CREATE TABLE task_executions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     task_id UUID REFERENCES tasks(id) NOT NULL,
@@ -149,12 +139,11 @@ CREATE TABLE task_executions (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- memories: セマンティックメモリ (L2 + L4)
 CREATE TABLE memories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     content TEXT NOT NULL,
     embedding vector(1536),               -- pgvector
-    memory_type VARCHAR(20) NOT NULL,      -- l2_semantic | l4_cold
+    memory_type VARCHAR(20) NOT NULL,
     access_count INT DEFAULT 1,
     importance_score FLOAT DEFAULT 0.5,
     metadata JSONB DEFAULT '{}',
@@ -162,12 +151,10 @@ CREATE TABLE memories (
     last_accessed TIMESTAMPTZ DEFAULT now()
 );
 
--- HNSW インデックス (コサイン類似度)
 CREATE INDEX ON memories
   USING hnsw (embedding vector_cosine_ops)
   WITH (m = 16, ef_construction = 64);
 
--- cost_logs: コスト追跡
 CREATE TABLE cost_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     model VARCHAR(100) NOT NULL,
@@ -175,69 +162,65 @@ CREATE TABLE cost_logs (
     completion_tokens INT DEFAULT 0,
     cost_usd DECIMAL(10,6) DEFAULT 0,
     cached_tokens INT DEFAULT 0,
-    is_local BOOLEAN DEFAULT false,        -- Ollama = true
+    is_local BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 ```
 
-#### Neo4j スキーマ (L3 Knowledge Graph)
+#### Neo4j Schema (L3 Knowledge Graph)
 
 ```cypher
-// エンティティノード
 CREATE CONSTRAINT entity_name IF NOT EXISTS
   FOR (e:Entity) REQUIRE e.name IS UNIQUE;
-
-// 関係タイプ: RELATES_TO, DEPENDS_ON, PART_OF, CREATED_BY, etc.
-// Phase 1 は動的ラベルで柔軟に運用
+-- Phase 1 uses dynamic labels for flexibility
 ```
 
-#### 完了条件
+#### Completion Criteria
 
-- [ ] `docker compose up -d` で 3 サービス全起動
-- [ ] `alembic upgrade head` でスキーマ作成成功
-- [ ] pgvector の `vector` 型でインサート・検索テスト通過
-- [ ] Neo4j に Cypher クエリでノード作成・検索テスト通過
-- [ ] `core/config.py` で `.env` 読み込み + pydantic validation
+- [ ] `docker compose up -d` starts all 3 services
+- [ ] `alembic upgrade head` creates schema successfully
+- [ ] pgvector `vector` type insert + search test passes
+- [ ] Neo4j Cypher query node create + search test passes
+- [ ] `shared/config.py` loads `.env` + pydantic validation
 
 ---
 
 ### Sprint 1.2: LLM Layer (Day 3-4)
 
-**目標**: Ollama でローカル推論が $0 で動作、コスト追跡が機能
+**Goal**: Local inference with Ollama at $0, cost tracking functional
 
-#### 作成ファイル
+#### Files to Create
 
 ```
-core/llm_router/__init__.py
-core/llm_router/router.py              # MultiLLMRouter (LiteLLM統合)
-core/llm_router/ollama_manager.py       # OllamaManager
-core/llm_router/cost_tracker.py         # CostTracker (callback ベース)
-core/llm_router/models.py              # LLMResponse, ModelTier, TaskType
-tests/test_llm_router.py
-tests/test_ollama_manager.py
+infrastructure/llm/__init__.py
+infrastructure/llm/router.py              # MultiLLMRouter (LiteLLM integration)
+infrastructure/llm/ollama_manager.py       # OllamaManager
+infrastructure/llm/cost_tracker.py         # CostTracker (callback-based)
+tests/unit/infrastructure/test_llm_router.py
+tests/unit/infrastructure/test_ollama_manager.py
 ```
 
-#### OllamaManager 仕様
+#### OllamaManager Spec
 
 ```python
 class OllamaManager:
-    """Ollama ライフサイクル管理"""
+    """Ollama lifecycle management"""
     base_url: str = "http://127.0.0.1:11434"
 
     async def is_running(self) -> bool:
-        """GET /api/tags でヘルスチェック"""
+        """Health check via GET /api/tags"""
 
     async def list_models(self) -> list[str]:
-        """インストール済みモデル一覧"""
+        """List installed models"""
 
     async def pull_model(self, model: str) -> None:
-        """POST /api/pull でモデル取得"""
+        """Pull model via POST /api/pull"""
 
     async def ensure_model(self, model: str) -> bool:
-        """モデルが無ければ pull、あれば True"""
+        """Pull if missing, return True if available"""
 
     def get_recommended_model(self, ram_gb: int) -> str:
-        """マシンスペックに応じた推奨モデルを返す
+        """Recommend model based on machine specs
         8GB  → qwen3:8b
         16GB → qwen3:8b (default)
         32GB → qwen3-coder:30b
@@ -245,7 +228,7 @@ class OllamaManager:
         """
 ```
 
-#### MultiLLMRouter 仕様
+#### MultiLLMRouter Spec
 
 ```python
 class MultiLLMRouter:
@@ -256,105 +239,81 @@ class MultiLLMRouter:
         "high":   ["claude-opus-4-6", "gpt-4o"],
     }
 
-    TASK_MODEL_MAP = {
-        "simple_qa":        ("free", "low"),
-        "code_generation":  ("free", "medium"),
-        "complex_reasoning":("medium", "high"),
-        "file_operation":   ("free", "low"),
-        "long_context":     ("medium",),
-    }
-
     async def route(self, task_type: str, budget_remaining: float) -> str:
-        """タスク種別と残予算から最適モデルを選択"""
-        # 1. LOCAL_FIRST: Ollama が動いていれば free tier 優先
-        # 2. 予算チェック: budget_remaining < threshold → 強制 free
-        # 3. タスク種別 → tier → 利用可能な最初のモデル
+        """Select optimal model from task type + remaining budget
+        1. LOCAL_FIRST: prefer free tier if Ollama is running
+        2. Budget check: force free tier if budget exhausted
+        3. Task type → tier → first available model
+        """
 
     async def call(self, model: str, messages: list, **kwargs) -> LLMResponse:
-        """LiteLLM completion() ラッパー"""
-        # cache={"type": "disk"} でディスクキャッシュ有効化
-        # Ollama の場合 api_base を差し替え
+        """LiteLLM completion() wrapper
+        cache={"type": "disk"} for disk caching
+        Swap api_base for Ollama
+        """
 ```
 
-#### CostTracker 仕様
+#### CostTracker Spec
 
 ```python
 class CostTracker:
-    """LiteLLM success_callback ベースのリアルタイムコスト追跡"""
+    """Real-time cost tracking via LiteLLM success_callback"""
 
     async def on_success(self, kwargs, response, start_time, end_time):
-        """LiteLLM callback: 全LLM呼び出しのコストをDB記録"""
+        """LiteLLM callback: record cost of every LLM call to DB"""
 
     async def get_daily_total(self) -> float:
-        """本日のAPI支出合計"""
-
     async def get_monthly_total(self) -> float:
-        """今月のAPI支出合計"""
-
     async def get_local_usage_rate(self) -> float:
-        """ローカルLLM使用率 (回数ベース)"""
-
     def check_budget(self, budget_usd: float) -> bool:
-        """予算超過チェック。True=余裕あり"""
-
     async def get_savings_from_local(self) -> float:
-        """ローカルLLMで節約できた推定額"""
 ```
 
-#### 完了条件
+#### Completion Criteria
 
-- [ ] Ollama で `qwen3:8b` に推論リクエスト → レスポンス取得
-- [ ] LiteLLM 経由で Ollama 呼び出し → `cost_logs` に記録 (cost=0)
-- [ ] API キー設定時に Claude Haiku 呼び出し → `cost_logs` に記録 (cost>0)
-- [ ] `get_local_usage_rate()` が正確な比率を返す
-- [ ] 予算超過時にルーターが強制的に free tier を返す
+- [ ] Ollama inference with `qwen3:8b` → response received
+- [ ] LiteLLM → Ollama call → recorded in `cost_logs` (cost=0)
+- [ ] With API key: Claude Haiku call → recorded in `cost_logs` (cost>0)
+- [ ] `get_local_usage_rate()` returns accurate ratio
+- [ ] Router forces free tier when budget exhausted
 
 ---
 
 ### Sprint 1.3: Task Graph Engine (Day 5-7)
 
-**目標**: ゴール入力 → LLM で分解 → DAG 生成 → 実行 → 結果
+**Goal**: Goal input → LLM decomposition → DAG generation → execution → result
 
-#### 作成ファイル
+#### Files to Create
 
 ```
-core/task_graph/__init__.py
-core/task_graph/engine.py               # TaskGraphEngine (LangGraph)
-core/task_graph/models.py               # AgentState, TaskNode
-core/task_graph/scheduler.py            # TaskScheduler (並列実行)
-core/task_graph/intent_analyzer.py      # IntentAnalyzer (ゴール → サブタスク分解)
-tests/test_task_graph.py
+application/use_cases/execute_task.py      # ExecuteTaskUseCase
+application/use_cases/create_task.py       # CreateTaskUseCase
+infrastructure/task_graph/__init__.py
+infrastructure/task_graph/engine.py        # TaskGraphEngine (LangGraph)
+infrastructure/task_graph/scheduler.py     # TaskScheduler (parallel execution)
+infrastructure/task_graph/intent_analyzer.py # IntentAnalyzer (goal → subtask decomposition)
+tests/unit/application/test_execute_task.py
 ```
 
-#### AgentState モデル
+#### AgentState Model
 
 ```python
 class AgentState(TypedDict):
-    goal: str                              # ユーザーの元ゴール
-    tasks: list[TaskNode]                  # サブタスク一覧
-    current_task_index: int                # 現在実行中のタスク
-    history: Annotated[list[dict], add]    # append-only 実行履歴
-    context: str                           # 圧縮済みコンテキスト
-    status: str                            # overall status
-    cost_so_far: float                     # 累計コスト
-
-class TaskNode(BaseModel):
-    id: str
-    description: str
-    status: str = "pending"                # pending|running|success|failed
-    dependencies: list[str] = []           # 先行タスクID
-    result: str | None = None
-    error: str | None = None
-    model_used: str | None = None
-    cost_usd: float = 0.0
+    goal: str                              # User's original goal
+    tasks: list[TaskNode]                  # Subtask list
+    current_task_index: int                # Currently executing task
+    history: Annotated[list[dict], add]    # Append-only execution history
+    context: str                           # Compressed context
+    status: str                            # Overall status
+    cost_so_far: float                     # Cumulative cost
 ```
 
-#### TaskGraphEngine 仕様
+#### TaskGraphEngine Spec
 
 ```python
 class TaskGraphEngine:
     def build_graph(self) -> StateGraph:
-        """LangGraph StateGraph を構築"""
+        """Build LangGraph StateGraph"""
         graph = StateGraph(AgentState)
         graph.add_node("analyze_intent",   self.analyze_intent)
         graph.add_node("plan_tasks",       self.plan_tasks)
@@ -370,292 +329,140 @@ class TaskGraphEngine:
         graph.add_conditional_edges(
             "execute_task",
             self.route_after_execution,
-            {
-                "success":  "observe_result",
-                "failure":  "handle_failure",
-            }
+            {"success": "observe_result", "failure": "handle_failure"}
         )
 
         graph.add_conditional_edges(
             "observe_result",
             self.has_next_task,
-            {
-                "continue": "execute_task",
-                "done":     "complete",
-            }
+            {"continue": "execute_task", "done": "complete"}
         )
 
         graph.add_conditional_edges(
             "handle_failure",
             self.failure_strategy,
-            {
-                "retry":    "execute_task",   # リトライ (max 2回)
-                "fallback": "execute_task",   # 別モデルで再試行
-                "abort":    "complete",       # 諦め
-            }
+            {"retry": "execute_task", "fallback": "execute_task", "abort": "complete"}
         )
 
         graph.add_edge("complete", END)
         return graph.compile()
 
     async def run(self, goal: str) -> AgentState:
-        """ゴールを受け取り、DAG全体を実行して最終状態を返す"""
+        """Accept a goal, execute full DAG, return final state"""
 ```
 
-#### IntentAnalyzer 仕様
+#### Completion Criteria
 
-```python
-class IntentAnalyzer:
-    """ユーザーのゴールをサブタスクに分解する"""
-
-    DECOMPOSE_PROMPT = """
-    あなたはタスク分解の専門家です。
-    ユーザーのゴールを、実行可能な具体的なサブタスクに分解してください。
-
-    ルール:
-    - 各サブタスクは独立して実行可能にする
-    - 依存関係がある場合は明示する
-    - 並列実行可能なタスクはそのように記述する
-
-    出力形式 (JSON):
-    {
-      "tasks": [
-        {"id": "t1", "description": "...", "dependencies": []},
-        {"id": "t2", "description": "...", "dependencies": ["t1"]},
-        ...
-      ]
-    }
-    """
-
-    async def analyze(self, goal: str) -> list[TaskNode]:
-        """LLM でゴールをサブタスクに分解"""
-```
-
-#### TaskScheduler 仕様
-
-```python
-class TaskScheduler:
-    """独立タスクを並列実行、依存タスクを順次実行"""
-
-    def get_ready_tasks(self, tasks: list[TaskNode]) -> list[TaskNode]:
-        """依存がすべて完了しているタスクを返す"""
-
-    async def execute_parallel(self, tasks: list[TaskNode]) -> list[TaskNode]:
-        """独立タスクを asyncio.gather で並列実行"""
-```
-
-#### 完了条件
-
-- [ ] "Pythonでフィボナッチ数列を実装" → サブタスク分解 → 各サブタスク実行 → 結果取得
-- [ ] 失敗時のフォールバック: Ollama 失敗 → 別モデルで再試行
-- [ ] 並列実行: 独立サブタスク2つを同時実行、順次より速いことを確認
-- [ ] `tasks` テーブルに全タスクが記録されている
-- [ ] `task_executions` に各実行の詳細が記録されている
+- [ ] "Implement fibonacci in Python" → subtask decomposition → execution → result
+- [ ] Failure fallback: Ollama fails → retry with different model
+- [ ] Parallel execution: 2 independent subtasks run simultaneously, faster than sequential
+- [ ] All tasks recorded in `tasks` table
+- [ ] Execution details recorded in `task_executions`
 
 ---
 
-### Sprint 1.3b: Local Autonomous Execution Engine — LAEE (Day 8-9) ★v0.4 NEW
+### Sprint 1.3b: Local Autonomous Execution Engine — LAEE (Day 8-9)
 
-**目標**: エージェントがローカルPCを直接操作する実行レイヤーの基盤実装
+**Goal**: Foundation for agent to directly operate user's local PC
 
-#### 作成ファイル
+#### Files to Create
 
 ```
-core/local_execution/__init__.py
-core/local_execution/executor.py            # LocalExecutor 中核
-core/local_execution/approval_engine.py      # 3段階承認モード
-core/local_execution/audit_log.py           # 全操作不変ログ (JSONL)
-core/local_execution/risk_assessor.py       # アクションリスク評価
-core/local_execution/undo_manager.py        # 可逆操作のundo管理
-core/local_execution/tools/__init__.py
-core/local_execution/tools/shell_tools.py    # shell_exec/background/stream/pipe
-core/local_execution/tools/fs_tools.py       # fs_read/write/edit/delete/move/glob/watch/tree
-core/local_execution/tools/system_tools.py   # system_process/resource/clipboard/notify/screenshot
-core/local_execution/tools/dev_tools.py      # dev_git/docker/pkg_install/env_setup
-tests/test_local_execution.py
-tests/test_approval_engine.py
+infrastructure/local_execution/__init__.py
+infrastructure/local_execution/executor.py       # LocalExecutor implementation
+infrastructure/local_execution/audit_log.py      # Append-only JSONL audit log
+infrastructure/local_execution/undo_manager.py   # Reversible operation undo
+infrastructure/local_execution/tools/__init__.py
+infrastructure/local_execution/tools/shell_tools.py   # shell_exec/background/stream/pipe
+infrastructure/local_execution/tools/fs_tools.py      # fs_read/write/edit/delete/move/glob/watch/tree
+infrastructure/local_execution/tools/system_tools.py  # process/resource/clipboard/notify/screenshot
+infrastructure/local_execution/tools/dev_tools.py     # git/docker/pkg_install/env_setup
+tests/unit/infrastructure/test_local_execution.py
 ```
 
-#### ApprovalEngine 仕様
+Note: Domain logic (RiskAssessor, ApprovalEngine) is already implemented in `domain/services/`.
+LAEE tools are thin wrappers around OSS/stdlib:
+- Shell → `subprocess` (stdlib)
+- File → `pathlib` (stdlib)
+- Browser → `playwright` (OSS)
+- Process → `psutil` (OSS)
+- Scheduling → `apscheduler` (OSS)
+- File watching → `watchdog` (OSS)
 
-```python
-class ApprovalEngine:
-    """3段階承認モード × 5段階リスクレベルのマトリクスで実行可否を判定"""
+#### Completion Criteria
 
-    class ApprovalMode(Enum):
-        FULL_AUTO = "full-auto"                    # 全自動（ユーザー自己責任）
-        CONFIRM_DESTRUCTIVE = "confirm-destructive" # 破壊的操作のみ確認
-        CONFIRM_ALL = "confirm-all"                # 全操作確認
-
-    class RiskLevel(Enum):
-        SAFE = 0      # 読み取り専用（ls, cat, ps）
-        LOW = 1       # 可逆的作成（mkdir, touch, open）
-        MEDIUM = 2    # 変更（edit, brew install）
-        HIGH = 3      # 削除・終了（rm, kill, config変更）
-        CRITICAL = 4  # 再帰削除・sudo・認証情報
-
-    async def check(self, action: Action, mode: ApprovalMode) -> bool:
-        """承認マトリクスに基づき自動承認 or ユーザー確認"""
-
-    def assess_risk(self, tool: str, args: dict) -> RiskLevel:
-        """ツール名+引数からリスクレベルを自動判定
-        例: fs_delete + recursive=True → CRITICAL
-            shell_exec + 'sudo' in cmd → CRITICAL
-            fs_read → SAFE
-        """
-```
-
-#### LocalExecutor 仕様
-
-```python
-class LocalExecutor:
-    """タスクグラフのexecute_taskノードから呼ばれる実行エンジン"""
-
-    async def execute(self, action: Action) -> Observation:
-        """リスク評価→承認→スナップショット→実行→ログの5ステップ"""
-
-    async def undo_last(self) -> Observation:
-        """直前の可逆操作をundo"""
-
-    async def run_tool(self, tool_name: str, args: dict) -> str:
-        """ツールディスパッチャー。tool_nameからツール関数を解決して実行"""
-```
-
-#### ShellTools 仕様
-
-```python
-class ShellTools:
-    async def shell_exec(self, cmd: str, cwd: str = None, timeout: int = 120) -> str:
-        """コマンド同期実行。stdout+stderrを返す"""
-
-    async def shell_background(self, cmd: str) -> str:
-        """バックグラウンドジョブ起動。ジョブIDを返す"""
-
-    async def shell_stream(self, cmd: str) -> AsyncIterator[str]:
-        """stdout/stderrをリアルタイムストリーム"""
-
-    async def shell_pipe(self, commands: list[str]) -> str:
-        """パイプライン構築・実行 (cmd1 | cmd2 | cmd3)"""
-```
-
-#### FSTools 仕様
-
-```python
-class FSTools:
-    async def fs_read(self, path: str, encoding: str = "utf-8") -> str:
-    async def fs_write(self, path: str, content: str) -> str:
-    async def fs_edit(self, path: str, old: str, new: str) -> str:
-    async def fs_delete(self, path: str, recursive: bool = False) -> str:
-        """recursive=True は CRITICAL リスク。undo時はゴミ箱移動"""
-    async def fs_move(self, src: str, dst: str) -> str:
-    async def fs_glob(self, pattern: str, path: str = ".") -> list[str]:
-    async def fs_watch(self, path: str, callback: Callable) -> str:
-        """watchdogでファイル変更監視"""
-    async def fs_tree(self, path: str, depth: int = 3) -> str:
-```
-
-#### AuditLog 仕様
-
-```python
-class AuditLog:
-    """全操作の不変ログ。append-only JSONL。"""
-    LOG_PATH = ".morphic/audit_log.jsonl"
-
-    def log(self, action: Action, result: str, risk: RiskLevel, success: bool):
-        """アクション・結果・リスク・成否をJSONLに追記"""
-
-    def query(self, tool: str = None, risk: str = None, since: datetime = None) -> list:
-        """監査ログ検索"""
-
-    def get_stats(self) -> dict:
-        """ツール別/リスク別の実行統計"""
-```
-
-#### 完了条件
-
-- [ ] `shell_exec("echo hello")` → "hello" が返る
-- [ ] `fs_write` + `fs_read` で書き込み・読み取りの往復テスト
-- [ ] `fs_delete(recursive=True)` が `confirm-destructive` モードでユーザー確認を要求
-- [ ] `full-auto` モードで全操作が確認なしに実行される
-- [ ] `confirm-all` モードで SAFE 以外の全操作がユーザー確認を要求
-- [ ] 全操作が `.morphic/audit_log.jsonl` にログ記録される
-- [ ] `undo_last()` で `fs_write` の操作が元に戻る
-- [ ] `sudo` を含むコマンドが自動的に CRITICAL レベルに評価される
+- [ ] `shell_exec("echo hello")` → returns "hello"
+- [ ] `fs_write` + `fs_read` round-trip test
+- [ ] `fs_delete(recursive=True)` requires confirmation in `confirm-destructive` mode
+- [ ] `full-auto` mode executes all operations without confirmation
+- [ ] `confirm-all` mode requires confirmation for everything except SAFE
+- [ ] All operations logged to `.morphic/audit_log.jsonl`
+- [ ] `undo_last()` reverts a `fs_write` operation
+- [ ] Commands containing `sudo` auto-classified as CRITICAL
 
 ---
 
 ### Sprint 1.4: Context Engineering (Day 10-11)
 
-**目標**: Manus 5原則の基盤実装。KV-Cache最適化 + ツールマスキング + todo.md
+**Goal**: Foundation of Manus 5 principles. KV-Cache optimization + tool masking + todo.md
 
-#### 作成ファイル
+#### Files to Create
 
 ```
-core/context_engineering/__init__.py
-core/context_engineering/kv_cache_optimizer.py
-core/context_engineering/tool_state_machine.py
-core/context_engineering/todo_manager.py
-core/context_engineering/observation_diversifier.py
-core/context_engineering/file_context.py
-tests/test_context_engineering.py
+infrastructure/context_engineering/__init__.py
+infrastructure/context_engineering/kv_cache_optimizer.py
+infrastructure/context_engineering/tool_state_machine.py
+infrastructure/context_engineering/todo_manager.py
+infrastructure/context_engineering/observation_diversifier.py
+infrastructure/context_engineering/file_context.py
+tests/unit/infrastructure/test_context_engineering.py
 ```
 
-#### 各モジュール仕様
+#### Module Specs
 
-**kv_cache_optimizer.py — 原則1: KV-Cache を設計の中心に**
+**kv_cache_optimizer.py — Principle 1: KV-Cache as design center**
 
 ```python
 class KVCacheOptimizer:
-    STABLE_PREFIX: str  # 不変のシステムプロンプト先頭部分
+    STABLE_PREFIX: str  # Immutable system prompt prefix
 
     def build_system_prompt(self, dynamic_context: dict) -> str:
-        """安定プレフィックス + 動的セクション（末尾）の結合
-        先頭は絶対に変えない → KV-Cache を最大化"""
+        """Stable prefix + dynamic section (at end)
+        Never change the prefix → maximize KV-Cache hits"""
 
     def serialize_context(self, context: dict) -> str:
-        """JSON sort_keys=True で決定論的シリアライズ"""
+        """Deterministic serialization with JSON sort_keys=True"""
 
     def append_to_history(self, history: list, new_entry: dict) -> list:
-        """append-only。過去のエントリを編集しない"""
+        """Append-only. Never edit past entries"""
 ```
 
-**tool_state_machine.py — 原則2: ツールはマスクする**
+**tool_state_machine.py — Principle 2: Mask tools, don't remove**
 
 ```python
 class ToolStateMachine:
-    """全ツール定義を常に保持。状態に応じて使用可否をマスク"""
-
-    ALL_TOOLS: list[ToolDef]  # 全ツール定義 (不変)
+    ALL_TOOLS: list[ToolDef]  # All tool definitions (immutable)
 
     def get_allowed_tools(self, state: AgentState) -> list[ToolDef]:
-        """現在の状態で使用可能なツールだけを返す
-        ただしツール定義自体は常にプロンプトに含める"""
+        """Return tools usable in current state.
+        Tool definitions always stay in prompt."""
 
     def mask(self, tool_name: str, reason: str) -> None:
-        """ツールを一時的に無効化（定義は残す）"""
-
     def unmask(self, tool_name: str) -> None:
-        """ツールを再有効化"""
 ```
 
-**todo_manager.py — 原則4: todo.md でアテンション操作**
+**todo_manager.py — Principle 4: Steer attention with todo.md**
 
 ```python
 class TodoManager:
     TODO_PATH = "todo.md"
-
-    async def read(self) -> str:
-        """各イテレーション先頭で読む"""
-
-    async def update(self, tasks: list[TaskNode]) -> None:
-        """各イテレーション末尾で更新"""
-
+    async def read(self) -> str:        # Read at iteration start
+    async def update(self, tasks) -> None:  # Update at iteration end
     def format_for_context(self, todo_content: str) -> str:
-        """LLMコンテキストに注入するフォーマット
-        [IN PROGRESS] タスクを強調して先頭・末尾のアテンションを活用"""
+        """Emphasize [IN PROGRESS] tasks for LLM attention"""
 ```
 
-**observation_diversifier.py — 原則5: 観察の多様性**
+**observation_diversifier.py — Principle 5: Maintain observation diversity**
 
 ```python
 class ObservationDiversifier:
@@ -664,179 +471,115 @@ class ObservationDiversifier:
         "Observation #{n}: {result} [{status}]",
         "Completed: {result} | State: {status}",
     ]
-
     def serialize(self, obs: dict, n: int) -> str:
-        """テンプレートローテーションで類似観察のドリフトを防止"""
+        """Template rotation to prevent similar-observation drift"""
 ```
 
-**file_context.py — 原則3: ファイルシステムを無限コンテキストに**
+#### Completion Criteria
 
-```python
-class FileContext:
-    CACHE_DIR = ".morphic/context_cache"
-
-    def save(self, key: str, content: str) -> str:
-        """コンテンツをファイル保存し、参照トークンを返す"""
-
-    def load(self, key: str) -> str:
-        """キーからコンテンツを復元"""
-
-    def compress_webpage(self, url: str, content: str) -> str:
-        """Webページをキャッシュし、URLリファレンスだけ返す"""
-```
-
-#### 完了条件
-
-- [ ] システムプロンプトの先頭128トークンが常に同一（キャッシュ検証）
-- [ ] ツール定義数が実行中に変動しないことをアサート
-- [ ] todo.md がタスク実行前後で自動更新される
-- [ ] 3連続の類似観察がすべて異なるフォーマットでシリアライズされる
+- [ ] System prompt first 128 tokens are always identical (cache validation)
+- [ ] Tool definition count does not change during execution
+- [ ] todo.md auto-updated before/after task execution
+- [ ] 3 consecutive similar observations all serialized with different formats
 
 ---
 
 ### Sprint 1.5: Semantic Memory (Day 12-13)
 
-**目標**: L1-L4 メモリ階層の基盤実装。mem0 + pgvector + Neo4j 連携
+**Goal**: L1-L4 memory hierarchy foundation. mem0 + pgvector + Neo4j integration
 
-#### 作成ファイル
+#### Files to Create
 
 ```
-core/semantic_memory/__init__.py
-core/semantic_memory/memory_hierarchy.py    # L1-L4 統合管理
-core/semantic_memory/knowledge_graph.py     # Neo4j L3 ラッパー
-core/semantic_memory/context_zipper.py      # 簡易版圧縮
-tests/test_memory.py
+infrastructure/memory/__init__.py
+infrastructure/memory/memory_hierarchy.py    # L1-L4 unified management
+infrastructure/memory/knowledge_graph.py     # Neo4j L3 wrapper
+infrastructure/memory/context_zipper.py      # Simplified compression
+tests/integration/test_memory.py
 ```
 
-#### MemoryHierarchy 仕様
+#### MemoryHierarchy Spec
 
 ```python
 class MemoryHierarchy:
-    """CPU キャッシュ階層と同じ設計思想"""
+    """CPU cache hierarchy design — same philosophy"""
 
     # L1: Active Context (in-memory, ~2000 tokens)
-    l1_buffer: list[dict]  # 直近N発言をraw保持
-
     # L2: Semantic Cache (mem0 + pgvector)
-    l2_mem0: Memory  # mem0.Memory()
-
     # L3: Structured Facts (Neo4j)
-    l3_graph: KnowledgeGraph
-
     # L4: Cold Storage (PostgreSQL memories table)
-    l4_store: AsyncSession
 
     async def add(self, content: str, role: str = "user") -> None:
-        """新しい発言を各層に非同期で振り分け"""
-        # L1: バッファに追加 (容量超過で古いものを L2 に降格)
-        # L2: mem0 で自動ファクト抽出 + pgvector 保存
-        # L3: エンティティ抽出 → Neo4j に保存
-        # L4: 生テキスト全保存
+        """Distribute new utterance to each layer asynchronously"""
 
     async def retrieve(self, query: str, max_tokens: int = 500) -> str:
-        """クエリに関連する記憶を階層的に検索"""
-        # L1 → L2 → L3 → L4 の順で検索
-        # max_tokens 予算内に収まるよう優先度でトリム
+        """Hierarchical search: L1 → L2 → L3 → L4
+        Trim by priority within max_tokens budget"""
 ```
 
-#### KnowledgeGraph 仕様 (Neo4j)
+#### Completion Criteria
 
-```python
-class KnowledgeGraph:
-    """L3: エンティティ・関係の構造化ストア"""
-
-    async def add_entity(self, name: str, entity_type: str, properties: dict) -> None:
-        """CREATE (e:Entity {name: $name, type: $type, ...})"""
-
-    async def add_relation(self, from_name: str, relation: str, to_name: str) -> None:
-        """MATCH (a), (b) CREATE (a)-[:REL {type: $rel}]->(b)"""
-
-    async def query(self, entity_names: list[str], depth: int = 2) -> list[dict]:
-        """エンティティから depth ホップ以内の関連ノード・関係を返す"""
-
-    async def extract_and_store(self, text: str) -> None:
-        """テキストから LLM でエンティティ・関係を抽出して保存"""
-```
-
-#### SimplifiedContextZipper 仕様
-
-```python
-class ContextZipper:
-    """Phase 1 簡易版: L2 検索 + L3 Facts をトークン予算内に収める"""
-
-    async def compress(
-        self,
-        conversation_history: list[dict],
-        current_query: str,
-        target_tokens: int = 500
-    ) -> str:
-        """クエリに最適化した圧縮コンテキストを動的生成
-        Phase 3 で LSH + ForgettingCurve + DeltaEncoder に拡張"""
-```
-
-#### 完了条件
-
-- [ ] 会話を add() → retrieve() で関連記憶が返る
-- [ ] mem0 が pgvector にベクトル保存していることを確認
-- [ ] Neo4j にエンティティ・関係が保存され、Cypher で検索可能
-- [ ] ContextZipper で 5000 トークンの履歴 → 500 トークンに圧縮
+- [ ] add() → retrieve() returns relevant memories
+- [ ] mem0 stores vectors in pgvector (verified)
+- [ ] Neo4j stores entities/relations, searchable via Cypher
+- [ ] ContextZipper compresses 5000-token history → 500 tokens
 
 ---
 
 ### Sprint 1.6: API + UI (Day 14-15)
 
-**目標**: FastAPI バックエンド + Next.js 最小UI
+**Goal**: FastAPI backend + Next.js minimal UI
 
-#### 作成ファイル (バックエンド)
-
-```
-api/__init__.py
-api/main.py                             # FastAPI app factory
-api/deps.py                             # 依存性注入 (DB session, router, etc.)
-api/routes/__init__.py
-api/routes/tasks.py                     # POST/GET /api/tasks
-api/routes/models.py                    # GET /api/models
-api/routes/cost.py                      # GET /api/cost
-api/routes/memory.py                    # GET /api/memory/search
-api/websocket.py                        # WebSocket /ws/tasks/{id}
-```
-
-#### API エンドポイント
+#### Backend Files
 
 ```
-POST   /api/tasks              タスク作成 (goal を受け取り DAG 生成・実行開始)
-GET    /api/tasks              タスク一覧 (status フィルタ対応)
-GET    /api/tasks/{id}         タスク詳細 (サブタスク・実行ログ含む)
-DELETE /api/tasks/{id}         タスクキャンセル
-
-GET    /api/models             利用可能モデル一覧 (Ollama + API)
-GET    /api/models/status      Ollama ヘルスチェック
-
-GET    /api/cost               コストサマリー (日次/月次/ローカル率)
-GET    /api/cost/logs          コストログ一覧
-
-GET    /api/memory/search?q=   セマンティック記憶検索
-
-WS     /ws/tasks/{id}          タスク実行のリアルタイム進捗
+interface/api/__init__.py
+interface/api/main.py                       # FastAPI app factory
+interface/api/deps.py                       # Dependency injection (DB session, router, etc.)
+interface/api/routes/__init__.py
+interface/api/routes/tasks.py               # POST/GET /api/tasks
+interface/api/routes/models.py              # GET /api/models
+interface/api/routes/cost.py                # GET /api/cost
+interface/api/routes/memory.py              # GET /api/memory/search
+interface/api/websocket.py                  # WebSocket /ws/tasks/{id}
 ```
 
-#### 作成ファイル (フロントエンド)
+#### API Endpoints
+
+```
+POST   /api/tasks              Create task (accept goal, generate DAG, start execution)
+GET    /api/tasks              List tasks (status filter support)
+GET    /api/tasks/{id}         Task detail (includes subtasks + execution logs)
+DELETE /api/tasks/{id}         Cancel task
+
+GET    /api/models             Available models list (Ollama + API)
+GET    /api/models/status      Ollama health check
+
+GET    /api/cost               Cost summary (daily/monthly/local rate)
+GET    /api/cost/logs          Cost log list
+
+GET    /api/memory/search?q=   Semantic memory search
+
+WS     /ws/tasks/{id}          Real-time task execution progress
+```
+
+#### Frontend Files
 
 ```
 ui/                                     # npx create-next-app@latest
-ui/app/layout.tsx                       # ダークテーマ ルートレイアウト
-ui/app/page.tsx                         # ダッシュボード (タスク一覧 + コスト)
-ui/app/tasks/[id]/page.tsx              # タスク詳細ページ
-ui/components/TaskList.tsx              # タスク一覧コンポーネント
-ui/components/TaskDetail.tsx            # タスク詳細 (サブタスク表示)
-ui/components/CostMeter.tsx             # コスト表示 (予算バー + ローカル率)
-ui/components/ModelStatus.tsx           # Ollama 状態表示
-ui/components/GoalInput.tsx             # ゴール入力フォーム
-ui/lib/api.ts                           # API クライアント
-ui/lib/theme.ts                         # morphicAgentTheme 定義
+ui/app/layout.tsx                       # Dark theme root layout
+ui/app/page.tsx                         # Dashboard (task list + cost)
+ui/app/tasks/[id]/page.tsx              # Task detail page
+ui/components/TaskList.tsx
+ui/components/TaskDetail.tsx
+ui/components/CostMeter.tsx
+ui/components/ModelStatus.tsx
+ui/components/GoalInput.tsx
+ui/lib/api.ts                           # API client
+ui/lib/theme.ts                         # morphicAgentTheme
 ```
 
-#### UI Phase 1 スコープ
+#### UI Phase 1 Scope
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -844,14 +587,14 @@ ui/lib/theme.ts                         # morphicAgentTheme 定義
 ├─────────────────────────────────────────────────┤
 │                                                 │
 │  ┌─ Goal Input ──────────────────────────────┐  │
-│  │ [テキストエリア: ゴールを入力]    [実行]  │  │
+│  │ [Text area: enter your goal]    [Execute] │  │
 │  └───────────────────────────────────────────┘  │
 │                                                 │
 │  ┌─ Active Tasks ─────────────────────────────┐ │
-│  │ ● "フィボナッチ実装"  [Running] qwen3:8b   │ │
-│  │   ├ ✓ アルゴリズム設計                     │ │
-│  │   ├ ⚡ コード実装 [Running]                │ │
-│  │   └ ○ テスト作成 [Pending]                 │ │
+│  │ ● "Implement fibonacci"  [Running] qwen3   │ │
+│  │   ├ ✓ Algorithm design                     │ │
+│  │   ├ ⚡ Code implementation [Running]       │ │
+│  │   └ ○ Test creation [Pending]              │ │
 │  └────────────────────────────────────────────┘ │
 │                                                 │
 │  ┌─ Cost ──────────────┐  ┌─ Model Status ──┐  │
@@ -862,295 +605,301 @@ ui/lib/theme.ts                         # morphicAgentTheme 定義
 └─────────────────────────────────────────────────┘
 ```
 
-#### 完了条件
+#### Completion Criteria
 
-- [ ] `POST /api/tasks` でゴール送信 → タスク実行開始
-- [ ] WebSocket でリアルタイム進捗受信
-- [ ] Next.js UI でタスク一覧・詳細表示
-- [ ] コストメーター表示（$0 / Local 100%）
+- [ ] `POST /api/tasks` sends goal → task execution starts
+- [ ] WebSocket receives real-time progress
+- [ ] Next.js UI displays task list + details
+- [ ] Cost meter displayed ($0 / Local 100%)
 
 ---
 
 ### Sprint 1.7: Integration & E2E Test (Day 16)
 
-**目標**: 全コンポーネント結合テスト。$0 パス検証。
+**Goal**: Full component integration test. Validate $0 path.
 
-#### テストシナリオ
+#### Test Scenarios
 
 ```
-E2E Test 1: $0 完全ローカルパス
-  Input:  "Pythonでフィボナッチ数列を実装して"
-  Flow:   Intent Analysis (Ollama) → DAG生成 → 実行 (Ollama) → 結果
+E2E Test 1: $0 Full Local Path
+  Input:  "Implement fibonacci in Python"
+  Flow:   Intent Analysis (Ollama) → DAG → Execution (Ollama) → Result
   Assert: cost_usd == 0, task.status == "success", result contains "fibonacci"
 
-E2E Test 2: 失敗リカバリー
-  Input:  意図的に失敗させるタスク
-  Flow:   実行 → 失敗 → フォールバック → 成功
-  Assert: task_executions に retry 記録、最終 status == "success"
+E2E Test 2: Failure Recovery
+  Input:  Intentionally failing task
+  Flow:   Execute → Fail → Fallback → Success
+  Assert: task_executions has retry record, final status == "success"
 
-E2E Test 3: 並列実行
-  Input:  "AとBを同時に実行して"
-  Flow:   独立サブタスク2つを asyncio.gather で並列
-  Assert: 2タスクの開始時刻がほぼ同一 (差 < 1秒)
+E2E Test 3: Parallel Execution
+  Input:  "Execute A and B simultaneously"
+  Flow:   2 independent subtasks via asyncio.gather
+  Assert: Start times nearly identical (diff < 1 second)
 
-E2E Test 4: メモリ永続化
-  Input:  タスク実行 → 別セッションで関連質問
-  Flow:   add() → retrieve() で前回の文脈が返る
-  Assert: retrieved_context にタスク結果の情報が含まれる
+E2E Test 4: Memory Persistence
+  Input:  Execute task → ask related question in new session
+  Flow:   add() → retrieve() returns previous context
+  Assert: retrieved_context contains task result info
 
-E2E Test 5: LAEE ローカル実行 (v0.4)
-  Input:  "testディレクトリを作成してPythonファイルを3つ生成して"
-  Flow:   fs_write × 3 (並列) → fs_tree → 結果確認
-  Assert: ファイルが実際に作成されている, audit_log.jsonl に記録あり
+E2E Test 5: LAEE Local Execution
+  Input:  "Create test directory and generate 3 Python files"
+  Flow:   fs_write × 3 (parallel) → fs_tree → verify
+  Assert: Files actually created, audit_log.jsonl has records
 
-E2E Test 6: LAEE 承認モードテスト (v0.4)
-  Input:  confirm-destructive モードで fs_delete(recursive=True)
-  Flow:   リスク評価 → CRITICAL → ユーザー確認要求
-  Assert: ユーザー確認なしでは実行されない
+E2E Test 6: LAEE Approval Mode Test
+  Input:  confirm-destructive mode + fs_delete(recursive=True)
+  Flow:   Risk assessment → CRITICAL → user confirmation request
+  Assert: Not executed without user confirmation
 
-E2E Test 7: LAEE Undo テスト (v0.4)
+E2E Test 7: LAEE Undo Test
   Input:  fs_write("test.txt") → undo_last()
-  Flow:   ファイル作成 → undo → ファイル削除
-  Assert: test.txt が存在しない
+  Flow:   Create file → undo → delete file
+  Assert: test.txt does not exist
 ```
 
-#### 完了条件
+#### Completion Criteria
 
-- [ ] E2E Test 1-4 全パス
-- [ ] `docker compose up -d` → `uv run pytest` で全テスト通過
-- [ ] UI でタスク実行 → 結果表示の一連フロー動作確認
+- [ ] E2E Tests 1-7 all pass
+- [ ] `docker compose up -d` → `uv run pytest` all tests pass
+- [ ] UI task execution → result display flow works end-to-end
 
 ---
 
-## Phase 1 完了時の成果物サマリー
+## Phase 1 Deliverable Summary
 
 ```
-作成ファイル数: ~60 ファイル (LAEE +15)
-Python パッケージ:
+Files: ~60 (LAEE +15)
+Python packages:
   langgraph, litellm, sqlalchemy[asyncio], asyncpg, pgvector,
   neo4j, mem0ai, fastapi, uvicorn, pydantic-settings,
   celery[redis], instructor, alembic, httpx, pytest, pytest-asyncio,
-  playwright, watchdog, apscheduler, psutil  # LAEE v0.4
+  playwright, watchdog, apscheduler, psutil  # LAEE
+  typer, rich  # CLI (Phase 2, but added to deps early)
 
-Next.js パッケージ:
-  next, react, tailwindcss, shadcn-ui (初期), recharts
+Next.js packages:
+  next, react, tailwindcss, shadcn-ui (initial), recharts
 
-Docker Compose サービス:
+Docker Compose services:
   PostgreSQL 16 + pgvector, Redis 7, Neo4j 5
 
-動作確認:
-  ユーザーがゴール入力 → DAG生成 → Ollama実行 → 結果表示
-  コスト: $0 (全ローカル実行)
+Verification:
+  User inputs goal → DAG generated → Ollama executes → results displayed
+  Cost: $0 (full local execution)
 ```
 
 ---
 
-## Phase 2: Parallel & Planning (Week 3-4)
+## Phase 2: Parallel & Planning + CLI v1 (Week 3-4)
 
-> **ゴール**: 並列実行の本格化 + Interactive Planning で品質・速度向上
+> **Goal**: Full parallel execution + Interactive Planning + CLI foundation
 
-### Week 3: 並列実行 & Interactive Planning
+### Week 3: Parallel Execution & Interactive Planning
 
-| # | 実装項目 | ファイル | 依存 |
+| # | Item | File | Depends |
 |---|---|---|---|
-| 2.1 | ParallelExecutionEngine 本格実装 | `core/task_graph/parallel.py` | Phase 1 DAG |
-| 2.2 | Celery ワーカー統合 | `core/task_graph/celery_worker.py` | Redis |
-| 2.3 | Interactive Planning System | `core/planning/interactive_planner.py` | DAG + LLM Router |
-| 2.4 | コスト見積もりエンジン | `core/planning/cost_estimator.py` | Cost Tracker |
+| 2.1 | ParallelExecutionEngine full impl | `infrastructure/task_graph/parallel.py` | Phase 1 DAG |
+| 2.2 | Celery worker integration | `infrastructure/task_graph/celery_worker.py` | Redis |
+| 2.3 | Interactive Planning System | `application/use_cases/interactive_plan.py` | DAG + LLM Router |
+| 2.4 | Cost estimation engine | `application/use_cases/cost_estimator.py` | Cost Tracker |
 
-**Interactive Planning フロー:**
+**Interactive Planning Flow:**
 ```
-1. ユーザーがゴール入力
-2. LLM がサブタスク分解 + 使用モデル提案
-3. コスト見積もり計算
-4. 計画 + 見積もりをUIで提示
-5. ユーザーが [承認 / 編集 / 拒否]
-6. 承認後に実行開始
+1. User inputs goal
+2. LLM decomposes into subtasks + proposes models
+3. Cost estimate calculated
+4. Plan + estimate presented in UI/CLI
+5. User [approve / edit / reject]
+6. Execution starts after approval
 ```
 
-### Week 4: Background Planner & Graph Visualization
+### Week 4: Background Planner, Graph Viz & CLI
 
-| # | 実装項目 | ファイル | 依存 |
+| # | Item | File | Depends |
 |---|---|---|---|
-| 2.5 | Background Planner (Windsurf式) | `core/planning/background_planner.py` | Planning |
-| 2.6 | Tool State Machine 強化 | `core/context_engineering/tool_state_machine.py` | Phase 1 |
-| 2.7 | React Flow タスクグラフUI | `ui/components/TaskGraph.tsx` | React Flow |
+| 2.5 | Background Planner (Windsurf-style) | `application/use_cases/background_planner.py` | Planning |
+| 2.6 | Tool State Machine enhancement | `infrastructure/context_engineering/tool_state_machine.py` | Phase 1 |
+| 2.7 | React Flow task graph UI | `ui/components/TaskGraph.tsx` | React Flow |
 | 2.8 | Planning View UI | `ui/components/PlanningView.tsx` | Phase 1 UI |
-| 2.9 | LAEE Browser Tools (Playwright) | `core/local_execution/tools/browser_tools.py` | LAEE基盤 |
-| 2.10 | LAEE GUI Tools (macOS) | `core/local_execution/tools/gui_tools.py` | LAEE基盤 |
-| 2.11 | LAEE Cron Tools (APScheduler) | `core/local_execution/tools/cron_tools.py` | LAEE基盤 |
-| 2.12 | LAEE UndoManager + RiskAssessor強化 | `core/local_execution/undo_manager.py` | LAEE基盤 |
+| 2.9 | **CLI foundation (typer + rich)** | `interface/cli/main.py` | Use cases |
+| 2.10 | **CLI task commands** | `interface/cli/commands/task.py` | CLI foundation |
+| 2.11 | **CLI model/cost commands** | `interface/cli/commands/model.py, cost.py` | CLI foundation |
+| 2.12 | LAEE Browser Tools (Playwright) | `infrastructure/local_execution/tools/browser_tools.py` | LAEE |
+| 2.13 | LAEE GUI Tools (macOS) | `infrastructure/local_execution/tools/gui_tools.py` | LAEE |
+| 2.14 | LAEE Cron Tools (APScheduler) | `infrastructure/local_execution/tools/cron_tools.py` | LAEE |
 
-**Phase 2 完了条件:**
-- [ ] 3つの独立タスクが並列実行され、順次比3倍以上高速
-- [ ] Interactive Planning で計画提示 → ユーザー承認 → 実行
-- [ ] React Flow でDAGがリアルタイム可視化される
-- [ ] Background Planner が実行中に計画を継続改善
+**Phase 2 Completion Criteria:**
+- [ ] 3 independent tasks execute in parallel, 3x+ faster than sequential
+- [ ] Interactive Planning: plan presented → user approves → execution starts
+- [ ] React Flow visualizes DAG in real-time
+- [ ] Background Planner continuously improves plan during execution
+- [ ] `morphic task create "..."` creates and executes task from CLI
+- [ ] `morphic cost summary` displays cost breakdown in terminal
 
 ---
 
 ## Phase 3: Context Bridge & Semantic Memory (Week 5-6)
 
-> **ゴール**: 記憶と文脈を研究グレードに引き上げ + クロスプラットフォーム対応
+> **Goal**: Elevate memory and context to research-grade + cross-platform support
 
-### Week 5: Semantic Memory 本格実装
+### Week 5: Full Semantic Memory
 
-| # | 実装項目 | ファイル |
+| # | Item | File |
 |---|---|---|
-| 3.1 | SemanticFingerprint (LSH) | `core/semantic_memory/semantic_fingerprint.py` |
-| 3.2 | ContextZipper 完全版 | `core/semantic_memory/context_zipper.py` |
-| 3.3 | ForgettingCurve | `core/semantic_memory/forgetting_curve.py` |
-| 3.4 | DeltaEncoder | `core/semantic_memory/delta_encoder.py` |
-| 3.5 | HierarchicalSummarizer | `core/semantic_memory/hierarchical_summary.py` |
+| 3.1 | SemanticFingerprint (LSH) | `infrastructure/memory/semantic_fingerprint.py` |
+| 3.2 | ContextZipper full version | `infrastructure/memory/context_zipper.py` |
+| 3.3 | ForgettingCurve | `infrastructure/memory/forgetting_curve.py` |
+| 3.4 | DeltaEncoder | `infrastructure/memory/delta_encoder.py` |
+| 3.5 | HierarchicalSummarizer | `infrastructure/memory/hierarchical_summary.py` |
 
 ### Week 6: Context Bridge & MCP
 
-| # | 実装項目 | ファイル |
+| # | Item | File |
 |---|---|---|
-| 3.6 | Cross-Platform Context Bridge | `core/memory/context_bridge.py` |
-| 3.7 | MCP Server 実装 | `integrations/mcp/server.py` |
-| 3.8 | MCP Client 実装 | `integrations/mcp/client.py` |
+| 3.6 | Cross-Platform Context Bridge | `infrastructure/memory/context_bridge.py` |
+| 3.7 | MCP Server implementation | `infrastructure/mcp/server.py` |
+| 3.8 | MCP Client implementation | `infrastructure/mcp/client.py` |
 | 3.9 | Chrome Extension | `integrations/browser_extension/` |
-| 3.10 | L1→L4 統合テスト | `tests/test_memory_hierarchy.py` |
+| 3.10 | L1→L4 integration test | `tests/integration/test_memory_hierarchy.py` |
 
-**Phase 3 完了条件:**
-- [ ] 10,000 トークン → 500 トークンに圧縮 (情報保持率 > 90%)
-- [ ] LSH で意味的に近い記憶を O(1) に近い速度で取得
-- [ ] MCP Server として他ツールから Morphic-Agent の記憶にアクセス可能
-- [ ] 忘却曲線で古い低重要度記憶が自動的に L3 へ昇格・L2 から削除
+**Phase 3 Completion Criteria:**
+- [ ] 10,000 tokens → 500 tokens compression (information retention > 90%)
+- [ ] LSH retrieves semantically similar memories in near-O(1) time
+- [ ] MCP Server enables other tools to access Morphic-Agent memory
+- [ ] Forgetting curve auto-promotes low-importance memories to L3, removes from L2
 
 ---
 
 ## Phase 4: Agent CLI Orchestration (Week 7-8)
 
-> **ゴール**: メタオーケストレーターとして 4 つの Agent CLI を統合管理
+> **Goal**: Meta-orchestrator managing 4 Agent CLIs
 
-### Week 7: 共通インターフェース + OpenHands & Claude Code
+### Week 7: Common Interface + OpenHands & Claude Code
 
-| # | 実装項目 | ファイル |
+| # | Item | File |
 |---|---|---|
-| 4.1 | AgentEngine Protocol | `core/agent_orchestration/agent_engine_protocol.py` |
-| 4.2 | OpenHands Driver | `core/agent_orchestration/openhands_driver.py` |
-| 4.3 | Claude Code SDK Driver | `core/agent_orchestration/claude_code_driver.py` |
-| 4.4 | AgentCLIRouter 基盤 | `core/agent_orchestration/agent_cli_router.py` |
+| 4.1 | AgentEngine Protocol | `infrastructure/agent_orchestration/agent_engine_protocol.py` |
+| 4.2 | OpenHands Driver | `infrastructure/agent_orchestration/openhands_driver.py` |
+| 4.3 | Claude Code SDK Driver | `infrastructure/agent_orchestration/claude_code_driver.py` |
+| 4.4 | AgentCLIRouter foundation | `application/use_cases/agent_routing.py` |
 
-### Week 8: Gemini & Codex + ルーター完成
+### Week 8: Gemini & Codex + Router completion
 
-| # | 実装項目 | ファイル |
+| # | Item | File |
 |---|---|---|
-| 4.5 | Gemini CLI + ADK Driver | `core/agent_orchestration/gemini_adk_driver.py` |
-| 4.6 | Codex CLI Driver | `core/agent_orchestration/codex_cli_driver.py` |
-| 4.7 | AgentCLIRouter ルーティング完成 | (4.4 拡張) |
-| 4.8 | 知識ファイル管理 | `core/agent_orchestration/knowledge_files.py` |
+| 4.5 | Gemini CLI + ADK Driver | `infrastructure/agent_orchestration/gemini_adk_driver.py` |
+| 4.6 | Codex CLI Driver | `infrastructure/agent_orchestration/codex_cli_driver.py` |
+| 4.7 | AgentCLIRouter routing complete | (extend 4.4) |
+| 4.8 | Knowledge file management | `infrastructure/agent_orchestration/knowledge_files.py` |
 
-**Phase 4 完了条件:**
-- [ ] 同一タスクを OpenHands / Claude Code / Gemini / Codex で実行し結果比較
-- [ ] AgentCLIRouter がタスク特性に応じて最適エンジンを自動選択
-- [ ] 各エンジンの可用性チェック + フォールバック
+**Phase 4 Completion Criteria:**
+- [ ] Same task executed on OpenHands / Claude Code / Gemini / Codex, results compared
+- [ ] AgentCLIRouter auto-selects optimal engine based on task characteristics
+- [ ] Availability check + fallback for each engine
 
 ---
 
 ## Phase 5: Marketplace & Tools (Week 9-10)
 
-> **ゴール**: ツール自律発見・インストール・共有
+> **Goal**: Autonomous tool discovery, installation, and sharing
 
-| # | 実装項目 | ファイル |
+| # | Item | File |
 |---|---|---|
-| 5.1 | Auto Tool Discoverer | `marketplace/discovery/auto_discoverer.py` |
-| 5.2 | MCP Registry 検索 | `marketplace/discovery/mcp_search.py` |
-| 5.3 | Tool Installer | `marketplace/installer/tool_installer.py` |
-| 5.4 | Ollama Model Manager | `marketplace/installer/ollama_installer.py` |
-| 5.5 | Tool Safety Scorer | `marketplace/registry/safety_scorer.py` |
+| 5.1 | Auto Tool Discoverer | `infrastructure/marketplace/auto_discoverer.py` |
+| 5.2 | MCP Registry search | `infrastructure/marketplace/mcp_search.py` |
+| 5.3 | Tool Installer | `infrastructure/marketplace/tool_installer.py` |
+| 5.4 | Ollama Model Manager | `infrastructure/marketplace/ollama_installer.py` |
+| 5.5 | Tool Safety Scorer | `infrastructure/marketplace/safety_scorer.py` |
 | 5.6 | Marketplace UI | `ui/app/marketplace/page.tsx` |
 
-**Phase 5 完了条件:**
-- [ ] タスク失敗時に必要ツールを自動検索・提案
-- [ ] MCP Registry から 1-click インストール
-- [ ] Ollama モデルの UI 管理 (pull/delete/switch)
-- [ ] ツール安全性スコア表示
+**Phase 5 Completion Criteria:**
+- [ ] Auto-search and suggest tools on task failure
+- [ ] 1-click install from MCP Registry
+- [ ] Ollama model UI management (pull/delete/switch)
+- [ ] Tool safety score displayed
 
 ---
 
 ## Phase 6: Self-Evolution (Week 11-12)
 
-> **ゴール**: 実行データから自律改善
+> **Goal**: Autonomous improvement from execution data
 
-| # | 実装項目 | ファイル |
+| # | Item | File |
 |---|---|---|
-| 6.1 | Execution Analyzer | `core/evolution/execution_analyzer.py` |
-| 6.2 | Tactical Recovery (Level 1) | `core/evolution/tactical_recovery.py` |
-| 6.3 | Strategy Updater (Level 2) | `core/evolution/strategy_updater.py` |
-| 6.4 | Systemic Evolver (Level 3) | `core/evolution/systemic_evolver.py` |
+| 6.1 | Execution Analyzer | `application/use_cases/execution_analysis.py` |
+| 6.2 | Tactical Recovery (Level 1) | `domain/services/tactical_recovery.py` |
+| 6.3 | Strategy Updater (Level 2) | `application/use_cases/strategy_update.py` |
+| 6.4 | Systemic Evolver (Level 3) | `application/use_cases/systemic_evolution.py` |
 | 6.5 | Evolution Dashboard | `ui/app/evolution/page.tsx` |
 
-**Phase 6 完了条件:**
-- [ ] 失敗パターン分析 → プロンプトテンプレート自動改善
-- [ ] モデル選択精度が 2 週間で +10% 改善
-- [ ] Agent CLI エンジン選択の自動最適化
-- [ ] 進化レポートが UI で閲覧可能
+**Phase 6 Completion Criteria:**
+- [ ] Failure pattern analysis → auto-improve prompt templates
+- [ ] Model selection accuracy improves +10% over 2 weeks
+- [ ] Agent CLI engine selection auto-optimized
+- [ ] Evolution reports viewable in UI
 
 ---
 
 ## Phase 7: A2A & Scale (Week 13-14)
 
-> **ゴール**: マルチエージェント協調 + ベンチマーク
+> **Goal**: Multi-agent coordination + benchmarks
 
-| # | 実装項目 | ファイル |
+| # | Item | File |
 |---|---|---|
-| 7.1 | A2A Protocol 実装 | `agents/a2a/protocol.py` |
-| 7.2 | Agent Coordinator | `agents/a2a/coordinator.py` |
-| 7.3 | Multi-Agent Parallel | `agents/a2a/parallel.py` |
+| 7.1 | A2A Protocol implementation | `infrastructure/a2a/protocol.py` |
+| 7.2 | Agent Coordinator | `infrastructure/a2a/coordinator.py` |
+| 7.3 | Multi-Agent Parallel | `infrastructure/a2a/parallel.py` |
 | 7.4 | Benchmark Suite | `benchmarks/` |
-| 7.5 | vs Manus / Devin / OpenHands 比較 | `benchmarks/results/` |
+| 7.5 | vs Manus / Devin / OpenHands comparison | `benchmarks/results/` |
 
-**Phase 7 完了条件:**
-- [ ] 3 エージェントが A2A で協調してタスク完了
-- [ ] SWE-bench lite でスコア計測
-- [ ] ベンチマーク結果ダッシュボード
+**Phase 7 Completion Criteria:**
+- [ ] 3 agents coordinate via A2A to complete a task
+- [ ] SWE-bench lite score measured
+- [ ] Benchmark results dashboard
 
 ---
 
-## リスク管理
+## Risk Management
 
-| リスク | 影響度 | 発生確率 | 緩和策 |
+| Risk | Impact | Probability | Mitigation |
 |---|---|---|---|
-| LangGraph の破壊的変更 | 高 | 低 | 薄いラッパーで API 隔離 |
-| Ollama モデル品質不足 | 中 | 中 | タスク種別で API フォールバック自動化 |
-| Neo4j Community の制約 | 低 | 低 | Phase 1 規模では問題なし |
-| Agent CLI (OpenHands等) の API 変更 | 中 | 中 | AgentEngine Protocol で抽象化 |
-| Phase 1 が 2 週超過 | 高 | 中 | UI を最低限に絞り、API 優先 |
-| mem0 の pgvector 互換性 | 低 | 低 | 直接 pgvector 使用にフォールバック可能 |
+| LangGraph breaking changes | High | Low | Thin wrapper isolates API |
+| Ollama model quality insufficient | Medium | Medium | Auto-fallback to API by task type |
+| Neo4j Community limitations | Low | Low | No issue at Phase 1 scale |
+| Agent CLI (OpenHands etc.) API changes | Medium | Medium | AgentEngine Protocol abstraction |
+| Phase 1 exceeds 2 weeks | High | Medium | Minimize UI scope, prioritize API + CLI |
+| mem0 pgvector compatibility | Low | Low | Can fallback to direct pgvector usage |
 
 ---
 
-## クリティカルパス
+## Critical Path
 
 ```
 Sprint 1.1 (Infra)
-    → Sprint 1.2 (LLM Layer) ← 最優先。ここが遅れると全体遅延
-        → Sprint 1.3 (Task Graph) ← コア。Phase 2-7 の全てが依存
-            → Sprint 1.3b (LAEE) ← 1.3 と部分並列可能。実行レイヤー ★v0.4
-            → Sprint 1.4 (Context Eng.) ← 1.3 と部分並列可能
-            → Sprint 1.5 (Memory) ← 1.3 と部分並列可能
-                → Sprint 1.6 (API + UI) ← 1.3-1.5 全完了が前提
+    → Sprint 1.2 (LLM Layer) ← TOP PRIORITY. Delays here cascade
+        → Sprint 1.3 (Task Graph) ← Core. All of Phase 2-7 depends on this
+            → Sprint 1.3b (LAEE) ← Partially parallelizable with 1.3
+            → Sprint 1.4 (Context Eng.) ← Partially parallelizable with 1.3
+            → Sprint 1.5 (Memory) ← Partially parallelizable with 1.3
+                → Sprint 1.6 (API + UI) ← Requires 1.3-1.5 completion
                     → Sprint 1.7 (E2E Test)
 ```
 
-**ボトルネック**: Sprint 1.2 (LLM Layer) と Sprint 1.3 (Task Graph Engine) が最もクリティカル。ここに最も多くの時間を確保する。
+**Bottleneck**: Sprint 1.2 (LLM Layer) and Sprint 1.3 (Task Graph Engine) are most critical. Allocate maximum time here.
 
 ---
 
-## Phase 別 成功指標
+## Success Metrics by Phase
 
-| Phase | 指標 | 目標値 |
+| Phase | Metric | Target |
 |---|---|---|
-| 1 | $0 パスでタスク完了 | Yes |
-| 1 | Ollama 推論レイテンシ | < 10 秒 |
-| 2 | 並列実行速度向上率 | 3x+ |
-| 2 | Interactive Planning 承認率 | > 80% |
-| 3 | メモリ圧縮率 | 98% (10K→500 tokens) |
-| 3 | コンテキスト復元精度 | > 90% |
-| 4 | Agent CLI ルーティング正確性 | > 85% |
-| 5 | ツール自動発見成功率 | > 60% |
-| 6 | 月次改善率 | +15% |
-| 7 | SWE-bench lite スコア | TBD |
+| 1 | Task completion at $0 | Yes |
+| 1 | Ollama inference latency | < 10s |
+| 2 | Parallel execution speedup | 3x+ |
+| 2 | Interactive Planning approval rate | > 80% |
+| 2 | CLI commands functional | task, model, cost |
+| 3 | Memory compression ratio | 98% (10K→500 tokens) |
+| 3 | Context restoration accuracy | > 90% |
+| 4 | Agent CLI routing accuracy | > 85% |
+| 5 | Auto tool discovery success rate | > 60% |
+| 6 | Monthly improvement rate | +15% |
+| 7 | SWE-bench lite score | TBD |
