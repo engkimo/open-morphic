@@ -196,7 +196,7 @@ infrastructure/llm/__init__.py
 infrastructure/llm/router.py              # MultiLLMRouter (LiteLLM integration)
 infrastructure/llm/ollama_manager.py       # OllamaManager
 infrastructure/llm/cost_tracker.py         # CostTracker (callback-based)
-tests/unit/infrastructure/test_llm_router.py
+tests/unit/infrastructure/test_litellm_gateway.py
 tests/unit/infrastructure/test_ollama_manager.py
 ```
 
@@ -233,7 +233,7 @@ class OllamaManager:
 ```python
 class MultiLLMRouter:
     MODEL_TIERS = {
-        "free":   ["ollama/qwen3:8b", "ollama/deepseek-r1:8b", ...],
+        "free":   ["ollama/qwen3-coder:30b", "ollama/qwen3:8b", ...],
         "low":    ["claude-haiku-4-5-20251001", "gemini/gemini-2.0-flash"],
         "medium": ["claude-sonnet-4-6", "gpt-4o-mini", ...],
         "high":   ["claude-opus-4-6", "gpt-4o"],
@@ -271,11 +271,13 @@ class CostTracker:
 
 #### Completion Criteria
 
-- [x] Ollama inference with `qwen3:8b` → response received (OllamaManager + LiteLLMGateway)
+- [x] Ollama inference with `qwen3-coder:30b` → response received (OllamaManager + LiteLLMGateway)
 - [x] LiteLLM → Ollama call → recorded in `cost_logs` (cost=0) (CostTracker.record)
 - [x] With API key: Claude Haiku call → recorded in `cost_logs` (cost>0) (CostTracker tests)
 - [x] `get_local_usage_rate()` returns accurate ratio (14 tests)
 - [x] Router forces free tier when budget exhausted (7 routing tests)
+- [x] qwen3 thinking mode disabled via `extra_body={'think': False}` (TD-015)
+- [x] `is_available()` verifies model installed in Ollama (TD-014)
 
 ---
 
@@ -389,6 +391,28 @@ LAEE tools are thin wrappers around OSS/stdlib:
 - [x] All operations logged to `.morphic/audit_log.jsonl`
 - [x] `undo_last()` reverts a `fs_write` operation
 - [x] Commands containing `sudo` auto-classified as CRITICAL
+
+#### Integration Tests (10/10 pass with real Ollama)
+
+```
+tests/integration/test_live_smoke.py — requires Ollama running
+
+TestOllamaLive:
+  ✓ test_is_running           — Ollama health check
+  ✓ test_list_models          — List installed models
+  ✓ test_direct_inference     — Real qwen3 inference (think: false)
+
+TestIntentAnalyzerLive:
+  ✓ test_decompose_goal       — LLM decomposes goal → subtasks
+
+TestLAEELive:
+  ✓ test_shell_exec_real      — Real shell execution
+  ✓ test_fs_workflow          — Write → Read → Edit → Undo → verify
+  ✓ test_approval_modes       — 3 approval modes all work correctly
+  ✓ test_sudo_detection       — sudo auto-classified as CRITICAL
+  ✓ test_dev_git_status       — Real git status
+  ✓ test_system_resource_info — CPU/memory/disk info
+```
 
 ---
 

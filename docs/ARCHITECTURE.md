@@ -37,7 +37,7 @@ Interface → Application → Domain ← Infrastructure
 │  └── config.py       pydantic-settings (env vars)            │
 ├──────────────────────────────────────────────────────────────┤
 │  tests/                                                       │
-│  ├── unit/domain/    No DB, no I/O. Fast (0.03s for 67)      │
+│  ├── unit/domain/    No DB, no I/O. Fast (0.03s for 67)     │
 │  ├── unit/application/ Ports mocked, no DB                   │
 │  ├── integration/    Docker Compose required                  │
 │  └── e2e/            Full stack                               │
@@ -249,10 +249,12 @@ morphic-agent/
 │       └── infrastructure/
 │           ├── test_ollama_manager.py   # 14 tests (health, list, ensure, recommend)
 │           ├── test_cost_tracker.py     # 13 tests (record, queries, budget)
-│           ├── test_litellm_gateway.py  # 21 tests (route, complete, available)
+│           ├── test_litellm_gateway.py  # 22 tests (route, complete, available, model check)
 │           ├── test_intent_analyzer.py  # 6 tests (decompose, deps, JSON parse)
 │           ├── test_task_graph_engine.py # 9 tests (parallel, retry, cascade)
 │           └── test_local_execution.py  # 35 tests (8 completion criteria)
+│   └── integration/
+│       └── test_live_smoke.py           # 10 tests (real Ollama + real filesystem)
 │
 ├── migrations/                      # Alembic async migrations
 ├── docker-compose.yml               # PostgreSQL+pgvector, Redis, Neo4j
@@ -329,9 +331,10 @@ Mapping between domain entities and ORM models happens in repository implementat
 
 | Test Type | Location | Dependencies | Speed | What It Tests |
 |---|---|---|---|---|
-| **Unit/Domain** | `tests/unit/domain/` | None | ~0.03s | Entities, value objects, services |
-| **Unit/Application** | `tests/unit/application/` | Mocked ports | Fast | Use case orchestration |
-| **Integration** | `tests/integration/` | Docker Compose | Slow | Repository implementations, DB |
+| **Unit/Domain** | `tests/unit/domain/` | None | ~0.03s (67 tests) | Entities, value objects, services |
+| **Unit/Application** | `tests/unit/application/` | Mocked ports | Fast (11 tests) | Use case orchestration |
+| **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.0s (99 tests) | LLM gateway, cost, task graph, LAEE |
+| **Integration** | `tests/integration/` | Ollama running | ~18s (10 tests) | Real LLM inference, real filesystem |
 | **E2E** | `tests/e2e/` | Full stack | Slowest | API/CLI → Use Case → DB round-trips |
 
 ### TDD Process
@@ -341,5 +344,6 @@ Mapping between domain entities and ORM models happens in repository implementat
 2. Green:    Write minimum code to pass
 3. Refactor: Clean up while tests protect
 
-Current: 176 tests, 1.24s, 100% pass
+Current: 177 unit tests (1.30s) + 10 integration tests (17.79s), 100% pass
+Default model: qwen3-coder:30b (thinking mode disabled via extra_body)
 ```

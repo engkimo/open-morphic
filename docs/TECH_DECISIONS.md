@@ -576,3 +576,78 @@ The original IMPLEMENTATION_PLAN had decomposition nodes (`analyze_intent`, `pla
 | `argparse` | Too low-level for complex subcommand structure |
 | CLI only (no API) | Task graph visualization requires web UI |
 | `textual` TUI | Over-engineering for Phase 2. Can add later if demand exists |
+
+---
+
+## TD-014: Default Ollama Model — qwen3-coder:30b
+
+**Date**: 2026-02-25
+**Status**: Accepted
+
+### Decision
+
+Use `qwen3-coder:30b` as the default Ollama model (top of FREE tier), replacing `qwen3:8b`.
+
+### Rationale
+
+- **Coding quality**: qwen3-coder:30b is a coding-specialized model with significantly better structured output (JSON) and code generation than qwen3:8b
+- **User's 32GB RAM**: Machine has sufficient RAM (30b model requires ~18GB)
+- **Integration test results**: 10/10 integration tests pass with qwen3-coder:30b, including LLM decomposition (IntentAnalyzer)
+- **Model availability check**: `is_available()` now verifies the specific model is installed in Ollama, not just that Ollama is running
+
+### Changes
+
+| File | Change |
+|---|---|
+| `shared/config.py` | `ollama_default_model = "qwen3-coder:30b"` |
+| `infrastructure/llm/litellm_gateway.py` | FREE tier: `["ollama/qwen3-coder:30b", "ollama/qwen3:8b", ...]` |
+| `infrastructure/llm/litellm_gateway.py` | `is_available()`: checks installed model list, not just Ollama running status |
+| `tests/unit/infrastructure/test_litellm_gateway.py` | All assertions updated + new `test_ollama_unavailable_when_not_installed` |
+| `tests/integration/test_live_smoke.py` | `qwen3_model` fixture auto-detects best available model |
+
+### Fallback
+
+If `qwen3-coder:30b` is not installed, the router cascades to `qwen3:8b` → `deepseek-r1:8b` → `llama3.2:3b` (FREE tier order).
+
+---
+
+## TD-015: Disable qwen3 Thinking Mode for LiteLLM
+
+**Date**: 2026-02-25
+**Status**: Accepted (Workaround)
+
+### Problem
+
+qwen3 family models (qwen3:8b, qwen3-coder:30b) use a "thinking mode" by default. When thinking mode is active:
+1. Ollama API puts reasoning output in `message.thinking` field
+2. `message.content` is often empty
+3. LiteLLM reads only `message.content`, not `message.thinking`
+4. Result: ~66% of responses return empty content via LiteLLM
+
+### Decision
+
+Disable thinking mode for all Ollama models by passing `extra_body={"think": False}` in LiteLLM calls.
+
+### Implementation
+
+```python
+# infrastructure/llm/litellm_gateway.py — complete() method
+if resolved.startswith("ollama/"):
+    kwargs["api_base"] = self._settings.ollama_base_url
+    kwargs.setdefault("extra_body", {})["think"] = False
+```
+
+### Alternatives Tested and Rejected
+
+| Approach | Result |
+|---|---|
+| `/no_think` in system prompt | Still used thinking mode (~66% empty) |
+| `/no_think` at end of user message | Still used thinking mode (~66% empty) |
+| `think: false` in Ollama API directly | **Works (3/3 success)** |
+| `extra_body={'think': False}` via LiteLLM | **Works (3/3 success)** ← Adopted |
+
+### Risks
+
+- This disables reasoning capability of qwen3 models. For tasks requiring deep reasoning, cloud models (Claude Sonnet/Opus) are routed via task type
+- If a future LiteLLM version adds native thinking output support, this workaround can be removed
+- IntentAnalyzer also strips `<think>...</think>` tags via regex as a defense-in-depth measure
