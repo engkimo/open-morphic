@@ -710,3 +710,59 @@ All 11 cloud integration tests pass (0 skipped):
 - Gemini: 2/2 (3-flash, 3-pro)
 - Cost tracking: 2/2
 - Routing: 2/2
+
+---
+
+## TD-017: Memory Hierarchy — L1-L4 CPU-Cache Design
+
+**Date**: 2026-02-25
+**Status**: Accepted
+
+### Decision
+
+Implement a CPU-cache-inspired 4-layer memory hierarchy where each layer trades speed for capacity:
+
+| Layer | Storage | Speed | Capacity | Persistence |
+|---|---|---|---|---|
+| **L1** | `collections.deque` (in-memory) | Instant | ~50 entries | No |
+| **L2** | `MemoryRepository` (pgvector) | Fast | Unlimited | Yes |
+| **L3** | `KnowledgeGraphPort` (Neo4j) | Medium | Unlimited | Yes |
+| **L4** | `MemoryRepository` (cold filter) | Slow | Unlimited | Yes |
+
+### Key Design Choices
+
+| Choice | Rationale |
+|---|---|
+| L1 = `deque(maxlen=N)` | O(1) append/pop, bounded, no GC pressure |
+| L3 is optional | `MemoryHierarchy` works without Neo4j (graceful degradation) |
+| `KnowledgeGraphPort` as domain port | Domain layer doesn't know about Neo4j/Cypher |
+| Token budget in `retrieve()` | Greedy selection with deduplication across layers |
+| `_estimate_tokens = len(text) // 4` | Good enough for Phase 1. Real tokenizer in Phase 3 |
+| Separator cost in ContextZipper | Newlines between selected messages counted against budget |
+
+### ContextZipper Scoring
+
+```
+score = recency_weight * 0.4 + keyword_overlap * 0.6
+```
+
+- **Recency**: `(index + 1) / total_count` — most recent messages score higher
+- **Keyword overlap**: `len(query_words ∩ text_words) / len(query_words)` — relevance to current query
+- Selected messages reassembled in original chronological order
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| LLM-based summarization for compression | Too slow and expensive for real-time queries. Also lossy (information irreversible) |
+| Single-layer vector search | No speed tiers. L1 in-memory is 100x faster than DB queries for recent context |
+| L1 as `list` | Unbounded growth. `deque(maxlen=N)` auto-evicts oldest entries |
+| Embedding-based L1 search | Overkill for ~50 entries. Simple keyword matching is sufficient |
+
+### Verification
+
+- 36 unit tests (in-memory fakes, 0.10s)
+- 8 integration tests (real PostgreSQL + Neo4j, skip if unavailable)
+- CC#1: add() → retrieve() returns relevant memories (5 tests)
+- CC#4: 5000-token history → ≤500 tokens compression (2 tests)
+- Total unit test suite: 221 → 257 tests, all passing (1.70s)
