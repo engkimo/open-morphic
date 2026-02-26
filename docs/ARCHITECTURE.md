@@ -4,7 +4,7 @@
 >
 > **Phase 1 Foundation: COMPLETE** (2026-02-25) — 7/7 sprints done
 > **Phase 2 Parallel & Planning + CLI: COMPLETE** (2026-02-26) — All 6 sprints (2-A through 2-F) + CLI v1
-> **Phase 3 Semantic Memory & Context Bridge: COMPLETE** (2026-02-26) — SemanticFingerprint LSH → ContextZipper v2 → ForgettingCurve → DeltaEncoder → HierarchicalSummarizer → Context Bridge → MCP Server/Client — 699 tests (683 unit + 16 integration)
+> **Phase 3 Semantic Memory & Context Bridge: COMPLETE** (2026-02-26) — Week 5: SemanticFingerprint LSH → ContextZipper v2 → ForgettingCurve → DeltaEncoder → HierarchicalSummarizer | Week 6: Context Bridge → MCP Server → MCP Client → L1-L4 Integration — 725 tests (699 unit + 26 integration)
 
 ---
 
@@ -159,6 +159,7 @@ Custom code is minimized. Every infrastructure component wraps an established OS
 | ORM + migrations | **SQLAlchemy** + **Alembic** | Models + migration scripts |
 | API framework | **FastAPI** | Route handlers |
 | CLI framework | **typer** + **rich** | Command handlers + formatters |
+| MCP server/client | **mcp** (FastMCP) | 6 tools + 2 resources, client adapter |
 | Browser automation | **Playwright** | Tool wrappers |
 | File watching | **watchdog** | Event handlers |
 | Scheduling | **APScheduler** | Job definitions |
@@ -211,7 +212,8 @@ morphic-agent/
 │   │   ├── memory_repository.py    # MemoryRepository ABC (+ list_by_type, Sprint 3.3)
 │   │   ├── cost_repository.py      # CostRepository ABC
 │   │   ├── plan_repository.py      # PlanRepository ABC
-│   │   └── embedding.py            # EmbeddingPort ABC (Sprint 3.1)
+│   │   ├── embedding.py            # EmbeddingPort ABC (Sprint 3.1)
+│   │   └── mcp_client.py           # MCPClientPort ABC (Sprint 3.8)
 │   └── services/
 │       ├── risk_assessor.py        # 40+ tool risk mapping + escalation
 │       ├── approval_engine.py      # 3-mode × 5-risk approval matrix
@@ -261,15 +263,19 @@ morphic-agent/
 │   │       ├── browser_tools.py     # navigate, click, type, screenshot, extract, pdf (Playwright)
 │   │       ├── gui_tools.py         # applescript, open_app, screenshot_ocr, accessibility (macOS)
 │   │       └── cron_tools.py        # schedule, once, list, cancel (APScheduler)
-│   └── memory/                      # Sprint 1.5 + 3.1–3.4: Semantic Memory
-│       ├── memory_hierarchy.py      # L1-L4 unified manager + compact() + record_delta/get_state + summarize_entry/retrieve_at_depth
-│       ├── context_zipper.py        # Query-adaptive compression (v2: async, semantic, Sprint 3.2)
-│       ├── forgetting_curve.py      # ForgettingCurveManager + CompactResult (Sprint 3.3)
-│       ├── delta_encoder.py         # DeltaEncoderManager + DeltaRecordResult (Sprint 3.4)
-│       ├── hierarchical_summarizer.py # HierarchicalSummaryManager + SummarizeResult (Sprint 3.5)
-│       ├── knowledge_graph.py       # Neo4j adapter (L3)
-│       ├── semantic_fingerprint.py  # SemanticBucketStore (LSH bucketing, Sprint 3.1)
-│       └── embedding_adapters.py    # OllamaEmbeddingAdapter (POST /api/embed, Sprint 3.1)
+│   ├── memory/                      # Sprint 1.5 + 3.1–3.5: Semantic Memory
+│   │   ├── memory_hierarchy.py      # L1-L4 unified manager + compact() + record_delta/get_state + summarize_entry/retrieve_at_depth
+│   │   ├── context_zipper.py        # Query-adaptive compression (v2: async, semantic, Sprint 3.2)
+│   │   ├── forgetting_curve.py      # ForgettingCurveManager + CompactResult (Sprint 3.3)
+│   │   ├── delta_encoder.py         # DeltaEncoderManager + DeltaRecordResult (Sprint 3.4)
+│   │   ├── hierarchical_summarizer.py # HierarchicalSummaryManager + SummarizeResult (Sprint 3.5)
+│   │   ├── context_bridge.py        # ContextBridge + ExportResult — 4 platform formatters (Sprint 3.6)
+│   │   ├── knowledge_graph.py       # Neo4j adapter (L3)
+│   │   ├── semantic_fingerprint.py  # SemanticBucketStore (LSH bucketing, Sprint 3.1)
+│   │   └── embedding_adapters.py    # OllamaEmbeddingAdapter (POST /api/embed, Sprint 3.1)
+│   └── mcp/                         # Sprint 3.7–3.8: Model Context Protocol
+│       ├── server.py                # create_mcp_server() — FastMCP, 6 tools + 2 resources
+│       └── client.py               # MCPClient, MCPToolAdapter, discover_and_register
 │
 ├── interface/                       # Layer 4: Entry Points
 │   ├── api/                         # Sprint 1.6: FastAPI + WebSocket
@@ -282,7 +288,7 @@ morphic-agent/
 │   │       ├── plans.py             # POST, GET, approve, reject /api/plans
 │   │       ├── models.py            # GET /api/models, GET /api/models/status
 │   │       ├── cost.py              # GET /api/cost, GET /api/cost/logs
-│   │       └── memory.py            # GET /api/memory/search?q=
+│   │       └── memory.py            # GET /api/memory/search?q= + GET /api/memory/export?platform=
 │   └── cli/                         # Sprint 2.9-2.11: typer + rich
 │       ├── main.py                  # typer app, _get_container() lazy singleton, _run() async bridge
 │       ├── formatters.py            # Rich tables, trees, status styles (all output isolated here)
@@ -290,7 +296,8 @@ morphic-agent/
 │           ├── task.py              # morphic task {create|list|show|cancel}
 │           ├── model.py             # morphic model {list|status|pull}
 │           ├── cost.py              # morphic cost {summary|budget}
-│           └── plan.py              # morphic plan {create|list|show|approve|reject}
+│           ├── plan.py              # morphic plan {create|list|show|approve|reject}
+│           └── mcp.py               # morphic mcp server (stdio/streamable-http)
 │
 ├── shared/
 │   └── config.py                    # pydantic-settings (all env vars)
@@ -339,7 +346,10 @@ morphic-agent/
 │       │   ├── test_semantic_search.py  # 20 tests (BucketStore, OllamaAdapter, vector search, Sprint 3.1)
 │       │   ├── test_forgetting_curve.py # 17 tests (compact, promote, score, list_by_type, Sprint 3.3)
 │       │   ├── test_delta_encoder.py   # 27 tests (record, get_state, history, topics, roundtrip, Sprint 3.4)
-│       │   └── test_hierarchical_summarizer.py # 24 tests (extractive, LLM, get_summary, retrieve_at_depth, integration, Sprint 3.5)
+│       │   ├── test_hierarchical_summarizer.py # 24 tests (extractive, LLM, get_summary, retrieve_at_depth, Sprint 3.5)
+│       │   ├── test_context_bridge.py  # 25 tests (4 platforms, export_all, budget, graceful degradation, Sprint 3.6)
+│       │   ├── test_mcp_server.py      # 19 tests (factory, 6 tools, 2 resources, degradation, Sprint 3.7)
+│       │   └── test_mcp_client.py      # 21 tests (port, connect, tools, resources, adapter, discover, Sprint 3.8)
 │       └── interface/
 │           ├── test_api.py              # 22 tests (CRUD, WebSocket, CORS, models, cost, memory)
 │           ├── test_api_e2e.py          # 12 tests (HTTP round-trip: POST→execute→GET→verify)
@@ -347,7 +357,8 @@ morphic-agent/
 │   └── integration/
 │       ├── test_live_smoke.py           # 10 tests (real Ollama + real filesystem)
 │       ├── test_cloud_llm.py            # 11 tests (Anthropic + OpenAI + Gemini + cost + routing)
-│       └── test_e2e_pipeline.py         # 5 tests (Goal → Decompose → DAG → Result)
+│       ├── test_e2e_pipeline.py         # 5 tests (Goal → Decompose → DAG → Result)
+│       └── test_memory_hierarchy_full.py # 16 tests (L1-L4 full lifecycle, compression interplay, edge cases, cross-component, Sprint 3.10)
 │
 ├── migrations/                      # Alembic async migrations (001 initial + 002 embedding)
 ├── docker-compose.yml               # PostgreSQL+pgvector, Redis, Neo4j
@@ -393,7 +404,8 @@ domain/ports/
 ├── audit_logger.py         # Append-only audit log
 ├── memory_repository.py    # Semantic memory CRUD
 ├── cost_repository.py      # Cost tracking queries
-└── embedding.py            # Text-to-vector embedding (Sprint 3.1)
+├── embedding.py            # Text-to-vector embedding (Sprint 3.1)
+└── mcp_client.py           # MCP client connections (Sprint 3.8)
 ```
 
 ### 4. Services are Pure Functions
@@ -422,15 +434,80 @@ Mapping between domain entities and ORM models happens in repository implementat
 
 ---
 
+## Context Bridge & MCP (Phase 3, Week 6)
+
+### Cross-Platform Context Bridge (Sprint 3.6)
+
+Exports Morphic-Agent memory/context in platform-specific formats. Infrastructure-only (no domain port).
+
+```
+ContextBridge
+├── export(platform, query, max_tokens) → ExportResult
+└── export_all(query, max_tokens)       → list[ExportResult]
+    │
+    ├── _gather_context()  → compose MemoryHierarchy + ContextZipper + DeltaEncoder
+    └── _format_{platform}()
+        ├── claude_code  → CLAUDE.md markdown (## Context / ## Current State / ## Recent Memory)
+        ├── chatgpt      → Custom Instructions (What to know / How to respond)
+        ├── cursor        → .cursorrules numbered rules + project context
+        └── gemini        → <morphic-context> XML tags with structured sections
+```
+
+All ports optional — graceful degradation when memory/zipper/delta unavailable.
+
+### MCP Server (Sprint 3.7)
+
+Exposes Morphic-Agent memory as MCP tools/resources via FastMCP (`mcp[cli]>=1.25,<2`).
+
+```
+create_mcp_server(container) → FastMCP("morphic-agent")
+
+Tools (6):
+├── memory_search    → container.memory.retrieve()
+├── memory_add       → container.memory.add()
+├── context_compress → container.context_zipper.compress()
+├── delta_get_state  → container.delta_encoder.get_state()
+├── delta_record     → container.delta_encoder.record()
+└── context_export   → container.context_bridge.export()
+
+Resources (2):
+├── memory://topics          → delta_encoder.list_topics()
+└── memory://state/{topic}   → delta_encoder.get_state(topic)
+```
+
+CLI: `morphic mcp server [--transport stdio|streamable-http] [--port 8100]`
+
+### MCP Client (Sprint 3.8)
+
+Connects to external MCP servers, discovers tools, adapts them for LAEE.
+
+```
+MCPClientPort (domain ABC)
+    │
+    └── MCPClient (infrastructure)
+        ├── connect(name, command, args)  → stdio ClientSession
+        ├── list_tools(server)            → tool specs
+        ├── call_tool(server, tool, args) → result
+        └── disconnect(server)
+
+MCPToolAdapter
+    wraps MCP tool as callable with prefix: mcp_{server}_{tool}
+
+discover_and_register(client, configs) → list[MCPToolAdapter]
+    batch connect + list tools + create adapters
+```
+
+---
+
 ## Testing Strategy
 
 | Test Type | Location | Dependencies | Speed | What It Tests |
 |---|---|---|---|---|
 | **Unit/Domain** | `tests/unit/domain/` | None | ~0.03s (162 tests) | Entities, value objects, services, LSH fingerprint, forgetting curve, delta encoder, hierarchical summarizer |
 | **Unit/Application** | `tests/unit/application/` | Mocked ports | Fast (46 tests) | Use case orchestration, cost estimator, planning |
-| **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.2s (352 tests) | LLM gateway, cost, task graph, LAEE, memory, PG repos, Celery, browser/gui/cron, semantic search, forgetting curve, delta encoder, hierarchical summarizer |
+| **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.2s (417 tests) | LLM gateway, cost, task graph, LAEE, memory, PG repos, Celery, browser/gui/cron, semantic search, forgetting curve, delta encoder, hierarchical summarizer, context bridge, MCP server/client |
 | **Unit/Interface** | `tests/unit/interface/` | Mock container | ~1.4s (58 tests) | API, WebSocket, CORS, CLI commands, plan endpoints |
-| **Integration** | `tests/integration/` | Ollama running | ~18s (10 tests) | Real LLM inference, real filesystem |
+| **Integration** | `tests/integration/` | Ollama running | ~18s (26 tests) | Real LLM inference, real filesystem, L1-L4 memory hierarchy |
 | **E2E** | `tests/e2e/` | Full stack | Slowest | API/CLI → Use Case → DB round-trips |
 
 ### TDD Process
@@ -440,7 +517,7 @@ Mapping between domain entities and ORM models happens in repository implementat
 2. Green:    Write minimum code to pass
 3. Refactor: Clean up while tests protect
 
-Current: 618 unit tests (2.8s) + 26 integration tests (10+11+5), 100% pass
+Current: 699 unit tests + 26 integration tests = 725 total, 100% pass
 Lint: ruff check 0 errors, ruff format 150 files clean
 Default model: qwen3-coder:30b (thinking mode disabled via extra_body)
 Cloud providers verified: Anthropic (Haiku/Sonnet), OpenAI (o4-mini/o3), Gemini (3-flash/3-pro)
