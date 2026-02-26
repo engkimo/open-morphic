@@ -1355,3 +1355,70 @@ conversation message 7: ...
 - **Modified**: `tests/unit/infrastructure/test_memory.py` (10 existing tests → async, 16 new tests for v2 features)
 - **Modified**: `interface/api/container.py` (wire ContextZipper with embedding_port + memory_repo)
 - **Tests**: 16 new tests, total 475 passing
+
+---
+
+## TD-031: ForgettingCurve — Ebbinghaus Retention-Based L2 Memory Expiration
+
+**Date**: 2026-02-26
+**Status**: Accepted
+**Sprint**: 3.3
+
+### Decision
+
+Implement automatic expiration of stale L2 semantic memories using Ebbinghaus-inspired retention scoring. Expired entries are promoted to L3 Knowledge Graph as `memory_fact` entities (if KG available), then deleted from L2.
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Domain service | Pure math (`retention_score`, `is_expired`, `hours_since`) | Same pattern as `semantic_fingerprint.py` — no I/O, deterministic, 100% testable |
+| Retention formula | `R = e^(-t / (S * 24))` where `S = 1.0 + access_count*0.5 + importance_score*2.0` | Ebbinghaus curve with stability factors for access frequency and importance |
+| Expiry threshold | `score < threshold` (strict less-than) | At exact boundary, entry is NOT expired (conservative) |
+| Promote strategy | Store content directly as KG entity (no LLM) | OSS-First, $0 cost, no LLM dependency. LLM summarization deferred to future sprint |
+| KG optional | If no KG, expired memories are simply deleted | Matches existing graceful degradation pattern (TD-017) |
+| Port enhancement | `list_by_type(memory_type, limit)` on MemoryRepository | Need to iterate L2 entries for compaction. Follows TaskRepository `list_by_status` pattern |
+| Threshold config | Reuse `Settings.memory_retention_threshold=0.3` | Already exists in `shared/config.py` — no new config needed |
+| Integration point | `MemoryHierarchy.compact()` → `ForgettingCurveManager` | Clean entry point; callers decide when to trigger (e.g., periodic, on-demand) |
+| Manager location | `infrastructure/memory/forgetting_curve.py` | Uses ports (async I/O), not pure domain logic |
+
+### Architecture
+
+```
+MemoryHierarchy.compact(threshold)
+    │
+    └── ForgettingCurveManager.compact()
+        │
+        ├── list_by_type(L2_SEMANTIC) ── MemoryRepository port
+        │
+        ├── For each entry:
+        │   ├── ForgettingCurve.hours_since(last_accessed)
+        │   ├── ForgettingCurve.is_expired(access_count, importance, hours, threshold)
+        │   ├── If expired:
+        │   │   ├── _promote_to_facts(entry) → KnowledgeGraphPort.add_entity()
+        │   │   └── memory_repo.delete(entry.id)
+        │   └── If not expired: skip
+        │
+        └── Return CompactResult(scanned, expired, promoted, deleted)
+```
+
+### Retention Score Examples
+
+| access_count | importance | hours_elapsed | stability S | score R | expired? (threshold=0.3) |
+|---|---|---|---|---|---|
+| 1 | 0.5 | 0 | 2.5 | 1.000 | No |
+| 1 | 0.5 | 24 | 2.5 | 0.670 | No |
+| 1 | 0.0 | 48 | 1.5 | 0.264 | Yes |
+| 10 | 1.0 | 48 | 8.0 | 0.904 | No |
+| 1 | 0.0 | 500 | 1.5 | 0.000 | Yes |
+
+### Files Created/Modified
+
+- **Created**: `domain/services/forgetting_curve.py` (pure math: retention_score, is_expired, hours_since)
+- **Created**: `infrastructure/memory/forgetting_curve.py` (ForgettingCurveManager + CompactResult dataclass)
+- **Created**: `tests/unit/domain/test_forgetting_curve.py` (14 tests)
+- **Created**: `tests/unit/infrastructure/test_forgetting_curve.py` (17 tests)
+- **Modified**: `domain/ports/memory_repository.py` (added `list_by_type` abstract method)
+- **Modified**: `infrastructure/persistence/in_memory.py` (implemented `list_by_type`)
+- **Modified**: `infrastructure/persistence/pg_memory_repository.py` (implemented `list_by_type` with SQL WHERE + ORDER BY last_accessed ASC)
+- **Modified**: `infrastructure/memory/memory_hierarchy.py` (added `compact()` method delegating to ForgettingCurveManager)
+- **Modified**: `interface/api/container.py` (wired ForgettingCurveManager with memory_repo + threshold from settings)
+- **Tests**: 31 new tests (14 domain + 17 infrastructure), total 506 passing

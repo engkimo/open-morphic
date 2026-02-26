@@ -4,7 +4,7 @@
 >
 > **Phase 1 Foundation: COMPLETE** (2026-02-25) — 7/7 sprints done
 > **Phase 2 Parallel & Planning + CLI: COMPLETE** (2026-02-26) — All 6 sprints (2-A through 2-F) + CLI v1
-> **Phase 3 Sprint 3.1: SemanticFingerprint (LSH): COMPLETE** (2026-02-26) — 459 unit tests + 26 integration tests
+> **Phase 3 Sprint 3.1–3.3: COMPLETE** (2026-02-26) — SemanticFingerprint LSH → ContextZipper v2 → ForgettingCurve — 506 unit tests + 26 integration tests
 
 ---
 
@@ -175,6 +175,7 @@ Custom code is minimized. Every infrastructure component wraps an established OS
 | `domain/services/risk_assessor.py` | 40+ tool risk classification is domain logic |
 | `domain/services/approval_engine.py` | 3×5 approval matrix is domain logic |
 | `domain/services/semantic_fingerprint.py` | LSH hash + cosine similarity is pure math (Sprint 3.1) |
+| `domain/services/forgetting_curve.py` | Ebbinghaus retention scoring R=e^(-t/S) is pure math (Sprint 3.3) |
 | `domain/value_objects/*` | Project-specific enums and types |
 | `domain/ports/*` | Interface definitions are project-specific |
 
@@ -204,14 +205,15 @@ morphic-agent/
 │   │   ├── llm_gateway.py          # LLMGateway ABC + LLMResponse
 │   │   ├── local_executor.py       # LocalExecutor ABC (LAEE)
 │   │   ├── audit_logger.py         # AuditLogger ABC
-│   │   ├── memory_repository.py    # MemoryRepository ABC
+│   │   ├── memory_repository.py    # MemoryRepository ABC (+ list_by_type, Sprint 3.3)
 │   │   ├── cost_repository.py      # CostRepository ABC
 │   │   ├── plan_repository.py      # PlanRepository ABC
 │   │   └── embedding.py            # EmbeddingPort ABC (Sprint 3.1)
 │   └── services/
 │       ├── risk_assessor.py        # 40+ tool risk mapping + escalation
 │       ├── approval_engine.py      # 3-mode × 5-risk approval matrix
-│       └── semantic_fingerprint.py # LSH hash + cosine similarity (Sprint 3.1)
+│       ├── semantic_fingerprint.py # LSH hash + cosine similarity (Sprint 3.1)
+│       └── forgetting_curve.py    # Ebbinghaus retention scoring R=e^(-t/S) (Sprint 3.3)
 │
 ├── application/                     # Layer 3: Use Cases
 │   ├── use_cases/
@@ -254,9 +256,10 @@ morphic-agent/
 │   │       ├── browser_tools.py     # navigate, click, type, screenshot, extract, pdf (Playwright)
 │   │       ├── gui_tools.py         # applescript, open_app, screenshot_ocr, accessibility (macOS)
 │   │       └── cron_tools.py        # schedule, once, list, cancel (APScheduler)
-│   └── memory/                      # Sprint 1.5 + 3.1: Semantic Memory
-│       ├── memory_hierarchy.py      # L1-L4 unified manager (deque→repo→KG→cold)
-│       ├── context_zipper.py        # Query-adaptive compression
+│   └── memory/                      # Sprint 1.5 + 3.1–3.3: Semantic Memory
+│       ├── memory_hierarchy.py      # L1-L4 unified manager (deque→repo→KG→cold) + compact()
+│       ├── context_zipper.py        # Query-adaptive compression (v2: async, semantic, Sprint 3.2)
+│       ├── forgetting_curve.py      # ForgettingCurveManager + CompactResult (Sprint 3.3)
 │       ├── knowledge_graph.py       # Neo4j adapter (L3)
 │       ├── semantic_fingerprint.py  # SemanticBucketStore (LSH bucketing, Sprint 3.1)
 │       └── embedding_adapters.py    # OllamaEmbeddingAdapter (POST /api/embed, Sprint 3.1)
@@ -310,7 +313,8 @@ morphic-agent/
 │       │   ├── test_entities.py             # 37 tests (16 behavior + 21 strict validation)
 │       │   ├── test_risk_assessor.py        # 19 tests (5 risk tiers + escalation)
 │       │   ├── test_approval_engine.py      # 11 tests (3 modes × risk levels)
-│       │   └── test_semantic_fingerprint.py # 11 tests (LSH hash, cosine sim, Sprint 3.1)
+│       │   ├── test_semantic_fingerprint.py # 11 tests (LSH hash, cosine sim, Sprint 3.1)
+│       │   └── test_forgetting_curve.py   # 14 tests (retention score, expiry, hours_since, Sprint 3.3)
 │       ├── application/
 │       │   ├── test_create_task.py      # 5 tests (decompose, save, status, deps)
 │       │   └── test_execute_task.py     # 6 tests (success, fallback, failed, cost)
@@ -323,7 +327,8 @@ morphic-agent/
 │       │   ├── test_local_execution.py  # 35 tests (8 completion criteria)
 │       │   ├── test_failure_recovery.py # 7 tests (retry, cascade, partial, persistence)
 │       │   ├── test_memory.py           # 36 tests (hierarchy, zipper, knowledge graph)
-│       │   └── test_semantic_search.py  # 20 tests (BucketStore, OllamaAdapter, vector search, Sprint 3.1)
+│       │   ├── test_semantic_search.py  # 20 tests (BucketStore, OllamaAdapter, vector search, Sprint 3.1)
+│       │   └── test_forgetting_curve.py # 17 tests (compact, promote, score, list_by_type, Sprint 3.3)
 │       └── interface/
 │           ├── test_api.py              # 22 tests (CRUD, WebSocket, CORS, models, cost, memory)
 │           ├── test_api_e2e.py          # 12 tests (HTTP round-trip: POST→execute→GET→verify)
@@ -382,7 +387,7 @@ domain/ports/
 
 ### 4. Services are Pure Functions
 
-Domain services (`risk_assessor.py`, `approval_engine.py`, `semantic_fingerprint.py`) have:
+Domain services (`risk_assessor.py`, `approval_engine.py`, `semantic_fingerprint.py`, `forgetting_curve.py`) have:
 - No constructor dependencies (no injected ports)
 - No I/O operations
 - Deterministic output for given input
@@ -410,9 +415,9 @@ Mapping between domain entities and ORM models happens in repository implementat
 
 | Test Type | Location | Dependencies | Speed | What It Tests |
 |---|---|---|---|---|
-| **Unit/Domain** | `tests/unit/domain/` | None | ~0.03s (87 tests) | Entities, value objects, services, LSH fingerprint |
+| **Unit/Domain** | `tests/unit/domain/` | None | ~0.03s (101 tests) | Entities, value objects, services, LSH fingerprint, forgetting curve |
 | **Unit/Application** | `tests/unit/application/` | Mocked ports | Fast (46 tests) | Use case orchestration, cost estimator, planning |
-| **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.2s (268 tests) | LLM gateway, cost, task graph, LAEE, memory, PG repos, Celery, browser/gui/cron, semantic search |
+| **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.2s (301 tests) | LLM gateway, cost, task graph, LAEE, memory, PG repos, Celery, browser/gui/cron, semantic search, forgetting curve |
 | **Unit/Interface** | `tests/unit/interface/` | Mock container | ~1.4s (58 tests) | API, WebSocket, CORS, CLI commands, plan endpoints |
 | **Integration** | `tests/integration/` | Ollama running | ~18s (10 tests) | Real LLM inference, real filesystem |
 | **E2E** | `tests/e2e/` | Full stack | Slowest | API/CLI → Use Case → DB round-trips |
@@ -424,8 +429,8 @@ Mapping between domain entities and ORM models happens in repository implementat
 2. Green:    Write minimum code to pass
 3. Refactor: Clean up while tests protect
 
-Current: 459 unit tests (2.52s) + 26 integration tests (10+11+5), 100% pass
-Lint: ruff check 0 errors, ruff format 146 files clean
+Current: 506 unit tests (2.8s) + 26 integration tests (10+11+5), 100% pass
+Lint: ruff check 0 errors, ruff format 150 files clean
 Default model: qwen3-coder:30b (thinking mode disabled via extra_body)
 Cloud providers verified: Anthropic (Haiku/Sonnet), OpenAI (o4-mini/o3), Gemini (3-flash/3-pro)
 ```

@@ -1135,13 +1135,54 @@ class ContextZipper:
 
 ---
 
+### Sprint 3.3: ForgettingCurve — Ebbinghaus Retention Scoring (2026-02-26) ✅ COMPLETE
+
+> Automatic L2 memory expiration via retention scoring. Expired entries promoted to L3 KG then deleted.
+
+#### What Was Built
+
+| Component | File | Description |
+|---|---|---|
+| **ForgettingCurve** | `domain/services/forgetting_curve.py` | Pure math: `retention_score`, `is_expired`, `hours_since`. R=e^(-t/S) |
+| **ForgettingCurveManager** | `infrastructure/memory/forgetting_curve.py` | Async manager: scan L2 → expire → promote to KG → delete |
+| **CompactResult** | `infrastructure/memory/forgetting_curve.py` | Frozen dataclass: scanned/expired/promoted/deleted counts |
+
+#### Modified Files
+
+| File | Change |
+|---|---|
+| `domain/ports/memory_repository.py` | Added `list_by_type(memory_type, limit)` abstract method |
+| `infrastructure/persistence/in_memory.py` | Implemented `list_by_type` (filter `_store.values()`) |
+| `infrastructure/persistence/pg_memory_repository.py` | Implemented `list_by_type` (SQL WHERE + ORDER BY last_accessed ASC) |
+| `infrastructure/memory/memory_hierarchy.py` | Added `compact(threshold)` delegating to ForgettingCurveManager |
+| `interface/api/container.py` | Wired ForgettingCurveManager with memory_repo + settings threshold |
+
+#### Test Results
+
+| Suite | Tests | Status |
+|---|---|---|
+| `test_forgetting_curve.py` (domain) | 14 | ✅ retention_score, is_expired, hours_since, boundary, stability |
+| `test_forgetting_curve.py` (infrastructure) | 17 | ✅ compact, promote, score_entry, list_by_type, CompactResult |
+| All existing tests | 475 | ✅ Full backward compatibility |
+| **Total** | **506** | **All passing (2.8s)** |
+
+#### Key Design Decisions (TD-031)
+
+- **Pure domain service**: `retention_score`/`is_expired`/`hours_since` are static, no I/O
+- **Strict less-than**: `score < threshold` — entries exactly at boundary are NOT expired (conservative)
+- **KG optional**: Without KG, expired entries are simply deleted (graceful degradation per TD-017)
+- **No LLM**: Promotion stores content directly as `memory_fact` entity ($0 cost)
+- **Reuses existing config**: `Settings.memory_retention_threshold=0.3` already existed
+
+---
+
 ### Week 5: Full Semantic Memory
 
 | # | Item | File |
 |---|---|---|
 | 3.1 | SemanticFingerprint (LSH) | `infrastructure/memory/semantic_fingerprint.py` | ✅ COMPLETE |
 | 3.2 | ContextZipper v2 (semantic) | `infrastructure/memory/context_zipper.py` | ✅ COMPLETE (TD-030) |
-| 3.3 | ForgettingCurve | `infrastructure/memory/forgetting_curve.py` |
+| 3.3 | ForgettingCurve | `infrastructure/memory/forgetting_curve.py` | ✅ COMPLETE (TD-031) |
 | 3.4 | DeltaEncoder | `infrastructure/memory/delta_encoder.py` |
 | 3.5 | HierarchicalSummarizer | `infrastructure/memory/hierarchical_summary.py` |
 
@@ -1159,7 +1200,7 @@ class ContextZipper:
 - [ ] 10,000 tokens → 500 tokens compression (information retention > 90%)
 - [ ] LSH retrieves semantically similar memories in near-O(1) time
 - [ ] MCP Server enables other tools to access Morphic-Agent memory
-- [ ] Forgetting curve auto-promotes low-importance memories to L3, removes from L2
+- [x] Forgetting curve auto-promotes low-importance memories to L3, removes from L2
 
 ---
 
