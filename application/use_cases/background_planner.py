@@ -7,8 +7,8 @@ Does NOT auto-modify running tasks.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
-from datetime import datetime
 
 from domain.ports.llm_gateway import LLMGateway
 from domain.ports.task_repository import TaskRepository
@@ -37,19 +37,15 @@ class BackgroundPlannerUseCase:
         if task_id in self._running_tasks and not self._running_tasks[task_id].done():
             return  # Already monitoring
         self._recommendations[task_id] = []
-        self._running_tasks[task_id] = asyncio.create_task(
-            self._monitor_loop(task_id)
-        )
+        self._running_tasks[task_id] = asyncio.create_task(self._monitor_loop(task_id))
 
     async def stop(self, task_id: str) -> None:
         """Stop monitoring for a task."""
         bg_task = self._running_tasks.pop(task_id, None)
         if bg_task is not None and not bg_task.done():
             bg_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await bg_task
-            except asyncio.CancelledError:
-                pass
 
     def get_recommendations(self, task_id: str) -> list[str]:
         """Get current advisory recommendations for a task."""
@@ -65,9 +61,7 @@ class BackgroundPlannerUseCase:
                     break
 
                 # Check for failures and generate recommendations
-                failed_subtasks = [
-                    st for st in task.subtasks if st.status == SubTaskStatus.FAILED
-                ]
+                failed_subtasks = [st for st in task.subtasks if st.status == SubTaskStatus.FAILED]
                 if failed_subtasks:
                     for st in failed_subtasks:
                         rec = f"Subtask '{st.description}' failed"
@@ -79,7 +73,11 @@ class BackgroundPlannerUseCase:
 
                 # Stop monitoring when task completes
                 if task.status in (TaskStatus.SUCCESS, TaskStatus.FAILED, TaskStatus.FALLBACK):
-                    logger.info("Background planner: task %s completed (%s)", task_id, task.status.value)
+                    logger.info(
+                        "Background planner: task %s completed (%s)",
+                        task_id,
+                        task.status.value,
+                    )
                     break
 
                 await asyncio.sleep(self._poll_interval)

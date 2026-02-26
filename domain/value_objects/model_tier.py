@@ -4,10 +4,10 @@ from enum import Enum
 
 
 class ModelTier(str, Enum):
-    FREE = "free"       # Ollama local ($0)
-    LOW = "low"         # Claude Haiku, Gemini Flash
-    MEDIUM = "medium"   # Claude Sonnet, GPT-4o-mini
-    HIGH = "high"       # Claude Opus, GPT-4o
+    FREE = "free"  # Ollama local ($0)
+    LOW = "low"  # Claude Haiku, Gemini Flash
+    MEDIUM = "medium"  # Claude Sonnet, GPT-4o-mini
+    HIGH = "high"  # Claude Opus, GPT-4o
 
 
 class TaskType(str, Enum):

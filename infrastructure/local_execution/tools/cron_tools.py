@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import uuid
 from typing import Any
 
@@ -126,9 +127,7 @@ async def cron_cancel(args: dict[str, Any]) -> str:
         return f"Job {job_id} not found"
 
     scheduler = await _get_scheduler()
-    try:
+    with contextlib.suppress(Exception):  # Job may have already executed
         scheduler.remove_job(job_id)
-    except Exception:
-        pass  # Job may have already executed
     _registered_jobs.pop(job_id, None)
     return f"Cancelled job {job_id}"

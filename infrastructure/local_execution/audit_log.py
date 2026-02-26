@@ -22,9 +22,7 @@ class JsonlAuditLogger(AuditLogger):
         self._path = log_path
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
-    def log(
-        self, action: Action, result: str, risk: RiskLevel, success: bool = True
-    ) -> None:
+    def log(self, action: Action, result: str, risk: RiskLevel, success: bool = True) -> None:
         entry = {
             "timestamp": datetime.now().isoformat(),
             "tool": action.tool,

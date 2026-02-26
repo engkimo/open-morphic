@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from domain.entities.cost import CostRecord
-from domain.entities.execution import Action, Observation, UndoAction
+from domain.entities.execution import Action, Observation
 from domain.entities.memory import MemoryEntry
 from domain.entities.task import SubTask, TaskEntity
 from domain.value_objects import RiskLevel
@@ -14,7 +14,6 @@ from domain.value_objects.status import (
     SubTaskStatus,
     TaskStatus,
 )
-
 
 # ══════════════════════════════════════════════════════════════════
 #  TaskEntity — core DAG node

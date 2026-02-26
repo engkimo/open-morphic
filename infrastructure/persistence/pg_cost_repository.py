@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -72,18 +72,16 @@ class PgCostRepository(CostRepository):
             total = (await session.execute(total_stmt)).scalar_one()
             if total == 0:
                 return 0.0
-            local_stmt = select(func.count()).select_from(CostLogModel).where(
-                CostLogModel.is_local.is_(True)
+            local_stmt = (
+                select(func.count())
+                .select_from(CostLogModel)
+                .where(CostLogModel.is_local.is_(True))
             )
             local = (await session.execute(local_stmt)).scalar_one()
             return local / total
 
     async def list_recent(self, limit: int = 50) -> list[CostRecord]:
         async with self._session_factory() as session:
-            stmt = (
-                select(CostLogModel)
-                .order_by(CostLogModel.created_at.desc())
-                .limit(limit)
-            )
+            stmt = select(CostLogModel).order_by(CostLogModel.created_at.desc()).limit(limit)
             result = await session.execute(stmt)
             return [self._to_entity(row) for row in result.scalars().all()]

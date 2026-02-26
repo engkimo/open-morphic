@@ -12,7 +12,6 @@ from application.use_cases.interactive_plan import (
     PlanAlreadyDecidedError,
     PlanNotFoundError,
 )
-from domain.entities.plan import ExecutionPlan
 from domain.entities.task import SubTask
 from domain.value_objects.status import PlanStatus
 from infrastructure.persistence.in_memory import InMemoryPlanRepository, InMemoryTaskRepository
@@ -24,9 +23,7 @@ def _make_use_case(
     """Create use case with mocked engine."""
     engine = AsyncMock()
     descriptions = subtask_descriptions or ["step 1", "step 2", "step 3"]
-    engine.decompose = AsyncMock(
-        return_value=[SubTask(description=d) for d in descriptions]
-    )
+    engine.decompose = AsyncMock(return_value=[SubTask(description=d) for d in descriptions])
 
     plan_repo = InMemoryPlanRepository()
     task_repo = InMemoryTaskRepository()

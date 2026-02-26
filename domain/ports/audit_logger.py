@@ -11,9 +11,7 @@ from domain.value_objects import RiskLevel
 
 class AuditLogger(ABC):
     @abstractmethod
-    def log(
-        self, action: Action, result: str, risk: RiskLevel, success: bool = True
-    ) -> None: ...
+    def log(self, action: Action, result: str, risk: RiskLevel, success: bool = True) -> None: ...
 
     @abstractmethod
     def query(

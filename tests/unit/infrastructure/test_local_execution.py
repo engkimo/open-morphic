@@ -62,9 +62,7 @@ class TestShellExec:
 
     async def test_shell_pipe(self, tmp_path: Path) -> None:
         executor = _make_executor(tmp_path)
-        action = Action(
-            tool="shell_pipe", args={"cmds": ["echo hello world", "wc -w"]}
-        )
+        action = Action(tool="shell_pipe", args={"cmds": ["echo hello world", "wc -w"]})
         obs = await executor.execute(action)
         assert obs.status == ObservationStatus.SUCCESS
         assert obs.result.strip() == "2"
@@ -85,9 +83,7 @@ class TestFsRoundTrip:
         )
         assert write_obs.status == ObservationStatus.SUCCESS
 
-        read_obs = await executor.execute(
-            Action(tool="fs_read", args={"path": filepath})
-        )
+        read_obs = await executor.execute(Action(tool="fs_read", args={"path": filepath}))
         assert read_obs.status == ObservationStatus.SUCCESS
         assert read_obs.result == "hello world"
 
@@ -121,9 +117,7 @@ class TestFsRoundTrip:
         (tmp_path / "sub" / "file.txt").write_text("hi")
 
         executor = _make_executor(tmp_path)
-        obs = await executor.execute(
-            Action(tool="fs_tree", args={"path": str(tmp_path)})
-        )
+        obs = await executor.execute(Action(tool="fs_tree", args={"path": str(tmp_path)}))
         assert obs.status == ObservationStatus.SUCCESS
         assert "sub" in obs.result
         assert "file.txt" in obs.result
@@ -166,17 +160,13 @@ class TestConfirmDestructive:
         f = tmp_path / "file.txt"
         f.write_text("x")
 
-        obs = await executor.execute(
-            Action(tool="fs_delete", args={"path": str(f)})
-        )
+        obs = await executor.execute(Action(tool="fs_delete", args={"path": str(f)}))
         assert obs.status == ObservationStatus.DENIED
 
     async def test_shell_exec_allowed(self, tmp_path: Path) -> None:
         """shell_exec is MEDIUM → allowed in confirm-destructive."""
         executor = _make_executor(tmp_path, mode=ApprovalMode.CONFIRM_DESTRUCTIVE)
-        obs = await executor.execute(
-            Action(tool="shell_exec", args={"cmd": "echo ok"})
-        )
+        obs = await executor.execute(Action(tool="shell_exec", args={"cmd": "echo ok"}))
         assert obs.status == ObservationStatus.SUCCESS
 
 
@@ -220,9 +210,7 @@ class TestConfirmAll:
         f = tmp_path / "readable.txt"
         f.write_text("contents")
 
-        obs = await executor.execute(
-            Action(tool="fs_read", args={"path": str(f)})
-        )
+        obs = await executor.execute(Action(tool="fs_read", args={"path": str(f)}))
         assert obs.status == ObservationStatus.SUCCESS
 
     async def test_fs_write_denied(self, tmp_path: Path) -> None:
@@ -236,9 +224,7 @@ class TestConfirmAll:
     async def test_shell_background_denied(self, tmp_path: Path) -> None:
         """LOW tool denied in confirm-all."""
         executor = _make_executor(tmp_path, mode=ApprovalMode.CONFIRM_ALL)
-        obs = await executor.execute(
-            Action(tool="shell_background", args={"cmd": "sleep 1"})
-        )
+        obs = await executor.execute(Action(tool="shell_background", args={"cmd": "sleep 1"}))
         assert obs.status == ObservationStatus.DENIED
 
     async def test_fs_glob_allowed(self, tmp_path: Path) -> None:
@@ -382,16 +368,12 @@ class TestUndo:
 class TestSudoCritical:
     async def test_sudo_denied_in_confirm_destructive(self, tmp_path: Path) -> None:
         executor = _make_executor(tmp_path, mode=ApprovalMode.CONFIRM_DESTRUCTIVE)
-        obs = await executor.execute(
-            Action(tool="shell_exec", args={"cmd": "sudo echo hi"})
-        )
+        obs = await executor.execute(Action(tool="shell_exec", args={"cmd": "sudo echo hi"}))
         assert obs.status == ObservationStatus.DENIED
 
     async def test_rm_rf_denied_in_confirm_destructive(self, tmp_path: Path) -> None:
         executor = _make_executor(tmp_path, mode=ApprovalMode.CONFIRM_DESTRUCTIVE)
-        obs = await executor.execute(
-            Action(tool="shell_exec", args={"cmd": "rm -rf /tmp/danger"})
-        )
+        obs = await executor.execute(Action(tool="shell_exec", args={"cmd": "rm -rf /tmp/danger"}))
         assert obs.status == ObservationStatus.DENIED
 
     async def test_sudo_allowed_in_full_auto(self, tmp_path: Path) -> None:
@@ -439,14 +421,22 @@ class TestUndoManager:
 
     def test_lifo_order(self) -> None:
         mgr = UndoManager()
-        mgr.push(UndoAction(
-            original_tool="a", original_args={},
-            undo_tool="undo_a", undo_args={},
-        ))
-        mgr.push(UndoAction(
-            original_tool="b", original_args={},
-            undo_tool="undo_b", undo_args={},
-        ))
+        mgr.push(
+            UndoAction(
+                original_tool="a",
+                original_args={},
+                undo_tool="undo_a",
+                undo_args={},
+            )
+        )
+        mgr.push(
+            UndoAction(
+                original_tool="b",
+                original_args={},
+                undo_tool="undo_b",
+                undo_args={},
+            )
+        )
         assert mgr.pop().undo_tool == "undo_b"
         assert mgr.pop().undo_tool == "undo_a"
 

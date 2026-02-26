@@ -76,9 +76,7 @@ async def fs_tree(args: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _walk(
-    directory: Path, prefix: str, max_depth: int, depth: int, lines: list[str]
-) -> None:
+def _walk(directory: Path, prefix: str, max_depth: int, depth: int, lines: list[str]) -> None:
     if depth >= max_depth or not directory.is_dir():
         return
     entries = sorted(directory.iterdir())

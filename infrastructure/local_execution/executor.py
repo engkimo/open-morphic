@@ -83,9 +83,7 @@ class LocalExecutor(LocalExecutorPort):
     async def undo_last(self) -> Observation:
         undo = self._undo_manager.pop()
         if undo is None:
-            return Observation(
-                status=ObservationStatus.ERROR, result="Nothing to undo"
-            )
+            return Observation(status=ObservationStatus.ERROR, result="Nothing to undo")
 
         tool_func = self._registry.get(undo.undo_tool)
         if tool_func is None:
@@ -99,9 +97,7 @@ class LocalExecutor(LocalExecutorPort):
         except Exception as e:
             return Observation(status=ObservationStatus.ERROR, result=f"Undo failed: {e}")
 
-        risk = self._risk_assessor.assess(
-            Action(tool=undo.undo_tool, args=undo.undo_args)
-        )
+        risk = self._risk_assessor.assess(Action(tool=undo.undo_tool, args=undo.undo_args))
         self._audit.log(
             Action(tool=undo.undo_tool, args=undo.undo_args, description="undo"),
             result[:500],

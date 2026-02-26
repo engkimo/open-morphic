@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from decimal import Decimal
 
@@ -34,12 +35,13 @@ class PgPlanRepository(PlanRepository):
         ]
         task_uuid = None
         if plan.task_id:
-            try:
+            with contextlib.suppress(ValueError):
                 task_uuid = uuid.UUID(plan.task_id)
-            except ValueError:
-                pass
+        plan_uuid = (
+            uuid.UUID(plan.id) if len(plan.id) == 36 else uuid.uuid5(uuid.NAMESPACE_DNS, plan.id)
+        )
         return PlanModel(
-            id=uuid.UUID(plan.id) if len(plan.id) == 36 else uuid.uuid5(uuid.NAMESPACE_DNS, plan.id),
+            id=plan_uuid,
             goal=plan.goal,
             status=plan.status.value,
             steps=steps_json,
@@ -117,8 +119,6 @@ class PgPlanRepository(PlanRepository):
                 ]
                 model.total_estimated_cost_usd = Decimal(str(plan.total_estimated_cost_usd))
                 if plan.task_id:
-                    try:
+                    with contextlib.suppress(ValueError):
                         model.task_id = uuid.UUID(plan.task_id)
-                    except ValueError:
-                        pass
             await session.commit()

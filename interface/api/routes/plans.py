@@ -49,10 +49,10 @@ async def approve_plan(plan_id: str, request: Request) -> TaskResponse:
     c = _container(request)
     try:
         task = await c.interactive_plan.approve_plan(plan_id)
-    except PlanNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found")
+    except PlanNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found") from e
     except PlanAlreadyDecidedError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e)) from e
 
     # Optionally trigger execution
     if c.settings.celery_enabled:
@@ -69,8 +69,8 @@ async def reject_plan(plan_id: str, request: Request) -> ExecutionPlanResponse:
     c = _container(request)
     try:
         plan = await c.interactive_plan.reject_plan(plan_id)
-    except PlanNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found")
+    except PlanNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found") from e
     except PlanAlreadyDecidedError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e)) from e
     return ExecutionPlanResponse.from_plan(plan)

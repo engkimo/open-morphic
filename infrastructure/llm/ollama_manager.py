@@ -19,9 +19,7 @@ class OllamaManager:
         self, method: str, path: str, *, timeout: float = 5.0, **kwargs: object
     ) -> httpx.Response:
         """HTTP request to Ollama server."""
-        async with httpx.AsyncClient(
-            base_url=self._base_url, timeout=timeout
-        ) as client:
+        async with httpx.AsyncClient(base_url=self._base_url, timeout=timeout) as client:
             func = getattr(client, method)
             return await func(path, **kwargs)
 

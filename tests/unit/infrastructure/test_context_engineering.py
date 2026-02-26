@@ -14,15 +14,14 @@ import pytest
 
 from domain.entities.task import SubTask, TaskEntity
 from domain.services.tool_state_machine import ToolDefinition, ToolStateMachine
-from domain.value_objects.tool_state import ToolState
 from domain.value_objects.status import SubTaskStatus
+from domain.value_objects.tool_state import ToolState
 from infrastructure.context_engineering.file_context import FileContext
 from infrastructure.context_engineering.kv_cache_optimizer import KVCacheOptimizer
 from infrastructure.context_engineering.observation_diversifier import (
     ObservationDiversifier,
 )
 from infrastructure.context_engineering.todo_manager import FileTodoManager
-
 
 # ═══════════════════════════════════════════════════════════════
 # CC#2: ToolStateMachine — tool count invariant
@@ -62,9 +61,7 @@ class TestToolStateMachine:
         assert sm.get_state("fs_read") == ToolState.ENABLED
         assert len(sm.get_enabled_tools()) == 5
 
-    def test_total_count_invariant_after_many_operations(
-        self, sm: ToolStateMachine
-    ) -> None:
+    def test_total_count_invariant_after_many_operations(self, sm: ToolStateMachine) -> None:
         """CC#2: total_count never changes regardless of mask/unmask."""
         sm.mask("shell_exec")
         sm.mask("fs_read")
@@ -94,9 +91,7 @@ class TestToolStateMachine:
         assert count == 2
         assert len(sm.get_enabled_tools()) == 5
 
-    def test_get_all_tools_returns_all_regardless_of_state(
-        self, sm: ToolStateMachine
-    ) -> None:
+    def test_get_all_tools_returns_all_regardless_of_state(self, sm: ToolStateMachine) -> None:
         sm.mask("shell_exec")
         sm.mask("fs_read")
         all_tools = sm.get_all_tools()
@@ -138,15 +133,11 @@ class TestKVCacheOptimizer:
         prefix_len = len(optimizer.stable_prefix)
         assert p1[:prefix_len] == p2[:prefix_len] == p3[:prefix_len]
 
-    def test_no_dynamic_context_returns_prefix_only(
-        self, optimizer: KVCacheOptimizer
-    ) -> None:
+    def test_no_dynamic_context_returns_prefix_only(self, optimizer: KVCacheOptimizer) -> None:
         prompt = optimizer.build_system_prompt()
         assert prompt == optimizer.stable_prefix
 
-    def test_dynamic_context_appended_after_prefix(
-        self, optimizer: KVCacheOptimizer
-    ) -> None:
+    def test_dynamic_context_appended_after_prefix(self, optimizer: KVCacheOptimizer) -> None:
         prompt = optimizer.build_system_prompt({"goal": "fibonacci"})
         assert "fibonacci" in prompt
         assert prompt.index("fibonacci") > len(optimizer.stable_prefix)
@@ -191,9 +182,7 @@ class TestObservationDiversifier:
         formats = [diversifier.serialize(obs, i) for i in range(3)]
         assert len(set(formats)) == 3  # All different
 
-    def test_four_consecutive_all_different(
-        self, diversifier: ObservationDiversifier
-    ) -> None:
+    def test_four_consecutive_all_different(self, diversifier: ObservationDiversifier) -> None:
         """All 4 default templates produce distinct output."""
         obs = {"result": "data", "status": "done"}
         formats = [diversifier.serialize(obs, i) for i in range(4)]
@@ -210,7 +199,7 @@ class TestObservationDiversifier:
     def test_step_index_in_output(self, diversifier: ObservationDiversifier) -> None:
         """Templates that use {n} include the step index."""
         obs = {"result": "test", "status": "ok"}
-        s = diversifier.serialize(obs, 42)
+        diversifier.serialize(obs, 42)
         # At least one template uses {n}, so check step 42 appears somewhere
         # Template index 42 % 4 = 2 → "Completed: test | State: ok" (no {n})
         # Template index 43 % 4 = 3 → "[ok] >> test (step 43)"
@@ -245,9 +234,7 @@ class TestTodoManager:
     def test_read_empty_when_no_file(self, manager: FileTodoManager) -> None:
         assert manager.read() == ""
 
-    def test_update_creates_file(
-        self, manager: FileTodoManager, todo_path
-    ) -> None:
+    def test_update_creates_file(self, manager: FileTodoManager, todo_path) -> None:
         task = TaskEntity(
             goal="Build fibonacci",
             subtasks=[
@@ -262,9 +249,7 @@ class TestTodoManager:
         assert "[ ] Write code" in content
         assert "[ ] Write tests" in content
 
-    def test_update_reflects_status_changes(
-        self, manager: FileTodoManager, todo_path
-    ) -> None:
+    def test_update_reflects_status_changes(self, manager: FileTodoManager, todo_path) -> None:
         """CC#3: todo.md updated before/after — status markers change."""
         s1 = SubTask(description="Step A")
         s2 = SubTask(description="Step B")
@@ -289,9 +274,7 @@ class TestTodoManager:
         content = manager.format_for_context(task)
         assert "50%" in content
 
-    def test_format_for_context_matches_file_content(
-        self, manager: FileTodoManager
-    ) -> None:
+    def test_format_for_context_matches_file_content(self, manager: FileTodoManager) -> None:
         task = TaskEntity(
             goal="Format test",
             subtasks=[SubTask(description="Only step")],

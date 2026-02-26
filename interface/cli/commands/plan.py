@@ -27,7 +27,11 @@ def _print_plan(plan) -> None:  # noqa: ANN001
         table.add_column("Est. Tokens", justify="right")
 
         for i, step in enumerate(plan.steps, 1):
-            cost_str = "[green]$0.0000[/]" if step.estimated_cost_usd == 0 else f"${step.estimated_cost_usd:.4f}"
+            cost_str = (
+                "[green]$0.0000[/]"
+                if step.estimated_cost_usd == 0
+                else f"${step.estimated_cost_usd:.4f}"
+            )
             table.add_row(
                 str(i),
                 step.subtask_description[:60],
@@ -38,7 +42,9 @@ def _print_plan(plan) -> None:  # noqa: ANN001
         console.print(table)
 
     total_style = "green" if plan.total_estimated_cost_usd == 0 else "yellow"
-    console.print(f"\n[bold]Total estimated cost:[/] [{total_style}]${plan.total_estimated_cost_usd:.4f}[/]")
+    console.print(
+        f"\n[bold]Total estimated cost:[/] [{total_style}]${plan.total_estimated_cost_usd:.4f}[/]"
+    )
 
     if plan.task_id:
         console.print(f"Task ID: [dim]{plan.task_id}[/]")
@@ -133,9 +139,9 @@ def reject(
     c = _get_container()
     try:
         _run(c.interactive_plan.reject_plan(plan_id))
-    except PlanNotFoundError:
+    except PlanNotFoundError as e:
         print_error(f"Plan {plan_id} not found")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
     except PlanAlreadyDecidedError as e:
         print_error(str(e))
         raise typer.Exit(code=1) from e
@@ -148,9 +154,9 @@ def _do_approve(c, plan_id: str) -> None:  # noqa: ANN001
 
     try:
         task = _run(c.interactive_plan.approve_plan(plan_id))
-    except PlanNotFoundError:
+    except PlanNotFoundError as e:
         print_error(f"Plan {plan_id} not found")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
     except PlanAlreadyDecidedError as e:
         print_error(str(e))
         raise typer.Exit(code=1) from e

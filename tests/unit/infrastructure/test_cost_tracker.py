@@ -52,9 +52,7 @@ class TestRecord:
         await tracker.record(_make_response(model="claude-sonnet-4-6", cost=0.003))
         assert repo.records[0].is_local is False
 
-    async def test_preserves_cost(
-        self, tracker: CostTracker, repo: InMemoryCostRepository
-    ) -> None:
+    async def test_preserves_cost(self, tracker: CostTracker, repo: InMemoryCostRepository) -> None:
         await tracker.record(_make_response(model="claude-sonnet-4-6", cost=0.005))
         assert repo.records[0].cost_usd == pytest.approx(0.005)
 

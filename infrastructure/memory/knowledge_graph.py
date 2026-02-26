@@ -12,7 +12,7 @@ from typing import Any
 from domain.ports.knowledge_graph import KnowledgeGraphPort
 
 try:
-    from neo4j import AsyncGraphDatabase, AsyncDriver
+    from neo4j import AsyncDriver, AsyncGraphDatabase
 except ImportError:
     AsyncGraphDatabase = None  # type: ignore[assignment, misc]
     AsyncDriver = None  # type: ignore[assignment, misc]
@@ -43,9 +43,7 @@ class Neo4jKnowledgeGraph(KnowledgeGraphPort):
         props["name"] = name
         props["entity_type"] = entity_type
 
-        cypher = (
-            f"CREATE (n:{_safe_label(entity_type)} $props) RETURN n.id AS id"
-        )
+        cypher = f"CREATE (n:{_safe_label(entity_type)} $props) RETURN n.id AS id"
         async with self._driver.session() as session:
             result = await session.run(cypher, props=props)
             record = await result.single()
@@ -69,9 +67,7 @@ class Neo4jKnowledgeGraph(KnowledgeGraphPort):
             "RETURN r.id AS id"
         )
         async with self._driver.session() as session:
-            result = await session.run(
-                cypher, from_id=from_id, to_id=to_id, props=props
-            )
+            result = await session.run(cypher, from_id=from_id, to_id=to_id, props=props)
             record = await result.single()
             return record["id"] if record else relation_id
 

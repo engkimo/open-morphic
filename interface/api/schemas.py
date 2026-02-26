@@ -6,11 +6,15 @@ Plain strings for enums to avoid Pydantic strict-mode issues in JSON.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
 from domain.entities.cost import CostRecord
 from domain.entities.task import SubTask, TaskEntity
+
+if TYPE_CHECKING:
+    from domain.entities.plan import ExecutionPlan, PlanStep
 
 
 # ── Task schemas ──
@@ -139,9 +143,7 @@ class PlanStepResponse(BaseModel):
     risk_note: str = ""
 
     @classmethod
-    def from_step(cls, step: "PlanStep") -> PlanStepResponse:
-        from domain.entities.plan import PlanStep
-
+    def from_step(cls, step: PlanStep) -> PlanStepResponse:
         return cls(
             subtask_description=step.subtask_description,
             proposed_model=step.proposed_model,
@@ -161,9 +163,7 @@ class ExecutionPlanResponse(BaseModel):
     created_at: datetime
 
     @classmethod
-    def from_plan(cls, plan: "ExecutionPlan") -> ExecutionPlanResponse:
-        from domain.entities.plan import ExecutionPlan
-
+    def from_plan(cls, plan: ExecutionPlan) -> ExecutionPlanResponse:
         return cls(
             id=plan.id,
             goal=plan.goal,

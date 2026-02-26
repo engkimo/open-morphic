@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -30,9 +30,7 @@ class TestCronSchedule:
     async def test_schedule_recurring_job(self) -> None:
         scheduler = _mock_scheduler()
         with patch.object(cron_tools, "_get_scheduler", return_value=scheduler):
-            result = await cron_tools.cron_schedule(
-                {"cmd": "echo hello", "cron": "0 9 * * *"}
-            )
+            result = await cron_tools.cron_schedule({"cmd": "echo hello", "cron": "0 9 * * *"})
         assert "Scheduled recurring" in result
         scheduler.add_job.assert_called_once()
 
@@ -66,9 +64,7 @@ class TestCronOnce:
     async def test_schedule_one_shot(self) -> None:
         scheduler = _mock_scheduler()
         with patch.object(cron_tools, "_get_scheduler", return_value=scheduler):
-            result = await cron_tools.cron_once(
-                {"cmd": "echo done", "delay_seconds": 60}
-            )
+            result = await cron_tools.cron_once({"cmd": "echo done", "delay_seconds": 60})
         assert "one-shot" in result
         scheduler.add_job.assert_called_once()
 

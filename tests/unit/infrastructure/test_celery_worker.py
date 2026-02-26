@@ -27,16 +27,14 @@ class TestCeleryApp:
 
 class TestExecuteTaskWorker:
     def test_task_registered(self) -> None:
-        from infrastructure.queue.celery_app import celery_app
-
         # Force import to register
         import infrastructure.queue.tasks  # noqa: F401
+        from infrastructure.queue.celery_app import celery_app
 
         assert "morphic.execute_task" in celery_app.tasks
 
     @patch("infrastructure.queue.tasks._execute_async")
     def test_worker_calls_execute_async(self, mock_exec: MagicMock) -> None:
-        import asyncio
 
         from infrastructure.queue.tasks import execute_task_worker
 

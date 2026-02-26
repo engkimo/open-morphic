@@ -103,9 +103,7 @@ class LangGraphTaskEngine(TaskEngine):
         async def execute_one(subtask_id: str) -> dict:
             subtask = subtask_map[subtask_id]
             subtask.status = SubTaskStatus.RUNNING
-            system_content = self._kv_cache.build_system_prompt(
-                {"goal": self._task.goal}
-            )
+            system_content = self._kv_cache.build_system_prompt({"goal": self._task.goal})
             messages = [
                 {"role": "system", "content": system_content},
                 {"role": "user", "content": subtask.description},
@@ -143,9 +141,7 @@ class LangGraphTaskEngine(TaskEngine):
 
         for idx, r in enumerate(results):
             cost += r.get("cost", 0.0)
-            r["formatted"] = self._diversifier.serialize(
-                r, len(state["history"]) + idx
-            )
+            r["formatted"] = self._diversifier.serialize(r, len(state["history"]) + idx)
             history.append(r)
 
         return {"cost_so_far": cost, "history": history}
@@ -161,9 +157,7 @@ class LangGraphTaskEngine(TaskEngine):
             return "done"
 
         # Pending subtasks exist but none are ready → blocked by failed deps
-        pending = [
-            s for s in self._task.subtasks if s.status == SubTaskStatus.PENDING
-        ]
+        pending = [s for s in self._task.subtasks if s.status == SubTaskStatus.PENDING]
         if pending:
             for s in pending:
                 s.status = SubTaskStatus.FAILED

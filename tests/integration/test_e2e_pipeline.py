@@ -27,7 +27,6 @@ from infrastructure.task_graph.engine import LangGraphTaskEngine
 from infrastructure.task_graph.intent_analyzer import IntentAnalyzer
 from shared.config import Settings
 
-
 # ── In-memory TaskRepository ──
 
 
@@ -168,7 +167,7 @@ class TestE2EPipelineLocal:
         execute_uc = ExecuteTaskUseCase(engine=engine, repo=task_repo)
         result = await execute_uc.execute(task.id)
 
-        print(f"\n  After execution:")
+        print("\n  After execution:")
         print(f"  Status: {result.status.value}")
         print(f"  Success rate: {result.success_rate:.0%}")
         print(f"  Total cost: ${result.total_cost_usd:.6f}")
@@ -287,21 +286,15 @@ class TestE2EPipelineCloud:
         )
         cost_repo = _InMemoryCostRepo()
         cost_tracker = CostTracker(cost_repo)
-        cloud_gw = LiteLLMGateway(
-            ollama=ollama, cost_tracker=cost_tracker, settings=cloud_settings
-        )
 
         # Use Haiku to minimize cost
         class _HaikuGateway(LiteLLMGateway):
             """Force Haiku model for all completions."""
-            async def complete(self, messages, model=None, **kwargs):
-                return await super().complete(
-                    messages, model="claude-haiku-4-5-20251001", **kwargs
-                )
 
-        haiku_gw = _HaikuGateway(
-            ollama=ollama, cost_tracker=cost_tracker, settings=cloud_settings
-        )
+            async def complete(self, messages, model=None, **kwargs):
+                return await super().complete(messages, model="claude-haiku-4-5-20251001", **kwargs)
+
+        haiku_gw = _HaikuGateway(ollama=ollama, cost_tracker=cost_tracker, settings=cloud_settings)
 
         analyzer = IntentAnalyzer(llm=haiku_gw)
         engine = LangGraphTaskEngine(llm=haiku_gw, analyzer=analyzer)
@@ -310,7 +303,7 @@ class TestE2EPipelineCloud:
         create_uc = CreateTaskUseCase(engine=engine, repo=task_repo)
         task = await create_uc.execute("Explain what a linked list is in one sentence")
 
-        print(f"\n  Cloud pipeline (Haiku):")
+        print("\n  Cloud pipeline (Haiku):")
         print(f"  Subtasks: {len(task.subtasks)}")
 
         execute_uc = ExecuteTaskUseCase(engine=engine, repo=task_repo)
@@ -325,6 +318,9 @@ class TestE2EPipelineCloud:
         # Cloud model should have non-zero cost
         assert result.status in (TaskStatus.SUCCESS, TaskStatus.FALLBACK)
         assert result.total_cost_usd > 0, "Cloud pipeline should have non-zero cost"
-        assert all("claude" in (st.model_used or "") for st in result.subtasks
-                    if st.status == SubTaskStatus.SUCCESS)
+        assert all(
+            "claude" in (st.model_used or "")
+            for st in result.subtasks
+            if st.status == SubTaskStatus.SUCCESS
+        )
         assert len(cost_repo._records) >= 1

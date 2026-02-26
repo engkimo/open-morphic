@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from domain.entities.cost import CostRecord
 from domain.ports.cost_repository import CostRepository
@@ -28,7 +28,7 @@ class CostTracker:
             cost_usd=response.cost_usd,
             cached_tokens=0,
             is_local=response.model.startswith("ollama/"),
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
         await self._repo.save(record)
 

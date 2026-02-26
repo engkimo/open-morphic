@@ -48,9 +48,7 @@ async def system_resource_info(args: dict[str, Any]) -> str:
 
 async def system_clipboard_get(args: dict[str, Any]) -> str:
     """Read clipboard contents (macOS: pbpaste)."""
-    result = subprocess.run(
-        ["pbpaste"], capture_output=True, text=True, timeout=5, check=False
-    )
+    result = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=5, check=False)
     return result.stdout
 
 

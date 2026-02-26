@@ -71,9 +71,7 @@ class TestExecuteTask:
 
         assert result.status == TaskStatus.FAILED
 
-    async def test_not_found_raises(
-        self, use_case: ExecuteTaskUseCase, repo: AsyncMock
-    ) -> None:
+    async def test_not_found_raises(self, use_case: ExecuteTaskUseCase, repo: AsyncMock) -> None:
         repo.get_by_id.return_value = None
 
         with pytest.raises(TaskNotFoundError) as exc_info:

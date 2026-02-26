@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 
 from sqlalchemy import select
@@ -38,7 +37,11 @@ class PgTaskRepository(TaskRepository):
             for st in task.subtasks
         ]
         return TaskModel(
-            id=uuid.UUID(task.id) if len(task.id) == 36 else uuid.uuid5(uuid.NAMESPACE_DNS, task.id),
+            id=(
+                uuid.UUID(task.id)
+                if len(task.id) == 36
+                else uuid.uuid5(uuid.NAMESPACE_DNS, task.id)
+            ),
             goal=task.goal,
             status=task.status.value,
             depth=0,

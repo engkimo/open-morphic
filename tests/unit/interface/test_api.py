@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 
 from domain.entities.cost import CostRecord
 from domain.entities.task import SubTask, TaskEntity
-from domain.ports.llm_gateway import LLMResponse
 from domain.value_objects.status import SubTaskStatus, TaskStatus
 from infrastructure.llm.cost_tracker import CostTracker
 from infrastructure.memory.memory_hierarchy import MemoryHierarchy
@@ -22,7 +21,6 @@ from infrastructure.persistence.in_memory import (
     InMemoryTaskRepository,
 )
 from interface.api.main import create_app
-
 
 # ── Mock container ──
 
@@ -115,9 +113,7 @@ class TestTaskEndpoints:
         assert data["count"] == 1
         assert data["tasks"][0]["goal"] == "my task"
 
-    async def test_get_task_found(
-        self, client: TestClient, container: _MockContainer
-    ) -> None:
+    async def test_get_task_found(self, client: TestClient, container: _MockContainer) -> None:
         task = _make_task("specific task")
         await container.task_repo.save(task)
         resp = client.get(f"/api/tasks/{task.id}")
@@ -128,9 +124,7 @@ class TestTaskEndpoints:
         resp = client.get("/api/tasks/nonexistent")
         assert resp.status_code == 404
 
-    async def test_delete_task(
-        self, client: TestClient, container: _MockContainer
-    ) -> None:
+    async def test_delete_task(self, client: TestClient, container: _MockContainer) -> None:
         task = _make_task("to delete")
         await container.task_repo.save(task)
         resp = client.delete(f"/api/tasks/{task.id}")
@@ -180,9 +174,7 @@ class TestModelEndpoints:
         assert data["default_model"] == "qwen3:8b"
         assert len(data["models"]) == 2
 
-    def test_model_status_ollama_down(
-        self, client: TestClient, container: _MockContainer
-    ) -> None:
+    def test_model_status_ollama_down(self, client: TestClient, container: _MockContainer) -> None:
         container.ollama.is_running = AsyncMock(return_value=False)
         resp = client.get("/api/models/status")
         data = resp.json()
@@ -220,9 +212,7 @@ class TestCostEndpoints:
         assert data["daily_total_usd"] == pytest.approx(0.01)
         assert data["local_usage_rate"] == pytest.approx(0.5)
 
-    async def test_cost_logs(
-        self, client: TestClient, container: _MockContainer
-    ) -> None:
+    async def test_cost_logs(self, client: TestClient, container: _MockContainer) -> None:
         await container.cost_repo.save(
             CostRecord(model="ollama/qwen3:8b", cost_usd=0.0, is_local=True)
         )
@@ -246,9 +236,7 @@ class TestMemoryEndpoints:
         assert data["results"] == []
         assert data["count"] == 0
 
-    async def test_search_with_data(
-        self, client: TestClient, container: _MockContainer
-    ) -> None:
+    async def test_search_with_data(self, client: TestClient, container: _MockContainer) -> None:
         await container.memory.add("Python is great for data science")
         resp = client.get("/api/memory/search", params={"q": "Python"})
         data = resp.json()
@@ -263,7 +251,8 @@ class TestMemoryEndpoints:
 
 class TestWebSocket:
     async def test_ws_task_not_found(
-        self, client: TestClient,
+        self,
+        client: TestClient,
     ) -> None:
         with client.websocket_connect("/ws/tasks/nonexistent") as ws:
             data = ws.receive_json()

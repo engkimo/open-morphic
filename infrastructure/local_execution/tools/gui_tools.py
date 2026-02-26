@@ -16,7 +16,9 @@ async def gui_applescript(args: dict[str, Any]) -> str:
         raise RuntimeError("AppleScript is only available on macOS")
 
     proc = await asyncio.create_subprocess_exec(
-        "osascript", "-e", script,
+        "osascript",
+        "-e",
+        script,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -35,7 +37,9 @@ async def gui_open_app(args: dict[str, Any]) -> str:
         raise RuntimeError("gui_open_app is only available on macOS")
 
     proc = await asyncio.create_subprocess_exec(
-        "open", "-a", app_name,
+        "open",
+        "-a",
+        app_name,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -52,7 +56,9 @@ async def gui_screenshot_ocr(args: dict[str, Any]) -> str:
         raise RuntimeError("gui_screenshot_ocr is only available on macOS")
 
     proc = await asyncio.create_subprocess_exec(
-        "screencapture", "-x", path,
+        "screencapture",
+        "-x",
+        path,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

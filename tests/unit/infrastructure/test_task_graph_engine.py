@@ -82,9 +82,7 @@ class TestExecute:
         # s1 in first batch, s2 in second → 2 LLM calls across 2 iterations
         assert llm.complete.await_count == 2
 
-    async def test_retry_on_failure(
-        self, engine: LangGraphTaskEngine, llm: AsyncMock
-    ) -> None:
+    async def test_retry_on_failure(self, engine: LangGraphTaskEngine, llm: AsyncMock) -> None:
         llm.complete.side_effect = [
             Exception("Ollama timeout"),
             _ok_response("recovered"),
@@ -140,13 +138,11 @@ class TestExecute:
     ) -> None:
         task = TaskEntity(goal="Empty task", subtasks=[])
 
-        result = await engine.execute(task)
+        await engine.execute(task)
 
         llm.complete.assert_not_awaited()
 
-    async def test_accumulates_cost(
-        self, engine: LangGraphTaskEngine, llm: AsyncMock
-    ) -> None:
+    async def test_accumulates_cost(self, engine: LangGraphTaskEngine, llm: AsyncMock) -> None:
         llm.complete.side_effect = [
             _ok_response("a", cost=0.01),
             _ok_response("b", cost=0.02),

@@ -20,7 +20,6 @@ from infrastructure.llm.litellm_gateway import LiteLLMGateway
 from infrastructure.llm.ollama_manager import OllamaManager
 from shared.config import Settings
 
-
 # ── Shared helpers ──
 
 
@@ -55,8 +54,13 @@ async def _try_complete(gateway: LiteLLMGateway, model: str, messages: list) -> 
         if any(
             kw in error_str
             for kw in [
-                "quota", "rate limit", "authentication", "invalid api key",
-                "api_key_invalid", "not found", "no longer available",
+                "quota",
+                "rate limit",
+                "authentication",
+                "invalid api key",
+                "api_key_invalid",
+                "not found",
+                "no longer available",
             ]
         ):
             pytest.skip(f"{model}: {type(e).__name__} — {str(e)[:120]}")
@@ -96,9 +100,7 @@ def gateway(
     return LiteLLMGateway(ollama=ollama, cost_tracker=cost_tracker, settings=settings)
 
 
-SIMPLE_MESSAGES = [
-    {"role": "user", "content": "What is 2+2? Answer with just the number."}
-]
+SIMPLE_MESSAGES = [{"role": "user", "content": "What is 2+2? Answer with just the number."}]
 
 
 # ══════════════════════════════════════════════════════════
@@ -158,9 +160,7 @@ class TestAnthropicLive:
 
 
 class TestOpenAILive:
-    async def test_o4_mini_completion(
-        self, gateway: LiteLLMGateway, settings: Settings
-    ) -> None:
+    async def test_o4_mini_completion(self, gateway: LiteLLMGateway, settings: Settings) -> None:
         """MEDIUM tier: o4-mini (reasoning)."""
         if not settings.has_openai:
             pytest.skip("OPENAI_API_KEY not set")
@@ -174,9 +174,7 @@ class TestOpenAILive:
             f" Cost: ${result.cost_usd:.6f}"
         )
 
-    async def test_o3_completion(
-        self, gateway: LiteLLMGateway, settings: Settings
-    ) -> None:
+    async def test_o3_completion(self, gateway: LiteLLMGateway, settings: Settings) -> None:
         """HIGH tier: o3 (reasoning)."""
         if not settings.has_openai:
             pytest.skip("OPENAI_API_KEY not set")
@@ -244,9 +242,7 @@ class TestCostTracking:
             pytest.skip("ANTHROPIC_API_KEY not set")
         repo = _InMemoryCostRepo()
         tracker = CostTracker(repo)
-        gw = LiteLLMGateway(
-            ollama=OllamaManager(), cost_tracker=tracker, settings=settings
-        )
+        gw = LiteLLMGateway(ollama=OllamaManager(), cost_tracker=tracker, settings=settings)
 
         result = await _try_complete(gw, "claude-haiku-4-5-20251001", SIMPLE_MESSAGES)
         assert result.cost_usd > 0, f"API cost should be > 0, got {result.cost_usd}"

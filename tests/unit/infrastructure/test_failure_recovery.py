@@ -12,11 +12,9 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
-import pytest
-
 from application.use_cases.create_task import CreateTaskUseCase
 from application.use_cases.execute_task import ExecuteTaskUseCase
-from domain.entities.task import SubTask, TaskEntity
+from domain.entities.task import SubTask
 from domain.ports.llm_gateway import LLMResponse
 from domain.value_objects.status import SubTaskStatus, TaskStatus
 from infrastructure.persistence.in_memory import InMemoryTaskRepository

@@ -69,15 +69,11 @@ class TestOllamaLive:
         assert len(models) > 0
         print(f"\n  Installed models: {models}")
 
-    async def test_direct_inference(
-        self, ollama: OllamaManager, qwen3_model: str
-    ) -> None:
+    async def test_direct_inference(self, ollama: OllamaManager, qwen3_model: str) -> None:
         """Direct Ollama API call to verify inference works."""
         import httpx
 
-        async with httpx.AsyncClient(
-            base_url="http://127.0.0.1:11434", timeout=120.0
-        ) as client:
+        async with httpx.AsyncClient(base_url="http://127.0.0.1:11434", timeout=120.0) as client:
             resp = await client.post(
                 "/api/chat",
                 json={
@@ -132,9 +128,7 @@ class TestIntentAnalyzerLive:
 
         settings = Settings()
         cost_tracker = CostTracker(_InMemoryCostRepo())
-        gateway = LiteLLMGateway(
-            ollama=ollama, cost_tracker=cost_tracker, settings=settings
-        )
+        gateway = LiteLLMGateway(ollama=ollama, cost_tracker=cost_tracker, settings=settings)
         analyzer = IntentAnalyzer(llm=gateway)
 
         subtasks = await analyzer.decompose(
@@ -191,9 +185,7 @@ class TestLAEELive:
             print(f"\n  fs_write: {obs.result}")
 
             # Read
-            obs = await executor.execute(
-                Action(tool="fs_read", args={"path": filepath})
-            )
+            obs = await executor.execute(Action(tool="fs_read", args={"path": filepath}))
             assert obs.status == ObservationStatus.SUCCESS
             assert "def hello" in obs.result
             print(f"  fs_read: {obs.result[:50]}...")
@@ -208,9 +200,7 @@ class TestLAEELive:
             assert obs.status == ObservationStatus.SUCCESS
 
             # Verify edit
-            obs = await executor.execute(
-                Action(tool="fs_read", args={"path": filepath})
-            )
+            obs = await executor.execute(Action(tool="fs_read", args={"path": filepath}))
             assert "morphic" in obs.result
             print(f"  After edit: {obs.result[:50]}...")
 
@@ -219,18 +209,14 @@ class TestLAEELive:
             assert obs.status == ObservationStatus.SUCCESS
 
             # Verify undo
-            obs = await executor.execute(
-                Action(tool="fs_read", args={"path": filepath})
-            )
+            obs = await executor.execute(Action(tool="fs_read", args={"path": filepath}))
             assert "world" in obs.result
             print(f"  After undo: {obs.result[:50]}...")
 
             # Check audit log
             log_path = Path(tmp) / "audit.jsonl"
             entries = [
-                json.loads(line)
-                for line in log_path.read_text().splitlines()
-                if line.strip()
+                json.loads(line) for line in log_path.read_text().splitlines() if line.strip()
             ]
             print(f"  Audit log: {len(entries)} entries")
             assert len(entries) >= 4
@@ -291,9 +277,7 @@ class TestLAEELive:
                 approval_mode=ApprovalMode.CONFIRM_DESTRUCTIVE,
                 audit_logger=audit,
             )
-            obs = await executor.execute(
-                Action(tool="shell_exec", args={"cmd": "sudo echo hi"})
-            )
+            obs = await executor.execute(Action(tool="shell_exec", args={"cmd": "sudo echo hi"}))
             assert obs.status == ObservationStatus.DENIED
             print("\n  sudo command: DENIED (correct, CRITICAL risk)")
 
@@ -322,9 +306,7 @@ class TestLAEELive:
                 approval_mode=ApprovalMode.FULL_AUTO,
                 audit_logger=audit,
             )
-            obs = await executor.execute(
-                Action(tool="system_resource_info", args={})
-            )
+            obs = await executor.execute(Action(tool="system_resource_info", args={}))
             assert obs.status == ObservationStatus.SUCCESS
             assert "CPU" in obs.result
             print(f"\n  {obs.result}")

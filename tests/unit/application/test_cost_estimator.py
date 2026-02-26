@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
-from application.use_cases.cost_estimator import CostEstimator, MODEL_COST_TABLE
+from application.use_cases.cost_estimator import CostEstimator
 
 
 class TestCostEstimatorLocalModels:
@@ -62,7 +60,9 @@ class TestCostEstimatorTokenHeuristic:
     def test_longer_description_more_tokens(self) -> None:
         est = CostEstimator()
         short = est.estimate(["hi"], model="claude-sonnet-4-6")
-        long_desc = "Implement a comprehensive authentication system with JWT tokens and refresh tokens"
+        long_desc = (
+            "Implement a comprehensive authentication system with JWT tokens and refresh tokens"
+        )
         long = est.estimate([long_desc], model="claude-sonnet-4-6")
         assert long[0].estimated_tokens >= short[0].estimated_tokens
 
@@ -79,9 +79,7 @@ class TestCostEstimatorBudget:
 
     def test_exceeds_budget_false(self) -> None:
         est = CostEstimator()
-        assert not est.is_within_budget(
-            ["t"] * 1000, "claude-opus-4-6", budget_usd=0.001
-        )
+        assert not est.is_within_budget(["t"] * 1000, "claude-opus-4-6", budget_usd=0.001)
 
     def test_custom_cost_table(self) -> None:
         custom_table = {"my-model": 100.0}

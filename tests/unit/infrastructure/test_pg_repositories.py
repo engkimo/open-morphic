@@ -8,7 +8,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -16,11 +16,10 @@ from domain.entities.cost import CostRecord
 from domain.entities.memory import MemoryEntry
 from domain.entities.task import SubTask, TaskEntity
 from domain.value_objects.status import MemoryType, SubTaskStatus, TaskStatus
-from infrastructure.persistence.models import CostLogModel, MemoryModel, TaskModel
+from infrastructure.persistence.models import MemoryModel, TaskModel
 from infrastructure.persistence.pg_cost_repository import PgCostRepository
 from infrastructure.persistence.pg_memory_repository import PgMemoryRepository
 from infrastructure.persistence.pg_task_repository import PgTaskRepository
-
 
 # ═══════════════════════════════════════════════════════════════
 # Mapping tests — model <-> entity conversion

@@ -1,7 +1,5 @@
 """TDD: RiskAssessor tests — written FIRST, then implement domain service."""
 
-import pytest
-
 from domain.entities.execution import Action
 from domain.services.risk_assessor import RiskAssessor
 from domain.value_objects import RiskLevel
@@ -71,9 +69,7 @@ class TestRiskAssessor:
 
     # ── CRITICAL operations ──
     def test_fs_delete_recursive_is_critical(self):
-        action = Action(
-            tool="fs_delete", args={"path": "/tmp/folder", "recursive": True}
-        )
+        action = Action(tool="fs_delete", args={"path": "/tmp/folder", "recursive": True})
         assert self.assessor.assess(action) == RiskLevel.CRITICAL
 
     def test_shell_exec_sudo_is_critical(self):

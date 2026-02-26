@@ -29,9 +29,7 @@ class ToolStateMachine:
 
     def __init__(self, tools: list[ToolDefinition]) -> None:
         self._tools: dict[str, ToolDefinition] = {t.name: t for t in tools}
-        self._states: dict[str, ToolState] = {
-            t.name: ToolState.ENABLED for t in tools
-        }
+        self._states: dict[str, ToolState] = {t.name: ToolState.ENABLED for t in tools}
         self._total_count = len(tools)
 
     @property
@@ -58,9 +56,7 @@ class ToolStateMachine:
     def get_enabled_tools(self) -> list[ToolDefinition]:
         """Return only tools in ENABLED state."""
         return [
-            self._tools[name]
-            for name, state in self._states.items()
-            if state == ToolState.ENABLED
+            self._tools[name] for name, state in self._states.items() if state == ToolState.ENABLED
         ]
 
     def get_all_tools(self) -> list[ToolDefinition]:

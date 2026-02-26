@@ -43,9 +43,7 @@ try:
 
     def _check_neo4j() -> bool:
         try:
-            driver = GraphDatabase.driver(
-                "bolt://localhost:7687", auth=("neo4j", "morphic_dev")
-            )
+            driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "morphic_dev"))
             with driver.session() as session:
                 session.run("RETURN 1")
             driver.close()
@@ -105,9 +103,7 @@ class TestPgvectorMemory:
                 1,
                 0.5,
             )
-            row = await conn.fetchrow(
-                "SELECT * FROM memories WHERE id = $1", memory_id
-            )
+            row = await conn.fetchrow("SELECT * FROM memories WHERE id = $1", memory_id)
             assert row is not None
             assert row["content"] == "Test memory for pgvector integration"
 
@@ -126,9 +122,7 @@ class TestPgvectorMemory:
         )
         try:
             result = await conn.fetch(
-                "SELECT EXISTS ("
-                "  SELECT FROM pg_extension WHERE extname = 'vector'"
-                ")"
+                "SELECT EXISTS (  SELECT FROM pg_extension WHERE extname = 'vector')"
             )
             assert result[0]["exists"] is True
         finally:
@@ -148,13 +142,9 @@ class TestNeo4jKnowledgeGraph:
     async def test_add_entity_and_search(self) -> None:
         from infrastructure.memory.knowledge_graph import Neo4jKnowledgeGraph
 
-        kg = Neo4jKnowledgeGraph(
-            uri="bolt://localhost:7687", user="neo4j", password="morphic_dev"
-        )
+        kg = Neo4jKnowledgeGraph(uri="bolt://localhost:7687", user="neo4j", password="morphic_dev")
         try:
-            eid = await kg.add_entity(
-                "TestEntity_IntegTest", "TestType", {"score": 42}
-            )
+            eid = await kg.add_entity("TestEntity_IntegTest", "TestType", {"score": 42})
             assert isinstance(eid, str)
 
             results = await kg.search_entities("TestEntity_IntegTest")
@@ -162,18 +152,14 @@ class TestNeo4jKnowledgeGraph:
             assert any(r["name"] == "TestEntity_IntegTest" for r in results)
         finally:
             # Cleanup
-            await kg.query(
-                "MATCH (n {name: 'TestEntity_IntegTest'}) DETACH DELETE n"
-            )
+            await kg.query("MATCH (n {name: 'TestEntity_IntegTest'}) DETACH DELETE n")
             await kg.close()
 
     @pytest.mark.asyncio()
     async def test_add_relation_and_query(self) -> None:
         from infrastructure.memory.knowledge_graph import Neo4jKnowledgeGraph
 
-        kg = Neo4jKnowledgeGraph(
-            uri="bolt://localhost:7687", user="neo4j", password="morphic_dev"
-        )
+        kg = Neo4jKnowledgeGraph(uri="bolt://localhost:7687", user="neo4j", password="morphic_dev")
         try:
             e1 = await kg.add_entity("Alice_IT", "Person")
             e2 = await kg.add_entity("Morphic_IT", "Project")
@@ -189,26 +175,20 @@ class TestNeo4jKnowledgeGraph:
             assert results[0]["project"] == "Morphic_IT"
         finally:
             # Cleanup
-            await kg.query(
-                "MATCH (n) WHERE n.name IN ['Alice_IT', 'Morphic_IT'] DETACH DELETE n"
-            )
+            await kg.query("MATCH (n) WHERE n.name IN ['Alice_IT', 'Morphic_IT'] DETACH DELETE n")
             await kg.close()
 
     @pytest.mark.asyncio()
     async def test_search_entities_case_sensitive(self) -> None:
         from infrastructure.memory.knowledge_graph import Neo4jKnowledgeGraph
 
-        kg = Neo4jKnowledgeGraph(
-            uri="bolt://localhost:7687", user="neo4j", password="morphic_dev"
-        )
+        kg = Neo4jKnowledgeGraph(uri="bolt://localhost:7687", user="neo4j", password="morphic_dev")
         try:
             await kg.add_entity("UniqueTestName_XYZ", "TestType")
             results = await kg.search_entities("UniqueTestName_XYZ")
             assert len(results) == 1
         finally:
-            await kg.query(
-                "MATCH (n {name: 'UniqueTestName_XYZ'}) DETACH DELETE n"
-            )
+            await kg.query("MATCH (n {name: 'UniqueTestName_XYZ'}) DETACH DELETE n")
             await kg.close()
 
 
@@ -233,15 +213,11 @@ class TestMemoryHierarchyLive:
         from tests.unit.infrastructure.test_memory import InMemoryMemoryRepo
 
         repo = InMemoryMemoryRepo()
-        kg = Neo4jKnowledgeGraph(
-            uri="bolt://localhost:7687", user="neo4j", password="morphic_dev"
-        )
+        kg = Neo4jKnowledgeGraph(uri="bolt://localhost:7687", user="neo4j", password="morphic_dev")
         try:
             from infrastructure.memory.memory_hierarchy import MemoryHierarchy
 
-            hierarchy = MemoryHierarchy(
-                memory_repo=repo, knowledge_graph=kg, max_l1_entries=50
-            )
+            hierarchy = MemoryHierarchy(memory_repo=repo, knowledge_graph=kg, max_l1_entries=50)
 
             await hierarchy.add("FastAPI is great for REST APIs")
             await kg.add_entity("FastAPI_Live", "Framework", {"type": "web"})
@@ -249,9 +225,7 @@ class TestMemoryHierarchyLive:
             result = await hierarchy.retrieve("FastAPI", max_tokens=500)
             assert "FastAPI" in result
         finally:
-            await kg.query(
-                "MATCH (n {name: 'FastAPI_Live'}) DETACH DELETE n"
-            )
+            await kg.query("MATCH (n {name: 'FastAPI_Live'}) DETACH DELETE n")
             await kg.close()
 
     @pytest.mark.asyncio()
@@ -261,15 +235,11 @@ class TestMemoryHierarchyLive:
         from tests.unit.infrastructure.test_memory import InMemoryMemoryRepo
 
         repo = InMemoryMemoryRepo()
-        kg = Neo4jKnowledgeGraph(
-            uri="bolt://localhost:7687", user="neo4j", password="morphic_dev"
-        )
+        kg = Neo4jKnowledgeGraph(uri="bolt://localhost:7687", user="neo4j", password="morphic_dev")
         try:
             from infrastructure.memory.memory_hierarchy import MemoryHierarchy
 
-            hierarchy = MemoryHierarchy(
-                memory_repo=repo, knowledge_graph=kg, max_l1_entries=50
-            )
+            hierarchy = MemoryHierarchy(memory_repo=repo, knowledge_graph=kg, max_l1_entries=50)
 
             await hierarchy.add("LangGraph provides DAG execution")
             await kg.add_entity("LangGraph_Live", "Library", {"category": "agent"})
@@ -277,7 +247,5 @@ class TestMemoryHierarchyLive:
             result = await hierarchy.retrieve("LangGraph", max_tokens=500)
             assert "LangGraph" in result
         finally:
-            await kg.query(
-                "MATCH (n {name: 'LangGraph_Live'}) DETACH DELETE n"
-            )
+            await kg.query("MATCH (n {name: 'LangGraph_Live'}) DETACH DELETE n")
             await kg.close()

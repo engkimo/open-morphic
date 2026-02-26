@@ -64,10 +64,7 @@ class InMemoryKnowledgeGraph(KnowledgeGraphPort):
 
     async def search_entities(self, name_pattern: str) -> list[dict[str, Any]]:
         pattern_lower = name_pattern.lower()
-        return [
-            e for e in self._entities.values()
-            if pattern_lower in e["name"].lower()
-        ]
+        return [e for e in self._entities.values() if pattern_lower in e["name"].lower()]
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -87,12 +84,8 @@ class TestMemoryHierarchy:
         return InMemoryKnowledgeGraph()
 
     @pytest.fixture()
-    def hierarchy(
-        self, repo: InMemoryMemoryRepo, kg: InMemoryKnowledgeGraph
-    ) -> MemoryHierarchy:
-        return MemoryHierarchy(
-            memory_repo=repo, knowledge_graph=kg, max_l1_entries=5
-        )
+    def hierarchy(self, repo: InMemoryMemoryRepo, kg: InMemoryKnowledgeGraph) -> MemoryHierarchy:
+        return MemoryHierarchy(memory_repo=repo, knowledge_graph=kg, max_l1_entries=5)
 
     @pytest.fixture()
     def hierarchy_no_kg(self, repo: InMemoryMemoryRepo) -> MemoryHierarchy:
@@ -113,17 +106,13 @@ class TestMemoryHierarchy:
         assert any(e.content == "test content" for e in entries)
 
     @pytest.mark.asyncio()
-    async def test_retrieve_from_l1_keyword_match(
-        self, hierarchy: MemoryHierarchy
-    ) -> None:
+    async def test_retrieve_from_l1_keyword_match(self, hierarchy: MemoryHierarchy) -> None:
         await hierarchy.add("Python is great for data science")
         result = await hierarchy.retrieve("Python", max_tokens=500)
         assert "Python" in result
 
     @pytest.mark.asyncio()
-    async def test_retrieve_from_l2_semantic(
-        self, hierarchy: MemoryHierarchy
-    ) -> None:
+    async def test_retrieve_from_l2_semantic(self, hierarchy: MemoryHierarchy) -> None:
         await hierarchy.add("machine learning algorithms")
         result = await hierarchy.retrieve("algorithms", max_tokens=500)
         assert "algorithms" in result
@@ -137,9 +126,7 @@ class TestMemoryHierarchy:
         assert "Shimizu" in result
 
     @pytest.mark.asyncio()
-    async def test_retrieve_empty_when_no_match(
-        self, hierarchy: MemoryHierarchy
-    ) -> None:
+    async def test_retrieve_empty_when_no_match(self, hierarchy: MemoryHierarchy) -> None:
         await hierarchy.add("hello world")
         result = await hierarchy.retrieve("xyznonexistent", max_tokens=500)
         assert result == ""
@@ -156,9 +143,7 @@ class TestMemoryHierarchy:
         assert len(hierarchy.l1_entries) == 5
 
     @pytest.mark.asyncio()
-    async def test_retrieve_respects_token_budget(
-        self, hierarchy: MemoryHierarchy
-    ) -> None:
+    async def test_retrieve_respects_token_budget(self, hierarchy: MemoryHierarchy) -> None:
         """Results should fit within max_tokens budget."""
         for i in range(5):
             await hierarchy.add(f"keyword_{i} " * 50)  # ~50 words each
@@ -166,18 +151,14 @@ class TestMemoryHierarchy:
         assert _estimate_tokens(result) <= 20
 
     @pytest.mark.asyncio()
-    async def test_retrieve_deduplicates(
-        self, hierarchy: MemoryHierarchy
-    ) -> None:
+    async def test_retrieve_deduplicates(self, hierarchy: MemoryHierarchy) -> None:
         """Same content from L1 and L2 should not be duplicated."""
         await hierarchy.add("unique content here")
         result = await hierarchy.retrieve("unique content", max_tokens=500)
         assert result.count("unique content here") == 1
 
     @pytest.mark.asyncio()
-    async def test_no_knowledge_graph_graceful(
-        self, hierarchy_no_kg: MemoryHierarchy
-    ) -> None:
+    async def test_no_knowledge_graph_graceful(self, hierarchy_no_kg: MemoryHierarchy) -> None:
         """MemoryHierarchy works without knowledge graph (L3 returns empty)."""
         await hierarchy_no_kg.add("test without kg")
         result = await hierarchy_no_kg.retrieve("test", max_tokens=500)
@@ -192,9 +173,7 @@ class TestMemoryHierarchy:
         assert entries[0].metadata.get("role") == "user"
 
     @pytest.mark.asyncio()
-    async def test_l1_priority_over_l2(
-        self, hierarchy: MemoryHierarchy
-    ) -> None:
+    async def test_l1_priority_over_l2(self, hierarchy: MemoryHierarchy) -> None:
         """L1 matches should appear before L2 matches in results."""
         await hierarchy.add("first keyword match")
         await hierarchy.add("second keyword match")
@@ -321,9 +300,7 @@ class TestKnowledgeGraphPort:
         assert len(results) == 2
 
     @pytest.mark.asyncio()
-    async def test_search_entities_by_name(
-        self, kg: InMemoryKnowledgeGraph
-    ) -> None:
+    async def test_search_entities_by_name(self, kg: InMemoryKnowledgeGraph) -> None:
         await kg.add_entity("Shimizu Corp", "Company")
         await kg.add_entity("Toyota", "Company")
         results = await kg.search_entities("Shimizu")
@@ -331,9 +308,7 @@ class TestKnowledgeGraphPort:
         assert results[0]["name"] == "Shimizu Corp"
 
     @pytest.mark.asyncio()
-    async def test_search_entities_case_insensitive(
-        self, kg: InMemoryKnowledgeGraph
-    ) -> None:
+    async def test_search_entities_case_insensitive(self, kg: InMemoryKnowledgeGraph) -> None:
         await kg.add_entity("Python", "Language")
         results = await kg.search_entities("python")
         assert len(results) == 1

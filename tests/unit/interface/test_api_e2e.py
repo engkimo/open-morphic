@@ -260,9 +260,7 @@ class TestAPIEndToEndWebSocket:
             assert data["is_complete"] is True
             assert data["status"] == "success"
 
-    async def test_ws_nonexistent_task_error(
-        self, client: TestClient
-    ) -> None:
+    async def test_ws_nonexistent_task_error(self, client: TestClient) -> None:
         with client.websocket_connect("/ws/tasks/doesnt-exist") as ws:
             data = ws.receive_json()
             assert "error" in data

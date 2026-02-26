@@ -67,14 +67,15 @@ class LiteLLMGateway(LLMGateway):
         if budget_remaining <= 0:
             return self.MODEL_TIERS[ModelTier.FREE][0]
 
-        tiers = self.TASK_MODEL_MAP.get(
-            task_type, (ModelTier.FREE, ModelTier.MEDIUM)
-        )
+        tiers = self.TASK_MODEL_MAP.get(task_type, (ModelTier.FREE, ModelTier.MEDIUM))
 
         # LOCAL_FIRST: prefer Ollama when running and FREE is in tier
-        if self._settings.local_first and await self._ollama.is_running():
-            if ModelTier.FREE in tiers:
-                return self.MODEL_TIERS[ModelTier.FREE][0]
+        if (
+            self._settings.local_first
+            and await self._ollama.is_running()
+            and ModelTier.FREE in tiers
+        ):
+            return self.MODEL_TIERS[ModelTier.FREE][0]
 
         # Cascade through tiers, return first available
         for tier in tiers:

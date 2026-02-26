@@ -11,9 +11,9 @@ from domain.value_objects import ApprovalMode, RiskLevel
 # Actions at or below this level are auto-approved.
 # Actions above this level require user confirmation.
 _AUTO_APPROVE_THRESHOLD: dict[ApprovalMode, RiskLevel] = {
-    ApprovalMode.FULL_AUTO: RiskLevel.CRITICAL,          # Everything auto-approved
+    ApprovalMode.FULL_AUTO: RiskLevel.CRITICAL,  # Everything auto-approved
     ApprovalMode.CONFIRM_DESTRUCTIVE: RiskLevel.MEDIUM,  # HIGH+ needs confirmation
-    ApprovalMode.CONFIRM_ALL: RiskLevel.SAFE,             # LOW+ needs confirmation
+    ApprovalMode.CONFIRM_ALL: RiskLevel.SAFE,  # LOW+ needs confirmation
 }
 
 

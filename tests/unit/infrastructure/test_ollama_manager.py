@@ -70,9 +70,7 @@ class TestEnsureModel:
 
     async def test_returns_false_on_pull_failure(self, manager: OllamaManager) -> None:
         list_resp = _ok_response({"models": []})
-        manager._request = AsyncMock(
-            side_effect=[list_resp, httpx.ConnectError("fail")]
-        )
+        manager._request = AsyncMock(side_effect=[list_resp, httpx.ConnectError("fail")])
         assert await manager.ensure_model("qwen3:8b") is False
 
 

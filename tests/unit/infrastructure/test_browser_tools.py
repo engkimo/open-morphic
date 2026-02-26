@@ -15,7 +15,11 @@ def _reset_browser(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(browser_tools, "_browser", None)
 
 
-def _mock_page(title: str = "Test Page", status: int = 200, text: str = "page content") -> AsyncMock:
+def _mock_page(
+    title: str = "Test Page",
+    status: int = 200,
+    text: str = "page content",
+) -> AsyncMock:
     """Create a mock Playwright page."""
     page = AsyncMock()
     page.title = AsyncMock(return_value=title)
@@ -146,8 +150,12 @@ class TestToolRegistration:
         from infrastructure.local_execution.tools import TOOL_REGISTRY
 
         browser_tools_names = [
-            "browser_navigate", "browser_click", "browser_type",
-            "browser_screenshot", "browser_extract", "browser_pdf",
+            "browser_navigate",
+            "browser_click",
+            "browser_type",
+            "browser_screenshot",
+            "browser_extract",
+            "browser_pdf",
         ]
         for name in browser_tools_names:
             assert name in TOOL_REGISTRY, f"{name} not in TOOL_REGISTRY"

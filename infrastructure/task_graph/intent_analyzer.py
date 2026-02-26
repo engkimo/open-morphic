@@ -45,9 +45,7 @@ class IntentAnalyzer:
             {"role": "system", "content": system_content},
             {"role": "user", "content": goal},
         ]
-        response = await self._llm.complete(
-            messages, temperature=0.3, max_tokens=1024
-        )
+        response = await self._llm.complete(messages, temperature=0.3, max_tokens=1024)
         return self._parse_response(response.content)
 
     @staticmethod
@@ -81,8 +79,6 @@ class IntentAnalyzer:
 
         for i, raw in enumerate(raw_tasks):
             dep_indices = raw.get("deps", [])
-            subtasks[i].dependencies = [
-                id_map[idx] for idx in dep_indices if idx in id_map
-            ]
+            subtasks[i].dependencies = [id_map[idx] for idx in dep_indices if idx in id_map]
 
         return subtasks

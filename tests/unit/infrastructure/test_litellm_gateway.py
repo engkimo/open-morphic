@@ -39,9 +39,7 @@ def settings() -> Settings:
 
 
 @pytest.fixture
-def gateway(
-    ollama: AsyncMock, cost_tracker: AsyncMock, settings: Settings
-) -> LiteLLMGateway:
+def gateway(ollama: AsyncMock, cost_tracker: AsyncMock, settings: Settings) -> LiteLLMGateway:
     return LiteLLMGateway(ollama, cost_tracker, settings)
 
 
@@ -64,15 +62,11 @@ class TestRoute:
         model = await gateway.route(TaskType.SIMPLE_QA, budget_remaining=50.0)
         assert model == DEFAULT_OLLAMA
 
-    async def test_forces_free_when_budget_exhausted(
-        self, gateway: LiteLLMGateway
-    ) -> None:
+    async def test_forces_free_when_budget_exhausted(self, gateway: LiteLLMGateway) -> None:
         model = await gateway.route(TaskType.COMPLEX_REASONING, budget_remaining=0.0)
         assert model == DEFAULT_OLLAMA
 
-    async def test_forces_free_when_negative_budget(
-        self, gateway: LiteLLMGateway
-    ) -> None:
+    async def test_forces_free_when_negative_budget(self, gateway: LiteLLMGateway) -> None:
         model = await gateway.route(TaskType.COMPLEX_REASONING, budget_remaining=-5.0)
         assert model == DEFAULT_OLLAMA
 
@@ -126,9 +120,7 @@ class TestComplete:
         self, gateway: LiteLLMGateway, cost_tracker: AsyncMock
     ) -> None:
         with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
-            mock_litellm.acompletion = AsyncMock(
-                return_value=_mock_litellm_response()
-            )
+            mock_litellm.acompletion = AsyncMock(return_value=_mock_litellm_response())
             result = await gateway.complete(
                 messages=[{"role": "user", "content": "Hi"}],
                 model="ollama/qwen3:8b",
@@ -142,9 +134,7 @@ class TestComplete:
 
     async def test_sets_api_base_for_ollama(self, gateway: LiteLLMGateway) -> None:
         with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
-            mock_litellm.acompletion = AsyncMock(
-                return_value=_mock_litellm_response()
-            )
+            mock_litellm.acompletion = AsyncMock(return_value=_mock_litellm_response())
             await gateway.complete(
                 messages=[{"role": "user", "content": "test"}],
                 model="ollama/qwen3:8b",
@@ -155,9 +145,7 @@ class TestComplete:
 
     async def test_strips_temperature_for_o_series(self, gateway: LiteLLMGateway) -> None:
         with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
-            mock_litellm.acompletion = AsyncMock(
-                return_value=_mock_litellm_response(cost=0.01)
-            )
+            mock_litellm.acompletion = AsyncMock(return_value=_mock_litellm_response(cost=0.01))
             await gateway.complete(
                 messages=[{"role": "user", "content": "test"}],
                 model="o4-mini",
@@ -169,9 +157,7 @@ class TestComplete:
 
     async def test_keeps_temperature_for_non_o_series(self, gateway: LiteLLMGateway) -> None:
         with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
-            mock_litellm.acompletion = AsyncMock(
-                return_value=_mock_litellm_response(cost=0.003)
-            )
+            mock_litellm.acompletion = AsyncMock(return_value=_mock_litellm_response(cost=0.003))
             await gateway.complete(
                 messages=[{"role": "user", "content": "test"}],
                 model="claude-sonnet-4-6",
@@ -183,9 +169,7 @@ class TestComplete:
 
     async def test_no_api_base_for_cloud_models(self, gateway: LiteLLMGateway) -> None:
         with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
-            mock_litellm.acompletion = AsyncMock(
-                return_value=_mock_litellm_response(cost=0.003)
-            )
+            mock_litellm.acompletion = AsyncMock(return_value=_mock_litellm_response(cost=0.003))
             await gateway.complete(
                 messages=[{"role": "user", "content": "test"}],
                 model="claude-sonnet-4-6",
@@ -196,9 +180,7 @@ class TestComplete:
 
     async def test_defaults_to_ollama_model(self, gateway: LiteLLMGateway) -> None:
         with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
-            mock_litellm.acompletion = AsyncMock(
-                return_value=_mock_litellm_response()
-            )
+            mock_litellm.acompletion = AsyncMock(return_value=_mock_litellm_response())
             result = await gateway.complete(
                 messages=[{"role": "user", "content": "test"}],
             )
@@ -208,9 +190,7 @@ class TestComplete:
         self, gateway: LiteLLMGateway, cost_tracker: AsyncMock
     ) -> None:
         with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
-            mock_litellm.acompletion = AsyncMock(
-                return_value=_mock_litellm_response(cost=0.005)
-            )
+            mock_litellm.acompletion = AsyncMock(return_value=_mock_litellm_response(cost=0.005))
             result = await gateway.complete(
                 messages=[{"role": "user", "content": "test"}],
                 model="claude-sonnet-4-6",
@@ -249,9 +229,7 @@ class TestIsAvailable:
         gw = LiteLLMGateway(ollama, cost_tracker, s)
         assert await gw.is_available("claude-sonnet-4-6") is True
 
-    async def test_claude_unavailable_without_key(
-        self, gateway: LiteLLMGateway
-    ) -> None:
+    async def test_claude_unavailable_without_key(self, gateway: LiteLLMGateway) -> None:
         assert await gateway.is_available("claude-sonnet-4-6") is False
 
     async def test_o4_mini_available_with_key(
@@ -265,9 +243,7 @@ class TestIsAvailable:
         gw = LiteLLMGateway(ollama, cost_tracker, s)
         assert await gw.is_available("o4-mini") is True
 
-    async def test_o3_available_with_key(
-        self, ollama: AsyncMock, cost_tracker: AsyncMock
-    ) -> None:
+    async def test_o3_available_with_key(self, ollama: AsyncMock, cost_tracker: AsyncMock) -> None:
         s = Settings(
             anthropic_api_key="",
             openai_api_key="sk-test",
@@ -292,9 +268,7 @@ class TestIsAvailable:
 
 
 class TestListModels:
-    async def test_returns_only_available(
-        self, ollama: AsyncMock, cost_tracker: AsyncMock
-    ) -> None:
+    async def test_returns_only_available(self, ollama: AsyncMock, cost_tracker: AsyncMock) -> None:
         s = Settings(
             anthropic_api_key="sk-test",
             openai_api_key="",
@@ -311,9 +285,7 @@ class TestListModels:
         assert "o3" not in models  # no OpenAI key
         assert len(models) == 7
 
-    async def test_returns_all_providers(
-        self, ollama: AsyncMock, cost_tracker: AsyncMock
-    ) -> None:
+    async def test_returns_all_providers(self, ollama: AsyncMock, cost_tracker: AsyncMock) -> None:
         s = Settings(
             anthropic_api_key="sk-test",
             openai_api_key="sk-test",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from domain.entities.memory import MemoryEntry
@@ -22,7 +22,11 @@ class PgMemoryRepository(MemoryRepository):
     @staticmethod
     def _to_model(entry: MemoryEntry) -> MemoryModel:
         return MemoryModel(
-            id=uuid.UUID(entry.id) if len(entry.id) == 36 else uuid.uuid5(uuid.NAMESPACE_DNS, entry.id),
+            id=(
+                uuid.UUID(entry.id)
+                if len(entry.id) == 36
+                else uuid.uuid5(uuid.NAMESPACE_DNS, entry.id)
+            ),
             content=entry.content,
             memory_type=entry.memory_type.value,
             access_count=entry.access_count,

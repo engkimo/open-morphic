@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import platform
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -17,11 +16,11 @@ class TestGuiApplescript:
         mock_proc.communicate = AsyncMock(return_value=(b"result", b""))
         mock_proc.returncode = 0
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
-            with patch("platform.system", return_value="Darwin"):
-                result = await gui_tools.gui_applescript(
-                    {"script": 'display dialog "Hello"'}
-                )
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec,
+            patch("platform.system", return_value="Darwin"),
+        ):
+            result = await gui_tools.gui_applescript({"script": 'display dialog "Hello"'})
         assert result == "result"
         mock_exec.assert_awaited_once()
 
@@ -32,9 +31,11 @@ class TestGuiApplescript:
 
     @pytest.mark.asyncio
     async def test_applescript_non_macos_raises(self) -> None:
-        with patch("platform.system", return_value="Linux"):
-            with pytest.raises(RuntimeError, match="macOS"):
-                await gui_tools.gui_applescript({"script": "test"})
+        with (
+            patch("platform.system", return_value="Linux"),
+            pytest.raises(RuntimeError, match="macOS"),
+        ):
+            await gui_tools.gui_applescript({"script": "test"})
 
     @pytest.mark.asyncio
     async def test_applescript_failure(self) -> None:
@@ -42,10 +43,12 @@ class TestGuiApplescript:
         mock_proc.communicate = AsyncMock(return_value=(b"", b"syntax error"))
         mock_proc.returncode = 1
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-            with patch("platform.system", return_value="Darwin"):
-                with pytest.raises(RuntimeError, match="AppleScript failed"):
-                    await gui_tools.gui_applescript({"script": "bad script"})
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+            patch("platform.system", return_value="Darwin"),
+            pytest.raises(RuntimeError, match="AppleScript failed"),
+        ):
+            await gui_tools.gui_applescript({"script": "bad script"})
 
 
 class TestGuiOpenApp:
@@ -55,9 +58,11 @@ class TestGuiOpenApp:
         mock_proc.communicate = AsyncMock(return_value=(b"", b""))
         mock_proc.returncode = 0
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-            with patch("platform.system", return_value="Darwin"):
-                result = await gui_tools.gui_open_app({"app_name": "Safari"})
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+            patch("platform.system", return_value="Darwin"),
+        ):
+            result = await gui_tools.gui_open_app({"app_name": "Safari"})
         assert "Safari" in result
 
     @pytest.mark.asyncio
@@ -73,9 +78,11 @@ class TestGuiScreenshotOcr:
         mock_proc.communicate = AsyncMock(return_value=(b"", b""))
         mock_proc.returncode = 0
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-            with patch("platform.system", return_value="Darwin"):
-                result = await gui_tools.gui_screenshot_ocr({"path": "/tmp/shot.png"})
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+            patch("platform.system", return_value="Darwin"),
+        ):
+            result = await gui_tools.gui_screenshot_ocr({"path": "/tmp/shot.png"})
         assert "/tmp/shot.png" in result
 
 
@@ -84,8 +91,10 @@ class TestToolRegistration:
         from infrastructure.local_execution.tools import TOOL_REGISTRY
 
         gui_tools_names = [
-            "gui_applescript", "gui_open_app",
-            "gui_screenshot_ocr", "gui_accessibility",
+            "gui_applescript",
+            "gui_open_app",
+            "gui_screenshot_ocr",
+            "gui_accessibility",
         ]
         for name in gui_tools_names:
             assert name in TOOL_REGISTRY, f"{name} not in TOOL_REGISTRY"

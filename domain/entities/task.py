@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -40,14 +39,11 @@ class TaskEntity(BaseModel):
 
     def get_ready_subtasks(self) -> list[SubTask]:
         """Return subtasks whose dependencies are all completed."""
-        completed_ids = {
-            t.id for t in self.subtasks if t.status == SubTaskStatus.SUCCESS
-        }
+        completed_ids = {t.id for t in self.subtasks if t.status == SubTaskStatus.SUCCESS}
         return [
             t
             for t in self.subtasks
-            if t.status == SubTaskStatus.PENDING
-            and all(d in completed_ids for d in t.dependencies)
+            if t.status == SubTaskStatus.PENDING and all(d in completed_ids for d in t.dependencies)
         ]
 
     def mark_subtask(
@@ -65,16 +61,11 @@ class TaskEntity(BaseModel):
 
     @property
     def is_complete(self) -> bool:
-        return all(
-            t.status in (SubTaskStatus.SUCCESS, SubTaskStatus.FAILED)
-            for t in self.subtasks
-        )
+        return all(t.status in (SubTaskStatus.SUCCESS, SubTaskStatus.FAILED) for t in self.subtasks)
 
     @property
     def success_rate(self) -> float:
         if not self.subtasks:
             return 0.0
-        succeeded = sum(
-            1 for t in self.subtasks if t.status == SubTaskStatus.SUCCESS
-        )
+        succeeded = sum(1 for t in self.subtasks if t.status == SubTaskStatus.SUCCESS)
         return succeeded / len(self.subtasks)

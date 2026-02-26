@@ -105,9 +105,7 @@ class MemoryHierarchy:
                     budget -= tokens
         return budget
 
-    async def _scan_l3(
-        self, query: str, budget: int, results: list[str]
-    ) -> int:
+    async def _scan_l3(self, query: str, budget: int, results: list[str]) -> int:
         """Search L3 knowledge graph for related entities."""
         entities = await self._knowledge_graph.search_entities(query)  # type: ignore[union-attr]
         for entity in entities:

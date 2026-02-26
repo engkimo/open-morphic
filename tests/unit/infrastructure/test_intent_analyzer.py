@@ -34,10 +34,12 @@ class TestDecompose:
         self, analyzer: IntentAnalyzer, llm: AsyncMock
     ) -> None:
         llm.complete.return_value = _llm_response(
-            json.dumps([
-                {"description": "Write fibonacci function", "deps": []},
-                {"description": "Write unit tests", "deps": [0]},
-            ])
+            json.dumps(
+                [
+                    {"description": "Write fibonacci function", "deps": []},
+                    {"description": "Write unit tests", "deps": [0]},
+                ]
+            )
         )
         subtasks = await analyzer.decompose("Implement fibonacci in Python")
 
@@ -49,42 +51,40 @@ class TestDecompose:
         self, analyzer: IntentAnalyzer, llm: AsyncMock
     ) -> None:
         llm.complete.return_value = _llm_response(
-            json.dumps([
-                {"description": "Step A", "deps": []},
-                {"description": "Step B", "deps": [0]},
-                {"description": "Step C", "deps": [0, 1]},
-            ])
+            json.dumps(
+                [
+                    {"description": "Step A", "deps": []},
+                    {"description": "Step B", "deps": [0]},
+                    {"description": "Step C", "deps": [0, 1]},
+                ]
+            )
         )
         subtasks = await analyzer.decompose("Multi-step task")
 
         assert subtasks[1].dependencies == [subtasks[0].id]
         assert subtasks[2].dependencies == [subtasks[0].id, subtasks[1].id]
 
-    async def test_no_dependencies(
-        self, analyzer: IntentAnalyzer, llm: AsyncMock
-    ) -> None:
+    async def test_no_dependencies(self, analyzer: IntentAnalyzer, llm: AsyncMock) -> None:
         llm.complete.return_value = _llm_response(
-            json.dumps([
-                {"description": "Independent A", "deps": []},
-                {"description": "Independent B", "deps": []},
-            ])
+            json.dumps(
+                [
+                    {"description": "Independent A", "deps": []},
+                    {"description": "Independent B", "deps": []},
+                ]
+            )
         )
         subtasks = await analyzer.decompose("Two independent tasks")
 
         assert subtasks[0].dependencies == []
         assert subtasks[1].dependencies == []
 
-    async def test_invalid_json_raises(
-        self, analyzer: IntentAnalyzer, llm: AsyncMock
-    ) -> None:
+    async def test_invalid_json_raises(self, analyzer: IntentAnalyzer, llm: AsyncMock) -> None:
         llm.complete.return_value = _llm_response("not valid json")
 
         with pytest.raises(json.JSONDecodeError):
             await analyzer.decompose("Bad input")
 
-    async def test_uses_low_temperature(
-        self, analyzer: IntentAnalyzer, llm: AsyncMock
-    ) -> None:
+    async def test_uses_low_temperature(self, analyzer: IntentAnalyzer, llm: AsyncMock) -> None:
         llm.complete.return_value = _llm_response(
             json.dumps([{"description": "Step 1", "deps": []}])
         )
@@ -97,9 +97,11 @@ class TestDecompose:
         self, analyzer: IntentAnalyzer, llm: AsyncMock
     ) -> None:
         llm.complete.return_value = _llm_response(
-            json.dumps([
-                {"description": "Step A", "deps": [99]},
-            ])
+            json.dumps(
+                [
+                    {"description": "Step A", "deps": [99]},
+                ]
+            )
         )
         subtasks = await analyzer.decompose("Invalid deps")
 

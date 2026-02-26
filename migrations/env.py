@@ -9,8 +9,8 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from shared.config import settings
 from infrastructure.persistence.models import Base
+from shared.config import settings
 
 # Alembic Config object
 config = context.config
