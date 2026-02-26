@@ -1194,3 +1194,60 @@ estimated_output = estimated_input * 2    # assume 2x output
 - **Conservative estimates**: Overestimate rather than underestimate to avoid budget surprises
 - **Simple heuristic**: Real tokenizer deferred to Phase 3. Character-based estimate is "good enough"
 - **Budget checking**: `is_within_budget(plan, budget)` prevents accidental overspend
+
+---
+
+## TD-028: Pre-Phase 3 Codebase Cleanup — Ruff Lint + Format
+
+**Date**: 2026-02-26
+**Status**: Completed
+**Sprint**: Pre-Phase 3 verification
+
+### Decision
+
+Before starting Phase 3, enforce `ruff check` (lint) and `ruff format` across the entire codebase. Fix all 79 lint errors and format 48 files.
+
+### Issues Found and Resolved
+
+| Rule | Count | Category | Fix |
+|---|---|---|---|
+| F401 | 21 | Unused imports | Auto-fix (`--fix`) |
+| I001 | 12 | Unsorted imports | Auto-fix (`--fix`) |
+| UP042 | 11 | `str, Enum` → `StrEnum` | Suppressed in pyproject.toml (Pydantic strict=True compatibility) |
+| E501 | 8 | Line too long (>100) | Manual line breaks |
+| B904 | 6 | `raise` without `from` in except | Added `from e` / `from None` |
+| SIM117 | 5 | Nested `with` statements | Combined into single `with` |
+| SIM105 | 4 | `try/except/pass` | Replaced with `contextlib.suppress()` |
+| F841 | 3 | Unused variables | Removed assignments |
+| F541 | 2 | f-string missing placeholders | Auto-fix |
+| F821 | 2 | Undefined name (false positive) | Added `TYPE_CHECKING` import in schemas.py |
+| SIM102 | 1 | Collapsible `if` | Combined conditions |
+| UP037 | 2 | Quoted annotation | Auto-fix |
+| UP017 | 1 | `datetime.timezone.utc` | Auto-fix |
+| UP035 | 1 | Deprecated import | Auto-fix |
+
+### Key Decisions
+
+| Decision | Rationale |
+|---|---|
+| **Suppress UP042** | `class Foo(str, Enum)` pattern is intentional for Pydantic `strict=True`. `StrEnum` would work but changing all existing enums is unnecessary churn |
+| **Fix F821 with TYPE_CHECKING** | Forward references in `schemas.py` used delayed imports. Moved to `if TYPE_CHECKING:` block for ruff compatibility while preserving runtime behavior |
+| **Fix B904 with `from e`** | Exception chaining preserves traceback context. `raise HTTPException(...) from e` in API routes, `raise typer.Exit(...) from e` in CLI |
+
+### Verification
+
+```
+ruff check:  All checks passed (0 errors)
+ruff format: 139 files already formatted (48 reformatted in this pass)
+Unit tests:  428 passed (2.82s)
+Integration: 10 passed (15.69s, real Ollama)
+```
+
+### Config Change
+
+```toml
+# pyproject.toml
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
+ignore = ["UP042"]  # Keep (str, Enum) pattern for Pydantic strict=True compatibility
+```

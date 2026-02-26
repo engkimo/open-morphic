@@ -408,7 +408,8 @@ Mapping between domain entities and ORM models happens in repository implementat
 2. Green:    Write minimum code to pass
 3. Refactor: Clean up while tests protect
 
-Current: 428 unit tests (2.48s) + 26 integration tests (10+11+5), 100% pass
+Current: 428 unit tests (2.82s) + 26 integration tests (10+11+5), 100% pass
+Lint: ruff check 0 errors, ruff format 139 files clean (TD-028)
 Default model: qwen3-coder:30b (thinking mode disabled via extra_body)
 Cloud providers verified: Anthropic (Haiku/Sonnet), OpenAI (o4-mini/o3), Gemini (3-flash/3-pro)
 ```
