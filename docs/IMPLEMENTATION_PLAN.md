@@ -1039,11 +1039,55 @@ Verification:
 
 > **Goal**: Elevate memory and context to research-grade + cross-platform support
 
+### Sprint 3.1: SemanticFingerprint (LSH) (2026-02-26) ✅ COMPLETE
+
+> LSH-based semantic search with embeddings, replacing keyword-only search.
+
+#### What Was Built
+
+| Component | File | Description |
+|---|---|---|
+| **EmbeddingPort** | `domain/ports/embedding.py` | ABC: `embed(texts)`, `dimensions()` |
+| **SemanticFingerprint** | `domain/services/semantic_fingerprint.py` | LSH hash + cosine similarity (pure numpy, no I/O) |
+| **SemanticBucketStore** | `infrastructure/memory/semantic_fingerprint.py` | LSH bucketing + multi-probe retrieval |
+| **OllamaEmbeddingAdapter** | `infrastructure/memory/embedding_adapters.py` | POST `/api/embed` (LOCAL_FIRST, $0) |
+| **Migration 002** | `migrations/versions/002_add_embedding_column.py` | `Vector(384)` + HNSW index |
+
+#### Modified Files
+
+| File | Change |
+|---|---|
+| `shared/config.py` | 5 new embedding settings (`embedding_backend`, `embedding_model`, `embedding_dimensions`, `embedding_lsh_seed`, `embedding_lsh_n_planes`) |
+| `infrastructure/persistence/models.py` | `Vector(1536)` → `Vector(384)` |
+| `infrastructure/persistence/in_memory.py` | Optional `embedding_port` param, vector search with SemanticBucketStore |
+| `infrastructure/persistence/pg_memory_repository.py` | Optional `embedding_port`, pgvector `cosine_distance` search |
+| `interface/api/container.py` | DI wiring: `_create_embedding_port()` + pass to repos |
+| `domain/ports/__init__.py` | Export `EmbeddingPort` |
+| `pyproject.toml` | `numpy>=1.26` explicit dep |
+
+#### Test Results
+
+| Suite | Tests | Status |
+|---|---|---|
+| `test_semantic_fingerprint.py` | 11 | ✅ LSH hash, cosine sim, determinism, granularity |
+| `test_semantic_search.py` | 20 | ✅ BucketStore, OllamaAdapter, InMemory vector search |
+| All existing tests | 428 | ✅ Full backward compatibility |
+| **Total** | **459** | **All passing (2.52s)** |
+
+#### Key Design Decisions (TD-029)
+
+- **Ollama embedding**: LOCAL_FIRST, $0, `all-minilm` 384-dim
+- **Seeded RNG**: `seed=42` for deterministic LSH across restarts
+- **Domain purity**: MemoryEntry stays clean; vectors only in ORM layer
+- **Backward compat**: `embedding_port=None` → keyword fallback
+
+---
+
 ### Week 5: Full Semantic Memory
 
 | # | Item | File |
 |---|---|---|
-| 3.1 | SemanticFingerprint (LSH) | `infrastructure/memory/semantic_fingerprint.py` | **COMPLETE** (TD-029, 459 tests) |
+| 3.1 | SemanticFingerprint (LSH) | `infrastructure/memory/semantic_fingerprint.py` | ✅ COMPLETE |
 | 3.2 | ContextZipper full version | `infrastructure/memory/context_zipper.py` |
 | 3.3 | ForgettingCurve | `infrastructure/memory/forgetting_curve.py` |
 | 3.4 | DeltaEncoder | `infrastructure/memory/delta_encoder.py` |
