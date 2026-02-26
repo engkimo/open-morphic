@@ -23,6 +23,7 @@ from infrastructure.llm.ollama_manager import OllamaManager
 from infrastructure.memory.context_zipper import ContextZipper
 from infrastructure.memory.delta_encoder import DeltaEncoderManager
 from infrastructure.memory.forgetting_curve import ForgettingCurveManager
+from infrastructure.memory.hierarchical_summarizer import HierarchicalSummaryManager
 from infrastructure.memory.memory_hierarchy import MemoryHierarchy
 from infrastructure.persistence.in_memory import (
     InMemoryCostRepository,
@@ -107,6 +108,10 @@ class AppContainer:
         )
         self.delta_encoder = DeltaEncoderManager(
             memory_repo=self.memory_repo,
+        )
+        self.hierarchical_summarizer = HierarchicalSummaryManager(
+            memory_repo=self.memory_repo,
+            llm_gateway=self.llm,
         )
 
     def _create_embedding_port(self) -> EmbeddingPort | None:

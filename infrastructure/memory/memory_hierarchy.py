@@ -109,6 +109,33 @@ class MemoryHierarchy:
             for d in deltas
         ]
 
+    async def summarize_entry(self, entry_id: str) -> dict:
+        """Build hierarchy for an entry. Delegates to HierarchicalSummaryManager."""
+        from infrastructure.memory.hierarchical_summarizer import (
+            HierarchicalSummaryManager,
+        )
+
+        mgr = HierarchicalSummaryManager(memory_repo=self._memory_repo)
+        result = await mgr.summarize(entry_id)
+        if result is None:
+            return {"error": "entry not found"}
+        return {
+            "entry_id": result.entry_id,
+            "levels_built": result.levels_built,
+            "original_tokens": result.original_tokens,
+            "compressed_tokens": result.compressed_tokens,
+            "used_llm": result.used_llm,
+        }
+
+    async def retrieve_at_depth(self, query: str, max_tokens: int = 500) -> str:
+        """Depth-adaptive retrieval. Delegates to HierarchicalSummaryManager."""
+        from infrastructure.memory.hierarchical_summarizer import (
+            HierarchicalSummaryManager,
+        )
+
+        mgr = HierarchicalSummaryManager(memory_repo=self._memory_repo)
+        return await mgr.retrieve_at_depth(query, max_tokens=max_tokens)
+
     async def compact(self, threshold: float = 0.3) -> dict:
         """Expire stale L2 memories. Delegates to ForgettingCurveManager.
 
