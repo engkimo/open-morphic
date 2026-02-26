@@ -187,3 +187,9 @@ class MemorySearchResponse(BaseModel):
     query: str
     results: list[str]
     count: int
+
+
+class ContextExportResponse(BaseModel):
+    platform: str
+    content: str
+    token_estimate: int

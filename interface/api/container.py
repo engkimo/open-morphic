@@ -20,6 +20,8 @@ from domain.ports.task_repository import TaskRepository
 from infrastructure.llm.cost_tracker import CostTracker
 from infrastructure.llm.litellm_gateway import LiteLLMGateway
 from infrastructure.llm.ollama_manager import OllamaManager
+from infrastructure.mcp.client import MCPClient
+from infrastructure.memory.context_bridge import ContextBridge
 from infrastructure.memory.context_zipper import ContextZipper
 from infrastructure.memory.delta_encoder import DeltaEncoderManager
 from infrastructure.memory.forgetting_curve import ForgettingCurveManager
@@ -113,6 +115,15 @@ class AppContainer:
             memory_repo=self.memory_repo,
             llm_gateway=self.llm,
         )
+        self.context_bridge = ContextBridge(
+            memory=self.memory,
+            context_zipper=self.context_zipper,
+            delta_encoder=self.delta_encoder,
+            default_max_tokens=self.settings.context_bridge_default_tokens,
+        )
+
+        # MCP client (optional — lazy, connects on demand)
+        self.mcp_client: MCPClient | None = MCPClient() if self.settings.mcp_enabled else None
 
     def _create_embedding_port(self) -> EmbeddingPort | None:
         """Create embedding port based on settings. Returns None if disabled."""

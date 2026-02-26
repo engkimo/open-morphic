@@ -9,6 +9,7 @@ from domain.ports.cost_repository import CostRepository
 from domain.ports.embedding import EmbeddingPort
 from domain.ports.llm_gateway import LLMGateway
 from domain.ports.local_executor import LocalExecutorPort
+from domain.ports.mcp_client import MCPClientPort
 from domain.ports.memory_repository import MemoryRepository
 from domain.ports.task_repository import TaskRepository
 
@@ -18,6 +19,7 @@ __all__ = [
     "EmbeddingPort",
     "LLMGateway",
     "LocalExecutorPort",
+    "MCPClientPort",
     "MemoryRepository",
     "TaskRepository",
 ]

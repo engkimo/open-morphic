@@ -93,6 +93,15 @@ class Settings(BaseSettings):
     laee_gui_enabled: bool = True
     laee_cron_enabled: bool = True
 
+    # ── Context Bridge ──
+    context_bridge_default_tokens: int = 800
+
+    # ── MCP ──
+    mcp_enabled: bool = True
+    mcp_transport: str = "stdio"
+    mcp_port: int = 8100
+    mcp_servers: str = "[]"  # JSON-encoded server configs
+
     # ── Context Engineering ──
     context_todo_path: Path = Path("todo.md")
     context_cache_dir: Path = Path(".morphic/cache")

@@ -11,39 +11,33 @@ dependencies = [
     "langgraph>=0.3",
     "litellm>=1.50",
     "instructor>=1.7",
-
     # Database
     "sqlalchemy[asyncio]>=2.0",
     "asyncpg>=0.30",
     "pgvector>=0.3",
     "alembic>=1.14",
     "neo4j>=5.25",
-
     # Memory
     "mem0ai>=0.1",
-
     # API
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
     "pydantic-settings>=2.7",
     "httpx>=0.28",
-
     # Task Queue
     "celery[redis]>=5.4",
-
     # LAEE - Local Autonomous Execution Engine (v0.4)
     "playwright>=1.49",
     "watchdog>=6.0",
     "apscheduler>=3.10",
     "psutil>=6.1",
-
     # CLI
     "typer>=0.15",
     "rich>=13.9",
-
     # Semantic Memory
     "numpy>=1.26",
-
+    # MCP - Model Context Protocol
+    "mcp[cli]>=1.25,<2",
     # Utilities
     "python-dotenv>=1.0",
     "orjson>=3.10",
