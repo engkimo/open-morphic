@@ -1518,3 +1518,107 @@ delta_is_base  = delta.is_base_state  # bool
 - **Modified**: `infrastructure/memory/memory_hierarchy.py` (added record_delta, get_state, get_state_history)
 - **Modified**: `interface/api/container.py` (wired DeltaEncoderManager)
 - **Tests**: 61 new tests (34 domain + 27 infrastructure), total 567 passing
+
+---
+
+## TD-033: HierarchicalSummarizer — 4-Level Tree Compression (Sprint 3.5)
+
+**Date**: 2026-02-26
+**Status**: Accepted
+
+### Decision
+
+Implement multi-level tree compression for memory entries. Each entry can have 4 levels of summarization (Level 0=original 100%, Level 1=~40%, Level 2=~15%, Level 3=~5%). Query-adaptive retrieval selects the deepest (most detailed) level that fits within the token budget.
+
+| Component | Layer | Description |
+|---|---|---|
+| `HierarchicalSummarizer` (domain service) | domain | Pure static: `estimate_tokens`, `split_sentences`, `extract_summary`, `build_extractive_hierarchy`, `select_level`, `estimate_depth` |
+| `HierarchicalSummaryManager` (infra manager) | infrastructure | Async manager: `summarize()`, `get_summary()`, `retrieve_at_depth()`. Optional LLM for abstractive, extractive fallback |
+| `SummarizeResult` (frozen dataclass) | infrastructure | Return type: entry_id, levels_built, original_tokens, compressed_tokens, used_llm |
+
+### Key Design Choices
+
+1. **No new domain entity** — summaries stored in `MemoryEntry.metadata` (`hierarchy_summaries`, `hierarchy_token_counts` JSON keys). Follows DeltaEncoder's `delta_*` metadata pattern.
+2. **Domain service = all static** — extractive summarization via sentence-boundary truncation. No LLM dependency.
+3. **Optional LLMGateway** — abstractive summaries when LLM available, extractive fallback when not (follows KnowledgeGraphPort optional pattern).
+4. **Per-entry storage** — all 4 levels stored in single MemoryEntry's metadata as JSON dicts.
+5. **No new deps** — `re` (stdlib) for sentence splitting, `math` for ceil.
+6. **4 levels fixed** — Level 0 (original, 100%), Level 1 (~40%), Level 2 (~15%), Level 3 (~5%).
+7. **Skip re-summarization** — if `hierarchy_summaries` already exists in metadata, returns cached result.
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| Separate SummaryEntity | Over-engineering — metadata on existing MemoryEntry is sufficient |
+| LLM-only summarization | Must work without LLM for $0/offline operation. Extractive fallback required |
+| Variable number of levels | Adds complexity. 4 levels cover typical use cases (overview → full detail) |
+| Store summaries as separate MemoryEntries | Complicates retrieval. Single-entry storage is simpler to query and manage |
+| tiktoken/transformers for tokenization | Heavy dependencies. 4-chars-per-token approximation is sufficient for budget decisions |
+
+### Domain Service API
+
+```python
+class HierarchicalSummarizer:
+    NUM_LEVELS = 4
+    LEVEL_RATIOS = {0: 1.0, 1: 0.40, 2: 0.15, 3: 0.05}
+
+    @staticmethod estimate_tokens(text: str) -> int                    # ~4 chars/token
+    @staticmethod split_sentences(text: str) -> list[str]              # Regex split on .!?\n
+    @staticmethod extract_summary(content: str, ratio: float) -> str   # Keep first ratio of sentences
+    @staticmethod build_extractive_hierarchy(content: str) -> dict[int, str]  # 4-level hierarchy
+    @staticmethod select_level(level_token_counts, max_tokens) -> int  # Deepest fitting level
+    @staticmethod estimate_depth(max_tokens, total_entry_tokens) -> int # Budget-ratio depth
+```
+
+### Infrastructure Manager API
+
+```python
+class HierarchicalSummaryManager:
+    async summarize(entry_id: str) -> SummarizeResult | None    # Build 4-level hierarchy
+    async get_summary(entry_id: str, level: int) -> str | None  # Get specific level
+    async retrieve_at_depth(query: str, max_tokens: int) -> str # Depth-adaptive retrieval
+```
+
+### Architecture
+
+```
+MemoryHierarchy.summarize_entry(entry_id)
+    │
+    └── HierarchicalSummaryManager.summarize()
+        │
+        ├── memory_repo.get_by_id()
+        ├── _has_hierarchy() check (skip if exists)
+        ├── LLM path: _summarize_with_llm() → JSON parse → {0: orig, 1-3: summaries}
+        │   └── fallback: build_extractive_hierarchy() on LLM error
+        ├── No-LLM path: HierarchicalSummarizer.build_extractive_hierarchy()
+        ├── Persist: hierarchy_summaries + hierarchy_token_counts in metadata
+        └── Return SummarizeResult
+
+MemoryHierarchy.retrieve_at_depth(query, max_tokens)
+    │
+    └── HierarchicalSummaryManager.retrieve_at_depth()
+        │
+        ├── memory_repo.search(query, top_k=10)
+        ├── For each entry: select_level(token_counts, remaining_budget)
+        └── Assemble parts within budget → join with "---"
+```
+
+### Metadata Serialization
+
+```python
+# Stored in MemoryEntry.metadata:
+hierarchy_summaries    = '{"0": "original...", "1": "summary...", "2": "brief...", "3": "topic"}'
+hierarchy_token_counts = '{"0": 500, "1": 200, "2": 75, "3": 25}'
+```
+
+### Files Created/Modified
+
+- **Created**: `domain/services/hierarchical_summarizer.py` (pure static: 6 methods)
+- **Created**: `infrastructure/memory/hierarchical_summarizer.py` (HierarchicalSummaryManager + SummarizeResult)
+- **Created**: `tests/unit/domain/test_hierarchical_summarizer.py` (27 tests)
+- **Created**: `tests/unit/infrastructure/test_hierarchical_summarizer.py` (24 tests)
+- **Modified**: `infrastructure/memory/__init__.py` (export HierarchicalSummaryManager)
+- **Modified**: `infrastructure/memory/memory_hierarchy.py` (added summarize_entry, retrieve_at_depth)
+- **Modified**: `interface/api/container.py` (wired HierarchicalSummaryManager with optional LLM)
+- **Tests**: 51 new tests (27 domain + 24 infrastructure), total 618 passing

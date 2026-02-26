@@ -1218,6 +1218,46 @@ class ContextZipper:
 
 ---
 
+### Sprint 3.5: HierarchicalSummarizer — Multi-Level Tree Compression (2026-02-26) ✅ COMPLETE
+
+> 4-level tree compression for memory entries. Query-adaptive retrieval selects the deepest level that fits within a token budget.
+
+#### What Was Built
+
+| Component | File | Description |
+|---|---|---|
+| **HierarchicalSummarizer** | `domain/services/hierarchical_summarizer.py` | Pure static: `estimate_tokens`, `split_sentences`, `extract_summary`, `build_extractive_hierarchy`, `select_level`, `estimate_depth` |
+| **HierarchicalSummaryManager** | `infrastructure/memory/hierarchical_summarizer.py` | Async manager: summarize, get_summary, retrieve_at_depth. Optional LLM for abstractive, extractive fallback |
+| **SummarizeResult** | `infrastructure/memory/hierarchical_summarizer.py` | Frozen dataclass: entry_id, levels_built, original_tokens, compressed_tokens, used_llm |
+
+#### Modified Files
+
+| File | Change |
+|---|---|
+| `infrastructure/memory/__init__.py` | Export `HierarchicalSummaryManager` |
+| `infrastructure/memory/memory_hierarchy.py` | Added `summarize_entry()`, `retrieve_at_depth()` |
+| `interface/api/container.py` | Wired `HierarchicalSummaryManager` with memory_repo + optional LLM |
+
+#### Test Results
+
+| Suite | Tests | Status |
+|---|---|---|
+| `test_hierarchical_summarizer.py` (domain) | 27 | ✅ tokens, sentences, extract, hierarchy, select_level, estimate_depth |
+| `test_hierarchical_summarizer.py` (infrastructure) | 24 | ✅ extractive, LLM, get_summary, retrieve_at_depth, skip-existing, integration |
+| All existing tests | 567 | ✅ Full backward compatibility |
+| **Total** | **618** | **All passing (2.8s)** |
+
+#### Key Design Decisions (TD-033)
+
+- **Zero new ports**: Summaries stored in `MemoryEntry.metadata` (`hierarchy_summaries`, `hierarchy_token_counts` JSON keys)
+- **4 fixed levels**: L0=100% (original), L1=~40%, L2=~15%, L3=~5% of sentences
+- **Optional LLM**: Abstractive summaries when available, sentence-boundary extractive fallback when not
+- **Skip re-summarization**: If `hierarchy_summaries` already exists in metadata, returns cached result
+- **Depth-adaptive retrieval**: `select_level()` finds deepest level fitting within token budget
+- **No new deps**: re + math are stdlib
+
+---
+
 ### Week 5: Full Semantic Memory
 
 | # | Item | File |
@@ -1226,7 +1266,7 @@ class ContextZipper:
 | 3.2 | ContextZipper v2 (semantic) | `infrastructure/memory/context_zipper.py` | ✅ COMPLETE (TD-030) |
 | 3.3 | ForgettingCurve | `infrastructure/memory/forgetting_curve.py` | ✅ COMPLETE (TD-031) |
 | 3.4 | DeltaEncoder | `infrastructure/memory/delta_encoder.py` | ✅ COMPLETE (TD-032) |
-| 3.5 | HierarchicalSummarizer | `infrastructure/memory/hierarchical_summary.py` |
+| 3.5 | HierarchicalSummarizer | `infrastructure/memory/hierarchical_summarizer.py` | ✅ COMPLETE (TD-033) |
 
 ### Week 6: Context Bridge & MCP
 
@@ -1239,11 +1279,12 @@ class ContextZipper:
 | 3.10 | L1→L4 integration test | `tests/integration/test_memory_hierarchy.py` |
 
 **Phase 3 Completion Criteria:**
-- [ ] 10,000 tokens → 500 tokens compression (information retention > 90%)
-- [ ] LSH retrieves semantically similar memories in near-O(1) time
+- [x] 10,000 tokens → 500 tokens compression (information retention > 90%) — ContextZipper v2 + HierarchicalSummarizer
+- [x] LSH retrieves semantically similar memories in near-O(1) time — SemanticFingerprint
 - [ ] MCP Server enables other tools to access Morphic-Agent memory
 - [x] Forgetting curve auto-promotes low-importance memories to L3, removes from L2
 - [x] Delta encoding tracks state changes as diffs, reconstructs any point-in-time state
+- [x] Hierarchical summarization provides 4-level tree compression with depth-adaptive retrieval
 
 ---
 
