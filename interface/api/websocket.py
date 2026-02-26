@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -22,7 +23,15 @@ async def task_ws(websocket: WebSocket, task_id: str) -> None:
                 await websocket.send_json({"error": f"Task {task_id} not found"})
                 break
 
-            snapshot = TaskResponse.from_task(task).model_dump_json()
+            data = json.loads(TaskResponse.from_task(task).model_dump_json())
+
+            # Include background planner recommendations if available
+            if hasattr(container, "background_planner"):
+                recs = container.background_planner.get_recommendations(task_id)
+                if recs:
+                    data["recommendations"] = recs
+
+            snapshot = json.dumps(data, sort_keys=True)
             # Only send if state changed
             if snapshot != last_snapshot:
                 await websocket.send_text(snapshot)

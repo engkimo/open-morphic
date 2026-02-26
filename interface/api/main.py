@@ -12,6 +12,7 @@ from interface.api.container import AppContainer
 from interface.api.routes.cost import router as cost_router
 from interface.api.routes.memory import router as memory_router
 from interface.api.routes.models import router as models_router
+from interface.api.routes.plans import router as plans_router
 from interface.api.routes.tasks import router as tasks_router
 from interface.api.websocket import task_ws
 from shared.config import Settings
@@ -20,8 +21,11 @@ from shared.config import Settings
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Create AppContainer on startup, teardown on shutdown."""
-    app.state.container = AppContainer(settings=Settings())
+    container = AppContainer(settings=Settings())
+    await container.init()
+    app.state.container = container
     yield
+    await container.close()
 
 
 def create_app(container: AppContainer | None = None) -> FastAPI:
@@ -47,6 +51,7 @@ def create_app(container: AppContainer | None = None) -> FastAPI:
 
     # REST routes
     app.include_router(tasks_router)
+    app.include_router(plans_router)
     app.include_router(models_router)
     app.include_router(cost_router)
     app.include_router(memory_router)

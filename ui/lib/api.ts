@@ -62,6 +62,58 @@ export function deleteTask(id: string) {
   return request<void>(`/api/tasks/${id}`, { method: "DELETE" });
 }
 
+// ── Plan API ──
+
+export interface PlanStepResponse {
+  subtask_description: string;
+  proposed_model: string;
+  estimated_cost_usd: number;
+  estimated_tokens: number;
+  risk_note: string;
+}
+
+export interface ExecutionPlanResponse {
+  id: string;
+  goal: string;
+  steps: PlanStepResponse[];
+  total_estimated_cost_usd: number;
+  status: string;
+  task_id: string | null;
+  created_at: string;
+}
+
+export interface PlanListResponse {
+  plans: ExecutionPlanResponse[];
+  count: number;
+}
+
+export function createPlan(goal: string, model: string = "ollama/qwen3:8b") {
+  return request<ExecutionPlanResponse>("/api/plans", {
+    method: "POST",
+    body: JSON.stringify({ goal, model }),
+  });
+}
+
+export function getPlan(id: string) {
+  return request<ExecutionPlanResponse>(`/api/plans/${id}`);
+}
+
+export function listPlans() {
+  return request<PlanListResponse>("/api/plans");
+}
+
+export function approvePlan(id: string) {
+  return request<TaskResponse>(`/api/plans/${id}/approve`, {
+    method: "POST",
+  });
+}
+
+export function rejectPlan(id: string) {
+  return request<ExecutionPlanResponse>(`/api/plans/${id}/reject`, {
+    method: "POST",
+  });
+}
+
 // ── Cost API ──
 
 export interface CostSummary {

@@ -123,6 +123,63 @@ class ModelStatusResponse(BaseModel):
     models: list[ModelInfo]
 
 
+# ── Plan schemas ──
+
+
+class CreatePlanRequest(BaseModel):
+    goal: str = Field(min_length=1, examples=["Build a REST API with authentication"])
+    model: str = Field(default="ollama/qwen3:8b", examples=["ollama/qwen3:8b"])
+
+
+class PlanStepResponse(BaseModel):
+    subtask_description: str
+    proposed_model: str
+    estimated_cost_usd: float
+    estimated_tokens: int
+    risk_note: str = ""
+
+    @classmethod
+    def from_step(cls, step: "PlanStep") -> PlanStepResponse:
+        from domain.entities.plan import PlanStep
+
+        return cls(
+            subtask_description=step.subtask_description,
+            proposed_model=step.proposed_model,
+            estimated_cost_usd=step.estimated_cost_usd,
+            estimated_tokens=step.estimated_tokens,
+            risk_note=step.risk_note,
+        )
+
+
+class ExecutionPlanResponse(BaseModel):
+    id: str
+    goal: str
+    steps: list[PlanStepResponse]
+    total_estimated_cost_usd: float
+    status: str
+    task_id: str | None = None
+    created_at: datetime
+
+    @classmethod
+    def from_plan(cls, plan: "ExecutionPlan") -> ExecutionPlanResponse:
+        from domain.entities.plan import ExecutionPlan
+
+        return cls(
+            id=plan.id,
+            goal=plan.goal,
+            steps=[PlanStepResponse.from_step(s) for s in plan.steps],
+            total_estimated_cost_usd=plan.total_estimated_cost_usd,
+            status=plan.status.value,
+            task_id=plan.task_id,
+            created_at=plan.created_at,
+        )
+
+
+class PlanListResponse(BaseModel):
+    plans: list[ExecutionPlanResponse]
+    count: int
+
+
 # ── Memory schemas ──
 
 

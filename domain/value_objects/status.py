@@ -30,3 +30,11 @@ class MemoryType(str, Enum):
     L2_SEMANTIC = "l2_semantic"
     L3_FACTS = "l3_facts"
     L4_COLD = "l4_cold"
+
+
+class PlanStatus(str, Enum):
+    PROPOSED = "proposed"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXECUTING = "executing"
+    COMPLETED = "completed"

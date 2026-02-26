@@ -29,6 +29,7 @@ from interface.api.main import create_app
 class _FakeSettings:
     ollama_default_model: str = "qwen3:8b"
     default_monthly_budget_usd: float = 50.0
+    celery_enabled: bool = False
 
 
 class _E2EContainer:

@@ -13,11 +13,14 @@ from typer.testing import CliRunner
 from domain.entities.cost import CostRecord
 from domain.entities.task import SubTask, TaskEntity
 from domain.value_objects.status import SubTaskStatus, TaskStatus
+from application.use_cases.cost_estimator import CostEstimator
+from application.use_cases.interactive_plan import InteractivePlanUseCase
 from infrastructure.llm.cost_tracker import CostTracker
 from infrastructure.memory.memory_hierarchy import MemoryHierarchy
 from infrastructure.persistence.in_memory import (
     InMemoryCostRepository,
     InMemoryMemoryRepository,
+    InMemoryPlanRepository,
     InMemoryTaskRepository,
 )
 from interface.cli import main as cli_main
@@ -37,6 +40,7 @@ class _MockContainer:
         self.task_repo = InMemoryTaskRepository()
         self.cost_repo = InMemoryCostRepository()
         self.memory_repo = InMemoryMemoryRepository()
+        self.plan_repo = InMemoryPlanRepository()
         self.memory = MemoryHierarchy(memory_repo=self.memory_repo)
 
         # Mock LLM-dependent services
@@ -52,6 +56,21 @@ class _MockContainer:
 
         self.create_task = AsyncMock()
         self.execute_task = AsyncMock()
+
+        # Planning
+        self.task_engine = AsyncMock()
+        from domain.entities.task import SubTask
+
+        self.task_engine.decompose = AsyncMock(
+            return_value=[SubTask(description="step 1"), SubTask(description="step 2")]
+        )
+        self.cost_estimator = CostEstimator()
+        self.interactive_plan = InteractivePlanUseCase(
+            engine=self.task_engine,
+            cost_estimator=self.cost_estimator,
+            plan_repo=self.plan_repo,
+            task_repo=self.task_repo,
+        )
 
 
 class _FakeSettings:
@@ -262,3 +281,39 @@ class TestCostCommands:
         assert result.exit_code == 0
         assert "Budget set" in result.output
         assert "$100.00" in result.output
+
+
+# ═══════════════════════════════════════════════════════════════
+# Sprint 2-C: Plan Commands
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestPlanCommands:
+    def test_plan_create_auto_approve(self) -> None:
+        result = runner.invoke(app, ["plan", "create", "test plan", "--yes"])
+        assert result.exit_code == 0
+        assert "Plan approved" in result.output
+
+    def test_plan_list_empty(self) -> None:
+        result = runner.invoke(app, ["plan", "list"])
+        assert result.exit_code == 0
+        assert "No plans" in result.output
+
+    def test_plan_list_populated(self, container: _MockContainer) -> None:
+        # Create a plan first
+        from domain.entities.plan import ExecutionPlan, PlanStep
+
+        plan = ExecutionPlan(
+            goal="listed plan",
+            steps=[PlanStep(subtask_description="step 1")],
+        )
+        container.plan_repo._store[plan.id] = plan
+
+        result = runner.invoke(app, ["plan", "list"])
+        assert result.exit_code == 0
+        assert "listed plan" in result.output
+
+    def test_plan_show_not_found(self) -> None:
+        result = runner.invoke(app, ["plan", "show", "nonexistent"])
+        assert result.exit_code == 1
+        assert "not found" in result.output

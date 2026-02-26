@@ -78,9 +78,11 @@ def main(
 def _register_commands() -> None:
     from interface.cli.commands.cost import cost_app
     from interface.cli.commands.model import model_app
+    from interface.cli.commands.plan import plan_app
     from interface.cli.commands.task import task_app
 
     app.add_typer(task_app, name="task", help="Create, list, show, and cancel tasks.")
+    app.add_typer(plan_app, name="plan", help="Create, review, approve, and reject plans.")
     app.add_typer(model_app, name="model", help="Manage LLM models.")
     app.add_typer(cost_app, name="cost", help="View cost tracking and budget.")
 

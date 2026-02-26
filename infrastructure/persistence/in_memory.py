@@ -7,9 +7,11 @@ from __future__ import annotations
 
 from domain.entities.cost import CostRecord
 from domain.entities.memory import MemoryEntry
+from domain.entities.plan import ExecutionPlan
 from domain.entities.task import TaskEntity
 from domain.ports.cost_repository import CostRepository
 from domain.ports.memory_repository import MemoryRepository
+from domain.ports.plan_repository import PlanRepository
 from domain.ports.task_repository import TaskRepository
 from domain.value_objects.status import TaskStatus
 
@@ -94,3 +96,22 @@ class InMemoryMemoryRepository(MemoryRepository):
 
     async def delete(self, memory_id: str) -> None:
         self._store.pop(memory_id, None)
+
+
+class InMemoryPlanRepository(PlanRepository):
+    """Dict-backed PlanRepository."""
+
+    def __init__(self) -> None:
+        self._store: dict[str, ExecutionPlan] = {}
+
+    async def save(self, plan: ExecutionPlan) -> None:
+        self._store[plan.id] = plan
+
+    async def get_by_id(self, plan_id: str) -> ExecutionPlan | None:
+        return self._store.get(plan_id)
+
+    async def list_all(self) -> list[ExecutionPlan]:
+        return sorted(self._store.values(), key=lambda p: p.created_at, reverse=True)
+
+    async def update(self, plan: ExecutionPlan) -> None:
+        self._store[plan.id] = plan

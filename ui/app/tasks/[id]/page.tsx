@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import TaskDetail from "@/components/TaskDetail";
+import TaskGraph from "@/components/TaskGraph";
 import { getTask, connectTaskWs, type TaskResponse } from "@/lib/api";
 
 export default function TaskPage() {
@@ -34,7 +35,12 @@ export default function TaskPage() {
       </Link>
 
       {error && <p className="text-danger">{error}</p>}
-      {task && <TaskDetail task={task} />}
+      {task && (
+        <>
+          <TaskDetail task={task} />
+          {task.subtasks.length > 0 && <TaskGraph task={task} />}
+        </>
+      )}
     </div>
   );
 }

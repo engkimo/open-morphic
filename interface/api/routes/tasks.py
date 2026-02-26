@@ -25,8 +25,15 @@ async def create_task(
 ) -> TaskResponse:
     c = _container(request)
     task = await c.create_task.execute(body.goal)
-    # Launch DAG execution in background
-    background_tasks.add_task(c.execute_task.execute, task.id)
+
+    # Dispatch execution: Celery worker or in-process background
+    if c.settings.celery_enabled:
+        from infrastructure.queue.tasks import execute_task_worker
+
+        execute_task_worker.delay(task.id)
+    else:
+        background_tasks.add_task(c.execute_task.execute, task.id)
+
     return TaskResponse.from_task(task)
 
 
