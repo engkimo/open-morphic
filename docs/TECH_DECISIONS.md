@@ -1251,3 +1251,54 @@ Integration: 10 passed (15.69s, real Ollama)
 select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
 ignore = ["UP042"]  # Keep (str, Enum) pattern for Pydantic strict=True compatibility
 ```
+
+---
+
+## TD-029: Semantic Fingerprint — LSH-Based Vector Search
+
+**Date**: 2026-02-26
+**Status**: Accepted
+**Sprint**: 3.1
+
+### Decision
+
+Implement LSH (Locality-Sensitive Hashing) based semantic search for memory retrieval, replacing keyword-only search. Key choices:
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Embedding backend | Ollama `/api/embed` | LOCAL_FIRST, $0, uses existing Ollama install |
+| Embedding model | `all-minilm` (384-dim) | Lightest/fastest. Configurable via `embedding_model` setting |
+| Vector dimension | 384 (configurable) | Matches all-minilm. ORM corrected from 1536 |
+| LSH hyperplanes | Seeded RNG (`seed=42`) | Deterministic across restarts, no file persistence |
+| Domain purity | Embeddings stored in ORM only | MemoryEntry stays pure. Vectors live in `MemoryModel.embedding` |
+| New domain port | `EmbeddingPort` ABC | Follows existing port pattern for dependency inversion |
+| Fallback | Keyword search when no embedding | Full backward compatibility |
+| New Python deps | `numpy` only | Ollama HTTP via existing `httpx`. Zero bloat |
+
+### Architecture
+
+```
+EmbeddingPort (domain/ports)
+    │
+    └── OllamaEmbeddingAdapter (infrastructure/memory)
+            │
+            └── POST /api/embed → [384-dim vectors]
+
+SemanticFingerprint (domain/services)   ← pure, no I/O
+    │  lsh_hash(vector) → hex bucket key
+    │  cosine_similarity(v1, v2) → float
+    │
+    └── SemanticBucketStore (infrastructure/memory)
+            │  add(id, vector) → bucket
+            │  find_similar(vector, top_k, threshold) → [(id, sim)]
+            │  multi-probe: flip bits for neighbor buckets
+            │
+            └── InMemoryMemoryRepository (embedding_port=...)
+                PgMemoryRepository (embedding_port=...)
+```
+
+### Files Created/Modified
+
+- **Created**: `domain/ports/embedding.py`, `domain/services/semantic_fingerprint.py`, `infrastructure/memory/semantic_fingerprint.py`, `infrastructure/memory/embedding_adapters.py`, `migrations/versions/002_add_embedding_column.py`
+- **Modified**: `shared/config.py` (embedding settings), `models.py` (Vector 1536→384), `in_memory.py` (optional embedding_port), `pg_memory_repository.py` (optional embedding_port + pgvector cosine_distance), `container.py` (DI wiring)
+- **Tests**: 31 new tests (11 domain + 20 infrastructure), total 459 passing

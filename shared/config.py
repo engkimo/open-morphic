@@ -70,6 +70,13 @@ class Settings(BaseSettings):
     memory_target_tokens: int = 800
     memory_retention_threshold: float = 0.3
 
+    # ── Embedding (Semantic Fingerprint) ──
+    embedding_backend: str = "ollama"  # ollama | none
+    embedding_model: str = "all-minilm"
+    embedding_dimensions: int = 384
+    embedding_lsh_seed: int = 42
+    embedding_lsh_n_planes: int = 32
+
     # ── Cost ──
     default_monthly_budget_usd: float = 50.0
     default_task_budget_usd: float = 1.0

@@ -5,12 +5,15 @@ Single object stored on app.state.container. Swappable for testing.
 
 from __future__ import annotations
 
+import logging
+
 from application.use_cases.background_planner import BackgroundPlannerUseCase
 from application.use_cases.cost_estimator import CostEstimator
 from application.use_cases.create_task import CreateTaskUseCase
 from application.use_cases.execute_task import ExecuteTaskUseCase
 from application.use_cases.interactive_plan import InteractivePlanUseCase
 from domain.ports.cost_repository import CostRepository
+from domain.ports.embedding import EmbeddingPort
 from domain.ports.memory_repository import MemoryRepository
 from domain.ports.plan_repository import PlanRepository
 from domain.ports.task_repository import TaskRepository
@@ -28,12 +31,17 @@ from infrastructure.task_graph.engine import LangGraphTaskEngine
 from infrastructure.task_graph.intent_analyzer import IntentAnalyzer
 from shared.config import Settings
 
+logger = logging.getLogger(__name__)
+
 
 class AppContainer:
     """Composes all dependencies. Created once at app startup."""
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or Settings()
+
+        # Embedding port (optional — only created when backend != "none")
+        self.embedding_port: EmbeddingPort | None = self._create_embedding_port()
 
         # Repositories — PG or InMemory based on settings
         repos = self._create_repos()
@@ -86,6 +94,21 @@ class AppContainer:
         # Memory
         self.memory = MemoryHierarchy(memory_repo=self.memory_repo)
 
+    def _create_embedding_port(self) -> EmbeddingPort | None:
+        """Create embedding port based on settings. Returns None if disabled."""
+        if self.settings.embedding_backend == "none":
+            return None
+        if self.settings.embedding_backend == "ollama":
+            from infrastructure.memory.embedding_adapters import OllamaEmbeddingAdapter
+
+            return OllamaEmbeddingAdapter(
+                base_url=self.settings.ollama_base_url,
+                model=self.settings.embedding_model,
+                dimensions=self.settings.embedding_dimensions,
+            )
+        logger.warning("Unknown embedding_backend: %s", self.settings.embedding_backend)
+        return None
+
     def _create_repos(self) -> dict:
         """Pick PG or InMemory based on settings.use_postgres."""
         if self.settings.use_postgres:
@@ -93,7 +116,7 @@ class AppContainer:
         return {
             "task": InMemoryTaskRepository(),
             "cost": InMemoryCostRepository(),
-            "memory": InMemoryMemoryRepository(),
+            "memory": InMemoryMemoryRepository(embedding_port=self.embedding_port),
             "plan": InMemoryPlanRepository(),
         }
 
@@ -124,7 +147,7 @@ class AppContainer:
         return {
             "task": PgTaskRepository(self._session_factory),
             "cost": PgCostRepository(self._session_factory),
-            "memory": PgMemoryRepository(self._session_factory),
+            "memory": PgMemoryRepository(self._session_factory, embedding_port=self.embedding_port),
             "plan": PgPlanRepository(self._session_factory),
         }
 

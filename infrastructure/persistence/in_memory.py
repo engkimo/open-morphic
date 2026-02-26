@@ -5,15 +5,20 @@ No database required. Suitable for single-process development and testing.
 
 from __future__ import annotations
 
+import logging
+
 from domain.entities.cost import CostRecord
 from domain.entities.memory import MemoryEntry
 from domain.entities.plan import ExecutionPlan
 from domain.entities.task import TaskEntity
 from domain.ports.cost_repository import CostRepository
+from domain.ports.embedding import EmbeddingPort
 from domain.ports.memory_repository import MemoryRepository
 from domain.ports.plan_repository import PlanRepository
 from domain.ports.task_repository import TaskRepository
 from domain.value_objects.status import TaskStatus
+
+logger = logging.getLogger(__name__)
 
 
 class InMemoryTaskRepository(TaskRepository):
@@ -71,15 +76,48 @@ class InMemoryCostRepository(CostRepository):
 
 
 class InMemoryMemoryRepository(MemoryRepository):
-    """Dict-backed MemoryRepository with keyword search."""
+    """Dict-backed MemoryRepository with optional embedding-based vector search.
 
-    def __init__(self) -> None:
+    When embedding_port is provided: uses SemanticBucketStore for vector similarity.
+    When embedding_port is None: falls back to keyword overlap (backward compat).
+    """
+
+    def __init__(self, embedding_port: EmbeddingPort | None = None) -> None:
         self._store: dict[str, MemoryEntry] = {}
+        self._embedding_port = embedding_port
+        self._bucket_store: SemanticBucketStore | None = None
+        if embedding_port is not None:
+            from domain.services.semantic_fingerprint import SemanticFingerprint
+            from infrastructure.memory.semantic_fingerprint import SemanticBucketStore
+
+            fp = SemanticFingerprint(dimensions=embedding_port.dimensions())
+            self._bucket_store = SemanticBucketStore(fingerprint=fp)
 
     async def add(self, entry: MemoryEntry) -> None:
         self._store[entry.id] = entry
+        if self._embedding_port is not None and self._bucket_store is not None:
+            try:
+                vectors = await self._embedding_port.embed([entry.content])
+                if vectors:
+                    self._bucket_store.add(entry.id, vectors[0])
+            except Exception:
+                logger.debug("Embedding failed for entry %s, keyword fallback", entry.id)
 
     async def search(self, query: str, top_k: int = 5) -> list[MemoryEntry]:
+        if self._embedding_port is not None and self._bucket_store is not None:
+            return await self._vector_search(query, top_k)
+        return self._keyword_search(query, top_k)
+
+    async def get_by_id(self, memory_id: str) -> MemoryEntry | None:
+        return self._store.get(memory_id)
+
+    async def delete(self, memory_id: str) -> None:
+        self._store.pop(memory_id, None)
+        if self._bucket_store is not None:
+            self._bucket_store.remove(memory_id)
+
+    def _keyword_search(self, query: str, top_k: int) -> list[MemoryEntry]:
+        """Original keyword overlap search (backward compat)."""
         query_lower = query.lower()
         query_words = set(query_lower.split())
         scored: list[tuple[float, MemoryEntry]] = []
@@ -87,15 +125,29 @@ class InMemoryMemoryRepository(MemoryRepository):
             words = set(entry.content.lower().split())
             overlap = len(words & query_words)
             if overlap > 0:
-                scored.append((overlap, entry))
+                scored.append((float(overlap), entry))
         scored.sort(key=lambda x: x[0], reverse=True)
         return [e for _, e in scored[:top_k]]
 
-    async def get_by_id(self, memory_id: str) -> MemoryEntry | None:
-        return self._store.get(memory_id)
+    async def _vector_search(self, query: str, top_k: int) -> list[MemoryEntry]:
+        """Embedding-based vector similarity search via SemanticBucketStore."""
+        try:
+            vectors = await self._embedding_port.embed([query])  # type: ignore[union-attr]
+            if not vectors:
+                return self._keyword_search(query, top_k)
+        except Exception:
+            logger.debug("Query embedding failed, falling back to keyword search")
+            return self._keyword_search(query, top_k)
 
-    async def delete(self, memory_id: str) -> None:
-        self._store.pop(memory_id, None)
+        similar = self._bucket_store.find_similar(  # type: ignore[union-attr]
+            vectors[0], top_k=top_k, threshold=0.0, multi_probe_bits=2
+        )
+        results: list[MemoryEntry] = []
+        for entry_id, _sim in similar:
+            entry = self._store.get(entry_id)
+            if entry is not None:
+                results.append(entry)
+        return results
 
 
 class InMemoryPlanRepository(PlanRepository):

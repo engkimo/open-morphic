@@ -41,6 +41,9 @@ dependencies = [
     "typer>=0.15",
     "rich>=13.9",
 
+    # Semantic Memory
+    "numpy>=1.26",
+
     # Utilities
     "python-dotenv>=1.0",
     "orjson>=3.10",
