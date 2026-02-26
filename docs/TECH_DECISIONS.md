@@ -1422,3 +1422,99 @@ MemoryHierarchy.compact(threshold)
 - **Modified**: `infrastructure/memory/memory_hierarchy.py` (added `compact()` method delegating to ForgettingCurveManager)
 - **Modified**: `interface/api/container.py` (wired ForgettingCurveManager with memory_repo + threshold from settings)
 - **Tests**: 31 new tests (14 domain + 17 infrastructure), total 506 passing
+
+---
+
+## TD-032: DeltaEncoder — Git-Style Delta State Tracking (Sprint 3.4, 2026-02-26)
+
+### Context
+
+Third compression strategy for Phase 3 Semantic Memory. Tracks state changes as deltas (like Git commits), enabling reconstruction of any point-in-time state without storing full snapshots.
+
+### Decision
+
+| Aspect | Choice | Rationale |
+|---|---|---|
+| Entity | `Delta` Pydantic entity (strict) | Consistent with all domain entities |
+| Domain service | `DeltaEncoder` (all `@staticmethod`) | Follows ForgettingCurve pattern — pure logic, no I/O |
+| Hash algorithm | SHA-256 of `json.dumps(sort_keys=True)` | Deterministic, order-independent — Manus principle 1 |
+| Deletion | Tombstone (`None` value) | Explicit deletion records — reconstruct knows key was removed |
+| Storage | `MemoryEntry` (L2_SEMANTIC) with `delta_*` metadata | Zero new ports — reuses existing MemoryRepository |
+| Topic grouping | `metadata["delta_topic"]` | Namespace isolation for independent state streams |
+| Seq numbering | Auto-increment per topic (0-based) | First delta auto-marked as base state |
+| New dependencies | None | hashlib + json are stdlib |
+
+### Alternatives Considered
+
+| Option | Rejected Because |
+|---|---|
+| Separate DeltaRepository port | Over-engineering — MemoryEntry metadata is sufficient for MVP |
+| Full snapshot storage | Wastes space — delta encoding is the whole point |
+| Custom binary format | JSON is readable, debuggable, and sort_keys gives determinism |
+| Event sourcing framework | Too heavy — we need simple key-value state tracking |
+
+### Domain Service API
+
+```python
+class DeltaEncoder:
+    @staticmethod hash_changes(changes: dict) -> str          # SHA-256 hex digest
+    @staticmethod reconstruct(base, deltas, target_time?) -> dict  # Apply deltas in seq order
+    @staticmethod create_delta(topic, seq, msg, changes, is_base?) -> Delta  # Factory
+    @staticmethod compute_diff(old_state, new_state) -> dict   # Minimal diff with tombstones
+```
+
+### Infrastructure Manager API
+
+```python
+class DeltaEncoderManager:
+    async record(topic, message, changes) -> DeltaRecordResult   # Auto-seq, persist
+    async get_state(topic, target_time?) -> dict                 # Reconstruct via domain
+    async get_history(topic) -> list[Delta]                      # Full delta chain
+    async list_topics() -> list[str]                             # Unique topics
+```
+
+### Architecture
+
+```
+MemoryHierarchy.record_delta(topic, message, changes)
+    │
+    └── DeltaEncoderManager.record()
+        │
+        ├── _get_deltas_for_topic() ── MemoryRepository.list_by_type(L2_SEMANTIC)
+        ├── DeltaEncoder.create_delta() ── domain pure logic
+        ├── _delta_to_entry() ── Delta → MemoryEntry serialization
+        └── memory_repo.add(entry)
+
+MemoryHierarchy.get_state(topic, target_time?)
+    │
+    └── DeltaEncoderManager.get_state()
+        │
+        ├── _get_deltas_for_topic() ── filter by metadata["delta_topic"]
+        └── DeltaEncoder.reconstruct({}, deltas, target_time)
+```
+
+### Delta ↔ MemoryEntry Serialization
+
+```python
+# Delta metadata keys stored in MemoryEntry.metadata:
+delta_topic    = delta.topic          # str
+delta_seq      = delta.seq            # int
+delta_changes  = json.dumps(changes)  # str (JSON, sort_keys=True)
+delta_hash     = delta.state_hash     # str (SHA-256 hex)
+delta_is_base  = delta.is_base_state  # bool
+
+# MemoryEntry.content = delta.message (human-readable description)
+```
+
+### Files Created/Modified
+
+- **Created**: `domain/entities/delta.py` (Delta Pydantic entity, strict mode)
+- **Created**: `domain/services/delta_encoder.py` (pure static: hash_changes, reconstruct, create_delta, compute_diff)
+- **Created**: `infrastructure/memory/delta_encoder.py` (DeltaEncoderManager + DeltaRecordResult frozen dataclass)
+- **Created**: `tests/unit/domain/test_delta_encoder.py` (34 tests)
+- **Created**: `tests/unit/infrastructure/test_delta_encoder.py` (27 tests)
+- **Modified**: `domain/entities/__init__.py` (export Delta)
+- **Modified**: `infrastructure/memory/__init__.py` (export DeltaEncoderManager)
+- **Modified**: `infrastructure/memory/memory_hierarchy.py` (added record_delta, get_state, get_state_history)
+- **Modified**: `interface/api/container.py` (wired DeltaEncoderManager)
+- **Tests**: 61 new tests (34 domain + 27 infrastructure), total 567 passing

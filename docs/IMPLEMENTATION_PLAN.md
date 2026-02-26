@@ -1176,6 +1176,48 @@ class ContextZipper:
 
 ---
 
+### Sprint 3.4: DeltaEncoder — Git-Style Delta State Tracking (2026-02-26) ✅ COMPLETE
+
+> Git-style delta encoding for state tracking. Records changes as diffs, reconstructs any point-in-time state.
+
+#### What Was Built
+
+| Component | File | Description |
+|---|---|---|
+| **Delta** | `domain/entities/delta.py` | Pydantic entity (strict): topic, seq, message, changes, state_hash |
+| **DeltaEncoder** | `domain/services/delta_encoder.py` | Pure static: `hash_changes`, `reconstruct`, `create_delta`, `compute_diff` |
+| **DeltaEncoderManager** | `infrastructure/memory/delta_encoder.py` | Async manager: record, get_state, get_history, list_topics |
+| **DeltaRecordResult** | `infrastructure/memory/delta_encoder.py` | Frozen dataclass: delta_id, topic, seq, state_hash |
+
+#### Modified Files
+
+| File | Change |
+|---|---|
+| `domain/entities/__init__.py` | Export `Delta` |
+| `infrastructure/memory/__init__.py` | Export `DeltaEncoderManager` |
+| `infrastructure/memory/memory_hierarchy.py` | Added `record_delta()`, `get_state()`, `get_state_history()` |
+| `interface/api/container.py` | Wired `DeltaEncoderManager` with memory_repo |
+
+#### Test Results
+
+| Suite | Tests | Status |
+|---|---|---|
+| `test_delta_encoder.py` (domain) | 34 | ✅ entity validation, hash, reconstruct, create_delta, compute_diff |
+| `test_delta_encoder.py` (infrastructure) | 27 | ✅ record, get_state, history, topics, roundtrip, hierarchy integration |
+| All existing tests | 506 | ✅ Full backward compatibility |
+| **Total** | **567** | **All passing (2.8s)** |
+
+#### Key Design Decisions (TD-032)
+
+- **Zero new ports**: Deltas stored as `MemoryEntry` (L2_SEMANTIC) with `delta_*` metadata keys
+- **Topic-based grouping**: `metadata["delta_topic"]` for namespace isolation
+- **SHA-256 deterministic hash**: `json.dumps(sort_keys=True)` — Manus principle 1
+- **Tombstone deletion**: `compute_diff` uses `None` value for deleted keys
+- **Auto-seq + auto-base**: First delta per topic is automatically seq=0 and is_base_state=True
+- **No new deps**: hashlib + json are stdlib
+
+---
+
 ### Week 5: Full Semantic Memory
 
 | # | Item | File |
@@ -1183,7 +1225,7 @@ class ContextZipper:
 | 3.1 | SemanticFingerprint (LSH) | `infrastructure/memory/semantic_fingerprint.py` | ✅ COMPLETE |
 | 3.2 | ContextZipper v2 (semantic) | `infrastructure/memory/context_zipper.py` | ✅ COMPLETE (TD-030) |
 | 3.3 | ForgettingCurve | `infrastructure/memory/forgetting_curve.py` | ✅ COMPLETE (TD-031) |
-| 3.4 | DeltaEncoder | `infrastructure/memory/delta_encoder.py` |
+| 3.4 | DeltaEncoder | `infrastructure/memory/delta_encoder.py` | ✅ COMPLETE (TD-032) |
 | 3.5 | HierarchicalSummarizer | `infrastructure/memory/hierarchical_summary.py` |
 
 ### Week 6: Context Bridge & MCP
@@ -1201,6 +1243,7 @@ class ContextZipper:
 - [ ] LSH retrieves semantically similar memories in near-O(1) time
 - [ ] MCP Server enables other tools to access Morphic-Agent memory
 - [x] Forgetting curve auto-promotes low-importance memories to L3, removes from L2
+- [x] Delta encoding tracks state changes as diffs, reconstructs any point-in-time state
 
 ---
 
