@@ -1088,6 +1088,53 @@ Verification:
 
 ---
 
+### Sprint 3.2: ContextZipper v2 — Semantic-Aware Compression (2026-02-26) ✅ COMPLETE
+
+> Rewrite ContextZipper from sync keyword-only to async semantic-aware compressor with memory/KG augmentation.
+
+#### What Was Built
+
+| Component | File | Description |
+|---|---|---|
+| **ContextZipper v2** | `infrastructure/memory/context_zipper.py` | async compress(), semantic scoring, [Facts]/[Memory] augmentation, ingest() |
+
+#### Modified Files
+
+| File | Change |
+|---|---|
+| `infrastructure/memory/context_zipper.py` | Full rewrite: 84-line sync → 254-line async. Optional ports, budget allocation, per-word entity search |
+| `tests/unit/infrastructure/test_memory.py` | 10 existing tests → async. 16 new v2 tests (constructor, semantic, KG, memory, ingest, multi-source) |
+| `interface/api/container.py` | Wire `ContextZipper` with `embedding_port` + `memory_repo` |
+
+#### API
+
+```python
+class ContextZipper:
+    def __init__(self, embedding_port?, memory_repo?, knowledge_graph?,
+                 facts_budget_pct=0.20, memory_budget_pct=0.30): ...
+    async def compress(self, history, query, max_tokens=500) -> str: ...
+    async def ingest(self, message, role="user") -> None: ...
+```
+
+#### Test Results
+
+| Suite | Tests | Status |
+|---|---|---|
+| `TestContextZipper` (v1 backward compat) | 10 | ✅ async, same behavior |
+| `TestContextZipperV2` (new features) | 16 | ✅ semantic, KG, memory, ingest |
+| All existing tests | 459 | ✅ Full backward compatibility |
+| **Total** | **475** | **All passing (2.98s)** |
+
+#### Key Design Decisions (TD-030)
+
+- **Semantic fallback**: cosine similarity (with EmbeddingPort) → keyword overlap (without)
+- **Budget allocation**: [Facts] 20% → [Memory] 30% → [History] 50% (configurable)
+- **Per-word entity search**: multi-word queries split by word, deduplicated by entity ID
+- **Deduplication**: memory entries matching history messages are skipped
+- **No new deps**: reuses existing EmbeddingPort, MemoryRepository, KnowledgeGraphPort
+
+---
+
 ### Week 5: Full Semantic Memory
 
 | # | Item | File |
