@@ -21,6 +21,7 @@ from infrastructure.llm.cost_tracker import CostTracker
 from infrastructure.llm.litellm_gateway import LiteLLMGateway
 from infrastructure.llm.ollama_manager import OllamaManager
 from infrastructure.memory.context_zipper import ContextZipper
+from infrastructure.memory.delta_encoder import DeltaEncoderManager
 from infrastructure.memory.forgetting_curve import ForgettingCurveManager
 from infrastructure.memory.memory_hierarchy import MemoryHierarchy
 from infrastructure.persistence.in_memory import (
@@ -103,6 +104,9 @@ class AppContainer:
             memory_repo=self.memory_repo,
             knowledge_graph=None,  # KG wired when available
             threshold=self.settings.memory_retention_threshold,
+        )
+        self.delta_encoder = DeltaEncoderManager(
+            memory_repo=self.memory_repo,
         )
 
     def _create_embedding_port(self) -> EmbeddingPort | None:

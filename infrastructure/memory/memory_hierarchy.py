@@ -10,6 +10,7 @@ CPU-cache-inspired design:
 from __future__ import annotations
 
 import collections
+from datetime import datetime
 from typing import Any
 
 from domain.entities.memory import MemoryEntry
@@ -58,6 +59,55 @@ class MemoryHierarchy:
             metadata={"role": role},
         )
         await self._memory_repo.add(entry)
+
+    async def record_delta(
+        self,
+        topic: str,
+        message: str,
+        changes: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Record a state delta. Delegates to DeltaEncoderManager."""
+        from infrastructure.memory.delta_encoder import DeltaEncoderManager
+
+        mgr = DeltaEncoderManager(memory_repo=self._memory_repo)
+        result = await mgr.record(topic, message, changes)
+        return {
+            "delta_id": result.delta_id,
+            "topic": result.topic,
+            "seq": result.seq,
+            "state_hash": result.state_hash,
+        }
+
+    async def get_state(
+        self,
+        topic: str,
+        target_time: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Reconstruct state for a topic. Delegates to DeltaEncoderManager."""
+        from infrastructure.memory.delta_encoder import DeltaEncoderManager
+
+        mgr = DeltaEncoderManager(memory_repo=self._memory_repo)
+        return await mgr.get_state(topic, target_time=target_time)
+
+    async def get_state_history(self, topic: str) -> list[dict[str, Any]]:
+        """Get delta history for a topic. Returns list of dicts."""
+        from infrastructure.memory.delta_encoder import DeltaEncoderManager
+
+        mgr = DeltaEncoderManager(memory_repo=self._memory_repo)
+        deltas = await mgr.get_history(topic)
+        return [
+            {
+                "id": d.id,
+                "topic": d.topic,
+                "seq": d.seq,
+                "message": d.message,
+                "changes": d.changes,
+                "state_hash": d.state_hash,
+                "is_base_state": d.is_base_state,
+                "created_at": d.created_at.isoformat(),
+            }
+            for d in deltas
+        ]
 
     async def compact(self, threshold: float = 0.3) -> dict:
         """Expire stale L2 memories. Delegates to ForgettingCurveManager.
