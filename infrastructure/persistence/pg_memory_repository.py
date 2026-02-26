@@ -143,3 +143,14 @@ class PgMemoryRepository(MemoryRepository):
             if model is not None:
                 await session.delete(model)
                 await session.commit()
+
+    async def list_by_type(self, memory_type: MemoryType, limit: int = 100) -> list[MemoryEntry]:
+        async with self._session_factory() as session:
+            stmt = (
+                select(MemoryModel)
+                .where(MemoryModel.memory_type == memory_type.value)
+                .order_by(MemoryModel.last_accessed.asc())
+                .limit(limit)
+            )
+            result = await session.execute(stmt)
+            return [self._to_entity(row) for row in result.scalars().all()]

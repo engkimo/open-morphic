@@ -16,6 +16,7 @@ from domain.entities.memory import MemoryEntry
 from domain.ports.knowledge_graph import KnowledgeGraphPort
 from domain.ports.memory_repository import MemoryRepository
 from domain.value_objects.status import MemoryType
+from infrastructure.memory.forgetting_curve import ForgettingCurveManager
 
 
 def _estimate_tokens(text: str) -> int:
@@ -57,6 +58,24 @@ class MemoryHierarchy:
             metadata={"role": role},
         )
         await self._memory_repo.add(entry)
+
+    async def compact(self, threshold: float = 0.3) -> dict:
+        """Expire stale L2 memories. Delegates to ForgettingCurveManager.
+
+        Returns dict with scanned/expired/promoted/deleted counts.
+        """
+        mgr = ForgettingCurveManager(
+            memory_repo=self._memory_repo,
+            knowledge_graph=self._knowledge_graph,
+            threshold=threshold,
+        )
+        result = await mgr.compact()
+        return {
+            "scanned": result.scanned,
+            "expired": result.expired,
+            "promoted": result.promoted,
+            "deleted": result.deleted,
+        }
 
     async def retrieve(self, query: str, max_tokens: int = 500) -> str:
         """Search L1 → L2 → L3, assemble results within token budget."""

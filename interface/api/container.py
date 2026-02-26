@@ -21,6 +21,7 @@ from infrastructure.llm.cost_tracker import CostTracker
 from infrastructure.llm.litellm_gateway import LiteLLMGateway
 from infrastructure.llm.ollama_manager import OllamaManager
 from infrastructure.memory.context_zipper import ContextZipper
+from infrastructure.memory.forgetting_curve import ForgettingCurveManager
 from infrastructure.memory.memory_hierarchy import MemoryHierarchy
 from infrastructure.persistence.in_memory import (
     InMemoryCostRepository,
@@ -97,6 +98,11 @@ class AppContainer:
         self.context_zipper = ContextZipper(
             embedding_port=self.embedding_port,
             memory_repo=self.memory_repo,
+        )
+        self.forgetting_curve = ForgettingCurveManager(
+            memory_repo=self.memory_repo,
+            knowledge_graph=None,  # KG wired when available
+            threshold=self.settings.memory_retention_threshold,
         )
 
     def _create_embedding_port(self) -> EmbeddingPort | None:

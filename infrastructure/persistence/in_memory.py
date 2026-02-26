@@ -16,7 +16,7 @@ from domain.ports.embedding import EmbeddingPort
 from domain.ports.memory_repository import MemoryRepository
 from domain.ports.plan_repository import PlanRepository
 from domain.ports.task_repository import TaskRepository
-from domain.value_objects.status import TaskStatus
+from domain.value_objects.status import MemoryType, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +115,9 @@ class InMemoryMemoryRepository(MemoryRepository):
         self._store.pop(memory_id, None)
         if self._bucket_store is not None:
             self._bucket_store.remove(memory_id)
+
+    async def list_by_type(self, memory_type: MemoryType, limit: int = 100) -> list[MemoryEntry]:
+        return [e for e in list(self._store.values()) if e.memory_type == memory_type][:limit]
 
     def _keyword_search(self, query: str, top_k: int) -> list[MemoryEntry]:
         """Original keyword overlap search (backward compat)."""
