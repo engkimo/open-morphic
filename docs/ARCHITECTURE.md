@@ -3,7 +3,7 @@
 > Clean Architecture (4-layer) + TDD + Pydantic Strict Mode + OSS-First
 >
 > **Phase 1 Foundation: COMPLETE** (2026-02-25) — 7/7 sprints done
-> **Phase 2 CLI v1: COMPLETE** (2026-02-25) — Sprints 2.9-2.11, 318 unit tests + 26 integration tests
+> **Phase 2 Parallel & Planning + CLI: COMPLETE** (2026-02-26) — All 6 sprints (2-A through 2-F) + CLI v1, 428 unit tests + 26 integration tests
 
 ---
 
@@ -187,9 +187,10 @@ morphic-agent/
 │   │   ├── task.py                  # TaskEntity, SubTask (strict)
 │   │   ├── execution.py            # Action, Observation, UndoAction (strict)
 │   │   ├── memory.py               # MemoryEntry (strict)
-│   │   └── cost.py                 # CostRecord (strict)
+│   │   ├── cost.py                 # CostRecord (strict)
+│   │   └── plan.py                 # PlanStep, ExecutionPlan (strict)
 │   ├── value_objects/
-│   │   ├── status.py               # TaskStatus, SubTaskStatus, ObservationStatus, MemoryType
+│   │   ├── status.py               # TaskStatus, SubTaskStatus, ObservationStatus, MemoryType, PlanStatus
 │   │   ├── risk_level.py           # RiskLevel (5-tier IntEnum)
 │   │   ├── approval_mode.py        # ApprovalMode (3-tier)
 │   │   └── model_tier.py           # ModelTier, TaskType
@@ -200,7 +201,8 @@ morphic-agent/
 │   │   ├── local_executor.py       # LocalExecutor ABC (LAEE)
 │   │   ├── audit_logger.py         # AuditLogger ABC
 │   │   ├── memory_repository.py    # MemoryRepository ABC
-│   │   └── cost_repository.py      # CostRepository ABC
+│   │   ├── cost_repository.py      # CostRepository ABC
+│   │   └── plan_repository.py      # PlanRepository ABC
 │   └── services/
 │       ├── risk_assessor.py        # 40+ tool risk mapping + escalation
 │       └── approval_engine.py      # 3-mode × 5-risk approval matrix
@@ -208,13 +210,20 @@ morphic-agent/
 ├── application/                     # Layer 3: Use Cases
 │   ├── use_cases/
 │   │   ├── create_task.py          # CreateTaskUseCase (decompose + persist)
-│   │   └── execute_task.py         # ExecuteTaskUseCase (run DAG + persist)
+│   │   ├── execute_task.py         # ExecuteTaskUseCase (run DAG + persist)
+│   │   ├── cost_estimator.py       # CostEstimator (per-model token pricing)
+│   │   ├── interactive_plan.py     # InteractivePlanUseCase (create/approve/reject)
+│   │   └── background_planner.py   # BackgroundPlannerUseCase (advisory monitoring)
 │   └── dto/                         # (stub — Sprint 1.4)
 │
 ├── infrastructure/                  # Layer 2: Port Implementations
 │   ├── persistence/
 │   │   ├── database.py              # Async SQLAlchemy engine + session
-│   │   └── models.py                # ORM models (separate from domain entities)
+│   │   ├── models.py                # ORM models (separate from domain entities)
+│   │   ├── pg_task_repository.py    # PgTaskRepository (TaskEntity ↔ TaskModel)
+│   │   ├── pg_cost_repository.py    # PgCostRepository (SQL aggregation)
+│   │   ├── pg_memory_repository.py  # PgMemoryRepository (ILIKE search)
+│   │   └── pg_plan_repository.py    # PgPlanRepository (ExecutionPlan ↔ PlanModel)
 │   ├── llm/                         # Sprint 1.2: LLM Layer
 │   │   ├── ollama_manager.py        # Ollama lifecycle (health, model pull, RAM recommend)
 │   │   ├── litellm_gateway.py       # LLMGateway impl (LOCAL_FIRST routing + LiteLLM)
@@ -223,7 +232,10 @@ morphic-agent/
 │   │   ├── state.py                 # AgentState TypedDict (LangGraph state)
 │   │   ├── intent_analyzer.py       # LLM goal → subtask decomposition
 │   │   └── engine.py                # LangGraphTaskEngine (DAG + parallel + retry)
-│   └── local_execution/             # Sprint 1.3b: LAEE
+│   ├── queue/                       # Sprint 2-B: Celery + Redis
+│   │   ├── celery_app.py            # Celery app factory (Redis broker/backend)
+│   │   └── tasks.py                 # execute_task_worker Celery task
+│   └── local_execution/             # Sprint 1.3b + 2-E: LAEE
 │       ├── executor.py              # LocalExecutor (risk → approve → execute → audit)
 │       ├── audit_log.py             # JsonlAuditLogger (append-only JSONL)
 │       ├── undo_manager.py          # Stack-based undo for reversible ops
@@ -231,16 +243,20 @@ morphic-agent/
 │           ├── shell_tools.py       # shell_exec, shell_background, shell_stream, shell_pipe
 │           ├── fs_tools.py          # fs_read, fs_write, fs_edit, fs_delete, fs_move, fs_glob, fs_tree
 │           ├── system_tools.py      # process_list, process_kill, resource_info, clipboard, notify
-│           └── dev_tools.py         # dev_git, dev_docker, dev_pkg_install, dev_env_setup
+│           ├── dev_tools.py         # dev_git, dev_docker, dev_pkg_install, dev_env_setup
+│           ├── browser_tools.py     # navigate, click, type, screenshot, extract, pdf (Playwright)
+│           ├── gui_tools.py         # applescript, open_app, screenshot_ocr, accessibility (macOS)
+│           └── cron_tools.py        # schedule, once, list, cancel (APScheduler)
 │
 ├── interface/                       # Layer 4: Entry Points
 │   ├── api/                         # Sprint 1.6: FastAPI + WebSocket
 │   │   ├── main.py                  # create_app() factory + lifespan + CORS
 │   │   ├── container.py             # AppContainer DI (Settings → repos → use cases)
-│   │   ├── schemas.py               # 10 Pydantic request/response models
-│   │   ├── websocket.py             # /ws/tasks/{id} (poll + delta-only sends)
+│   │   ├── schemas.py               # 14 Pydantic request/response models
+│   │   ├── websocket.py             # /ws/tasks/{id} (poll + delta-only sends + recommendations)
 │   │   └── routes/
-│   │       ├── tasks.py             # POST, GET, GET/{id}, DELETE /api/tasks
+│   │       ├── tasks.py             # POST, GET, GET/{id}, DELETE /api/tasks (+ Celery dispatch)
+│   │       ├── plans.py             # POST, GET, approve, reject /api/plans
 │   │       ├── models.py            # GET /api/models, GET /api/models/status
 │   │       ├── cost.py              # GET /api/cost, GET /api/cost/logs
 │   │       └── memory.py            # GET /api/memory/search?q=
@@ -250,24 +266,28 @@ morphic-agent/
 │       └── commands/
 │           ├── task.py              # morphic task {create|list|show|cancel}
 │           ├── model.py             # morphic model {list|status|pull}
-│           └── cost.py              # morphic cost {summary|budget}
+│           ├── cost.py              # morphic cost {summary|budget}
+│           └── plan.py              # morphic plan {create|list|show|approve|reject}
 │
 ├── shared/
 │   └── config.py                    # pydantic-settings (all env vars)
 │
-├── ui/                              # Sprint 1.6: Next.js 15 (bun, Tailwind CSS 4)
+├── ui/                              # Sprint 1.6 + 2-F: Next.js 15 (bun, Tailwind CSS 4, @xyflow/react)
 │   ├── lib/
 │   │   ├── theme.ts                 # morphicAgentTheme design tokens
-│   │   └── api.ts                   # Typed fetch wrappers + WebSocket client
+│   │   └── api.ts                   # Typed fetch wrappers + WebSocket + Plan API
 │   ├── app/
 │   │   ├── layout.tsx               # Dark theme root layout (Geist font)
 │   │   ├── globals.css              # CSS variables matching design spec
-│   │   ├── page.tsx                 # Dashboard (GoalInput + TaskList + sidebar)
-│   │   └── tasks/[id]/page.tsx      # Task detail with live WebSocket updates
+│   │   ├── page.tsx                 # Dashboard (Execute/Plan toggle + GoalInput + TaskList)
+│   │   ├── tasks/[id]/page.tsx      # Task detail + TaskGraph with live WebSocket
+│   │   └── plans/[id]/page.tsx      # Plan review page (approve/reject)
 │   └── components/
 │       ├── GoalInput.tsx            # Textarea + Execute button (Enter to submit)
 │       ├── TaskList.tsx             # Task cards with status icons + FREE badge
 │       ├── TaskDetail.tsx           # Subtask tree with status dots
+│       ├── TaskGraph.tsx            # React Flow DAG visualizer (SubTaskNode + status colors)
+│       ├── PlanningView.tsx         # Plan steps table + cost display + approve/reject
 │       ├── CostMeter.tsx            # Budget bar + daily/monthly/local stats
 │       └── ModelStatus.tsx          # Ollama status dot + model list
 │
@@ -324,6 +344,7 @@ morphic-agent/
 | `SubTaskStatus` | `str, Enum` | pending, running, success, failed |
 | `ObservationStatus` | `str, Enum` | success, error, denied, timeout |
 | `MemoryType` | `str, Enum` | l1_active, l2_semantic, l3_facts, l4_cold |
+| `PlanStatus` | `str, Enum` | proposed, approved, rejected, executing, completed |
 | `RiskLevel` | `IntEnum` | SAFE(0), LOW(1), MEDIUM(2), HIGH(3), CRITICAL(4) |
 | `ApprovalMode` | `str, Enum` | full-auto, confirm-destructive, confirm-all |
 | `ModelTier` | `str, Enum` | free, low, medium, high |
@@ -373,10 +394,10 @@ Mapping between domain entities and ORM models happens in repository implementat
 
 | Test Type | Location | Dependencies | Speed | What It Tests |
 |---|---|---|---|---|
-| **Unit/Domain** | `tests/unit/domain/` | None | ~0.03s (67 tests) | Entities, value objects, services |
-| **Unit/Application** | `tests/unit/application/` | Mocked ports | Fast (11 tests) | Use case orchestration |
-| **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.0s (179 tests) | LLM gateway, cost, task graph, LAEE, memory |
-| **Unit/Interface** | `tests/unit/interface/` | Mock container | ~1.4s (54 tests) | API, WebSocket, CORS, CLI commands |
+| **Unit/Domain** | `tests/unit/domain/` | None | ~0.03s (76 tests) | Entities, value objects, services |
+| **Unit/Application** | `tests/unit/application/` | Mocked ports | Fast (46 tests) | Use case orchestration, cost estimator, planning |
+| **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.0s (239 tests) | LLM gateway, cost, task graph, LAEE, memory, PG repos, Celery, browser/gui/cron |
+| **Unit/Interface** | `tests/unit/interface/` | Mock container | ~1.4s (58 tests) | API, WebSocket, CORS, CLI commands, plan endpoints |
 | **Integration** | `tests/integration/` | Ollama running | ~18s (10 tests) | Real LLM inference, real filesystem |
 | **E2E** | `tests/e2e/` | Full stack | Slowest | API/CLI → Use Case → DB round-trips |
 
@@ -387,7 +408,7 @@ Mapping between domain entities and ORM models happens in repository implementat
 2. Green:    Write minimum code to pass
 3. Refactor: Clean up while tests protect
 
-Current: 318 unit tests (1.74s) + 26 integration tests (10+11+5), 100% pass
+Current: 428 unit tests (2.48s) + 26 integration tests (10+11+5), 100% pass
 Default model: qwen3-coder:30b (thinking mode disabled via extra_body)
 Cloud providers verified: Anthropic (Haiku/Sonnet), OpenAI (o4-mini/o3), Gemini (3-flash/3-pro)
 ```

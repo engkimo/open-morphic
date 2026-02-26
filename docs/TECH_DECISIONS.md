@@ -1055,13 +1055,142 @@ No tasks found.    # ← Different process, empty store
 | **Phase 2+** | PostgreSQL + pgvector repositories replace in-memory |
 | **Phase 2+** | `morphic task list` queries persistent DB — data survives across invocations |
 
-### Workaround (Phase 1)
+### Resolution (Sprint 2-A)
 
-For cross-invocation persistence, use the API server:
+**RESOLVED**: PostgreSQL repositories implemented in Sprint 2-A. Set `USE_POSTGRES=true` with Docker Compose running:
 
 ```bash
-uvicorn interface.api.main:app --host 0.0.0.0 --port 8000
-# In another terminal:
-curl -X POST localhost:8000/api/tasks -H 'Content-Type: application/json' -d '{"goal":"fibonacci"}'
-curl localhost:8000/api/tasks  # ← Returns the task
+docker compose up -d
+USE_POSTGRES=true morphic task create "fibonacci" --no-wait
+USE_POSTGRES=true morphic task list   # ← Now persists across invocations
 ```
+
+Default remains InMemory for zero-dependency development. See TD-024.
+
+---
+
+## TD-024: PG/InMemory Repository Switching
+
+**Date**: 2026-02-26
+**Status**: Accepted
+**Sprint**: 2-A
+
+### Decision
+
+Switch between PostgreSQL and InMemory repositories via `Settings.use_postgres` flag (default: `False`). The AppContainer's `_create_repos()` method selects the implementation at startup.
+
+### Implementation
+
+```python
+# interface/api/container.py
+def _create_repos(self):
+    if self.settings.use_postgres:
+        return self._create_pg_repos()
+    return (InMemoryTaskRepository(), InMemoryCostRepository(),
+            InMemoryMemoryRepository(), InMemoryPlanRepository())
+```
+
+PG repos map domain entities ↔ ORM models:
+- `PgTaskRepository`: TaskEntity ↔ TaskModel (subtasks stored as JSONB in `metadata_`)
+- `PgCostRepository`: CostRecord ↔ CostLogModel (SQL aggregation for daily/monthly/local)
+- `PgMemoryRepository`: MemoryEntry ↔ MemoryModel (ILIKE keyword search, embedding deferred)
+- `PgPlanRepository`: ExecutionPlan ↔ PlanModel (steps stored as JSONB)
+
+### Rationale
+
+- **Backward compatible**: Existing tests and dev workflow unchanged (InMemory default)
+- **Opt-in production**: `USE_POSTGRES=true` enables persistence with Docker Compose
+- **Same interface**: All repos implement domain port ABCs — zero use-case changes
+
+---
+
+## TD-025: Celery Dispatch Gated by Settings Flag
+
+**Date**: 2026-02-26
+**Status**: Accepted
+**Sprint**: 2-B
+
+### Decision
+
+Celery task dispatch is gated by `Settings.celery_enabled` (default: `False`). When disabled, task execution uses FastAPI's `BackgroundTasks` (single-process).
+
+### Implementation
+
+```python
+# interface/api/routes/tasks.py
+if c.settings.celery_enabled:
+    from infrastructure.queue.tasks import execute_task_worker
+    execute_task_worker.delay(str(task.id))
+else:
+    bg.add_task(_execute_bg, c, str(task.id))
+```
+
+The Celery worker (`infrastructure/queue/tasks.py`) creates its own `AppContainer` (with PG repos) to avoid shared state across processes.
+
+### Rationale
+
+- **No breaking changes**: Existing single-process flow unchanged by default
+- **Production-ready**: Enable Celery + Redis for multi-worker async execution
+- **Worker independence**: Each Celery worker has its own container, avoiding process-shared state issues
+
+---
+
+## TD-026: PlanStatus Enum — Domain Value Object
+
+**Date**: 2026-02-26
+**Status**: Accepted
+**Sprint**: 2-C
+
+### Decision
+
+Add `PlanStatus(str, Enum)` to `domain/value_objects/status.py` with states: `proposed`, `approved`, `rejected`, `executing`, `completed`.
+
+### State Machine
+
+```
+proposed → approved → executing → completed
+proposed → rejected
+```
+
+### Rationale
+
+- Consistent with existing `TaskStatus` pattern (str, Enum)
+- `proposed` is the initial state — plan exists but awaits user decision
+- `approved` triggers task creation + execution
+- Clean separation from `TaskStatus` — plans and tasks have independent lifecycles
+
+---
+
+## TD-027: Cost Estimation — MODEL_COST_TABLE
+
+**Date**: 2026-02-26
+**Status**: Accepted
+**Sprint**: 2-C
+
+### Decision
+
+Implement `CostEstimator` with a static `MODEL_COST_TABLE` mapping model names to per-1M-token input/output costs. Token count estimated from subtask description length.
+
+### Cost Table (subset)
+
+| Model | Input $/1M | Output $/1M |
+|---|---|---|
+| `ollama/*` | $0.00 | $0.00 |
+| `claude-haiku-*` | $0.25 | $1.25 |
+| `claude-sonnet-*` | $3.00 | $15.00 |
+| `claude-opus-*` | $15.00 | $75.00 |
+| `o4-mini` | $1.10 | $4.40 |
+
+### Token Estimation Heuristic
+
+```python
+estimated_input = len(description) * 4    # ~4 tokens per char (conservative)
+estimated_output = estimated_input * 2    # assume 2x output
+```
+
+### Rationale
+
+- **LOCAL_FIRST emphasis**: All `ollama/*` models always $0.00 — reinforces cost advantage
+- **Conservative estimates**: Overestimate rather than underestimate to avoid budget surprises
+- **Simple heuristic**: Real tokenizer deferred to Phase 3. Character-based estimate is "good enough"
+- **Budget checking**: `is_within_budget(plan, budget)` prevents accidental overspend
