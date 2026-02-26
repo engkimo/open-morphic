@@ -20,6 +20,7 @@ from domain.ports.task_repository import TaskRepository
 from infrastructure.llm.cost_tracker import CostTracker
 from infrastructure.llm.litellm_gateway import LiteLLMGateway
 from infrastructure.llm.ollama_manager import OllamaManager
+from infrastructure.memory.context_zipper import ContextZipper
 from infrastructure.memory.memory_hierarchy import MemoryHierarchy
 from infrastructure.persistence.in_memory import (
     InMemoryCostRepository,
@@ -93,6 +94,10 @@ class AppContainer:
 
         # Memory
         self.memory = MemoryHierarchy(memory_repo=self.memory_repo)
+        self.context_zipper = ContextZipper(
+            embedding_port=self.embedding_port,
+            memory_repo=self.memory_repo,
+        )
 
     def _create_embedding_port(self) -> EmbeddingPort | None:
         """Create embedding port based on settings. Returns None if disabled."""

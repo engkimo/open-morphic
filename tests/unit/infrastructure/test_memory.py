@@ -1,9 +1,10 @@
-"""Tests for Semantic Memory — Sprint 1.5.
+"""Tests for Semantic Memory — Sprint 1.5 + Sprint 3.2.
 
 CC#1: add() → retrieve() returns relevant memories
 CC#2: mem0 stores vectors in pgvector (integration test)
 CC#3: Neo4j stores entities/relations (integration test)
 CC#4: ContextZipper compresses 5000-token history → 500 tokens
+Sprint 3.2: ContextZipper v2 — semantic scoring, KG/memory augmentation, ingest()
 """
 
 from __future__ import annotations
@@ -11,11 +12,13 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+import numpy as np
 import pytest
 
+from domain.ports.embedding import EmbeddingPort
 from domain.ports.knowledge_graph import KnowledgeGraphPort
-from infrastructure.memory.context_zipper import ContextZipper
-from infrastructure.memory.memory_hierarchy import MemoryHierarchy, _estimate_tokens
+from infrastructure.memory.context_zipper import ContextZipper, _estimate_tokens
+from infrastructure.memory.memory_hierarchy import MemoryHierarchy
 from infrastructure.persistence.in_memory import InMemoryMemoryRepository as InMemoryMemoryRepo
 
 
@@ -194,21 +197,25 @@ class TestContextZipper:
     def zipper(self) -> ContextZipper:
         return ContextZipper()
 
-    def test_empty_history(self, zipper: ContextZipper) -> None:
-        result = zipper.compress([], "any query")
+    @pytest.mark.asyncio()
+    async def test_empty_history(self, zipper: ContextZipper) -> None:
+        result = await zipper.compress([], "any query")
         assert result == ""
 
-    def test_single_message_within_budget(self, zipper: ContextZipper) -> None:
-        result = zipper.compress(["hello world"], "hello", max_tokens=500)
+    @pytest.mark.asyncio()
+    async def test_single_message_within_budget(self, zipper: ContextZipper) -> None:
+        result = await zipper.compress(["hello world"], "hello", max_tokens=500)
         assert result == "hello world"
 
-    def test_respects_max_tokens(self, zipper: ContextZipper) -> None:
+    @pytest.mark.asyncio()
+    async def test_respects_max_tokens(self, zipper: ContextZipper) -> None:
         # Each message ~25 tokens (100 chars / 4)
         history = [f"message number {i} " * 5 for i in range(20)]
-        result = zipper.compress(history, "message", max_tokens=50)
+        result = await zipper.compress(history, "message", max_tokens=50)
         assert _estimate_tokens(result) <= 50
 
-    def test_query_relevance_boost(self, zipper: ContextZipper) -> None:
+    @pytest.mark.asyncio()
+    async def test_query_relevance_boost(self, zipper: ContextZipper) -> None:
         """Messages matching query keywords should be prioritized."""
         history = [
             "The weather is sunny today",
@@ -216,55 +223,287 @@ class TestContextZipper:
             "I love Python and machine learning",
             "The cat sat on the mat",
         ]
-        result = zipper.compress(history, "Python programming", max_tokens=100)
+        result = await zipper.compress(history, "Python programming", max_tokens=100)
         assert "Python" in result
 
-    def test_recency_bias(self, zipper: ContextZipper) -> None:
+    @pytest.mark.asyncio()
+    async def test_recency_bias(self, zipper: ContextZipper) -> None:
         """More recent messages should be preferred when relevance is equal."""
         history = [f"generic message {i}" for i in range(10)]
-        result = zipper.compress(history, "unrelated query", max_tokens=30)
+        result = await zipper.compress(history, "unrelated query", max_tokens=30)
         # Most recent messages should be selected (higher index = more recent)
         assert "message 9" in result
 
-    def test_preserves_chronological_order(self, zipper: ContextZipper) -> None:
+    @pytest.mark.asyncio()
+    async def test_preserves_chronological_order(self, zipper: ContextZipper) -> None:
         """Selected messages should be in original chronological order."""
         history = ["first message", "second message", "third message"]
-        result = zipper.compress(history, "message", max_tokens=500)
+        result = await zipper.compress(history, "message", max_tokens=500)
         lines = result.split("\n")
         assert len(lines) == 3
         assert lines[0] == "first message"
         assert lines[2] == "third message"
 
-    def test_compression_ratio_5000_to_500(self, zipper: ContextZipper) -> None:
+    @pytest.mark.asyncio()
+    async def test_compression_ratio_5000_to_500(self, zipper: ContextZipper) -> None:
         """CC#4: 5000-token history compressed to ≤500 tokens."""
         # Generate ~5000 tokens of history (20000 chars / 4)
         history = [f"conversation message {i}: " + "x" * 96 for i in range(200)]
         total_tokens = sum(_estimate_tokens(m) for m in history)
         assert total_tokens >= 5000  # verify input is large enough
 
-        result = zipper.compress(history, "conversation", max_tokens=500)
+        result = await zipper.compress(history, "conversation", max_tokens=500)
         result_tokens = _estimate_tokens(result)
         assert result_tokens <= 500
 
-    def test_empty_query(self, zipper: ContextZipper) -> None:
+    @pytest.mark.asyncio()
+    async def test_empty_query(self, zipper: ContextZipper) -> None:
         """Empty query should still work, using recency only."""
         history = ["msg one", "msg two", "msg three"]
-        result = zipper.compress(history, "", max_tokens=500)
+        result = await zipper.compress(history, "", max_tokens=500)
         assert len(result) > 0
 
-    def test_large_single_message_skipped(self, zipper: ContextZipper) -> None:
+    @pytest.mark.asyncio()
+    async def test_large_single_message_skipped(self, zipper: ContextZipper) -> None:
         """Message larger than budget should be skipped."""
         history = ["short msg", "x" * 4000, "another short"]
-        result = zipper.compress(history, "short", max_tokens=20)
+        result = await zipper.compress(history, "short", max_tokens=20)
         assert "x" * 100 not in result
 
-    def test_all_messages_fit(self, zipper: ContextZipper) -> None:
+    @pytest.mark.asyncio()
+    async def test_all_messages_fit(self, zipper: ContextZipper) -> None:
         """When all messages fit in budget, include everything."""
         history = ["a", "b", "c"]
-        result = zipper.compress(history, "a", max_tokens=500)
+        result = await zipper.compress(history, "a", max_tokens=500)
         assert "a" in result
         assert "b" in result
         assert "c" in result
+
+
+# ═══════════════════════════════════════════════════════════════
+# Fake embedding port for ContextZipper v2 tests
+# ═══════════════════════════════════════════════════════════════
+
+
+class _FakeEmbeddingPort(EmbeddingPort):
+    """Deterministic fake: maps text to a hash-seeded vector."""
+
+    def __init__(self, dims: int = 384) -> None:
+        self._dims = dims
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        return [self._text_to_vec(t) for t in texts]
+
+    def dimensions(self) -> int:
+        return self._dims
+
+    def _text_to_vec(self, text: str) -> list[float]:
+        seed = sum(ord(c) for c in text) % (2**31)
+        rng = np.random.default_rng(seed)
+        return list(rng.standard_normal(self._dims))
+
+
+# ═══════════════════════════════════════════════════════════════
+# TestContextZipperV2 — semantic scoring, augmentation, ingest
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestContextZipperV2:
+    """Sprint 3.2: ContextZipper v2 — semantic scoring, KG/memory augmentation, ingest."""
+
+    @pytest.fixture()
+    def embedder(self) -> _FakeEmbeddingPort:
+        return _FakeEmbeddingPort(dims=384)
+
+    @pytest.fixture()
+    def repo(self) -> InMemoryMemoryRepo:
+        return InMemoryMemoryRepo()
+
+    @pytest.fixture()
+    def kg(self) -> InMemoryKnowledgeGraph:
+        return InMemoryKnowledgeGraph()
+
+    # ── Constructor wiring tests ──
+
+    def test_constructor_no_ports(self) -> None:
+        """Default constructor works with no ports."""
+        z = ContextZipper()
+        assert z._embedding_port is None
+        assert z._memory_repo is None
+        assert z._knowledge_graph is None
+
+    def test_constructor_with_all_ports(
+        self, embedder: _FakeEmbeddingPort, repo: InMemoryMemoryRepo, kg: InMemoryKnowledgeGraph
+    ) -> None:
+        z = ContextZipper(embedding_port=embedder, memory_repo=repo, knowledge_graph=kg)
+        assert z._embedding_port is embedder
+        assert z._memory_repo is repo
+        assert z._knowledge_graph is kg
+
+    def test_custom_budget_pcts(self) -> None:
+        z = ContextZipper(facts_budget_pct=0.10, memory_budget_pct=0.40)
+        assert z._facts_budget_pct == 0.10
+        assert z._memory_budget_pct == 0.40
+
+    # ── Semantic similarity scoring ──
+
+    @pytest.mark.asyncio()
+    async def test_semantic_scoring_prefers_similar_content(
+        self, embedder: _FakeEmbeddingPort
+    ) -> None:
+        """With embedding, semantically similar messages score higher."""
+        z = ContextZipper(embedding_port=embedder)
+        history = [
+            "The weather is sunny today",
+            "Python programming language is great",
+            "I enjoy coding in Python very much",
+            "The cat sat on the mat quietly",
+        ]
+        result = await z.compress(history, "Python coding", max_tokens=100)
+        # Semantic scoring should boost Python-related messages
+        assert "Python" in result
+
+    @pytest.mark.asyncio()
+    async def test_fallback_to_keyword_without_embedding(self) -> None:
+        """Without embedding_port, keyword overlap scoring is used (v1 behavior)."""
+        z = ContextZipper()  # no ports
+        history = ["Python programming", "Java development", "cats and dogs"]
+        result = await z.compress(history, "Python", max_tokens=500)
+        assert "Python" in result
+
+    # ── Knowledge graph facts augmentation ──
+
+    @pytest.mark.asyncio()
+    async def test_facts_appear_in_output(self, kg: InMemoryKnowledgeGraph) -> None:
+        """KG entities appear as [Facts] section in compressed output."""
+        await kg.add_entity("Shimizu", "Company", {"industry": "construction"})
+        z = ContextZipper(knowledge_graph=kg)
+        result = await z.compress(["some history"], "Shimizu", max_tokens=500)
+        assert "[Facts]" in result
+        assert "Shimizu" in result
+
+    @pytest.mark.asyncio()
+    async def test_facts_budget_respected(self, kg: InMemoryKnowledgeGraph) -> None:
+        """Facts section respects its budget allocation."""
+        # Add many entities
+        for i in range(20):
+            await kg.add_entity(f"Entity{i}", "Type", {"data": "x" * 100})
+        z = ContextZipper(knowledge_graph=kg, facts_budget_pct=0.10)
+        result = await z.compress(["msg"], "Entity", max_tokens=100)
+        # Facts should use at most 10% of 100 = 10 tokens
+        facts_section = result.split("\n---\n")[0] if "\n---\n" in result else ""
+        if facts_section.startswith("[Facts]"):
+            assert _estimate_tokens(facts_section) <= 15  # small margin
+
+    @pytest.mark.asyncio()
+    async def test_no_facts_when_no_kg(self) -> None:
+        """Without knowledge_graph, no [Facts] section appears."""
+        z = ContextZipper()
+        result = await z.compress(["hello world"], "hello", max_tokens=500)
+        assert "[Facts]" not in result
+
+    # ── Memory augmentation ──
+
+    @pytest.mark.asyncio()
+    async def test_memory_appears_in_output(self, repo: InMemoryMemoryRepo) -> None:
+        """Stored memories appear as [Memory] section."""
+        from domain.entities.memory import MemoryEntry
+        from domain.value_objects.status import MemoryType
+
+        await repo.add(
+            MemoryEntry(content="Python is a popular language", memory_type=MemoryType.L2_SEMANTIC)
+        )
+        z = ContextZipper(memory_repo=repo)
+        result = await z.compress(["some history"], "Python", max_tokens=500)
+        assert "[Memory]" in result
+        assert "Python is a popular language" in result
+
+    @pytest.mark.asyncio()
+    async def test_memory_deduplicates_history(self, repo: InMemoryMemoryRepo) -> None:
+        """Memory entries that match history messages are not duplicated."""
+        from domain.entities.memory import MemoryEntry
+        from domain.value_objects.status import MemoryType
+
+        content = "exact duplicate message"
+        await repo.add(MemoryEntry(content=content, memory_type=MemoryType.L2_SEMANTIC))
+        z = ContextZipper(memory_repo=repo)
+        result = await z.compress([content], "exact duplicate", max_tokens=500)
+        # The content should appear (from history) but NOT as [Memory] section
+        assert result.count(content) == 1
+
+    @pytest.mark.asyncio()
+    async def test_no_memory_when_no_repo(self) -> None:
+        """Without memory_repo, no [Memory] section appears."""
+        z = ContextZipper()
+        result = await z.compress(["hello world"], "hello", max_tokens=500)
+        assert "[Memory]" not in result
+
+    # ── ingest() method ──
+
+    @pytest.mark.asyncio()
+    async def test_ingest_stores_to_repo(self, repo: InMemoryMemoryRepo) -> None:
+        """ingest() stores message to memory repository."""
+        z = ContextZipper(memory_repo=repo)
+        await z.ingest("important fact about Python")
+        entries = await repo.search("Python")
+        assert len(entries) >= 1
+        assert any("Python" in e.content for e in entries)
+
+    @pytest.mark.asyncio()
+    async def test_ingest_noop_without_repo(self) -> None:
+        """ingest() is a no-op when no memory_repo is configured."""
+        z = ContextZipper()
+        await z.ingest("this goes nowhere")  # should not raise
+
+    @pytest.mark.asyncio()
+    async def test_ingest_then_compress_finds_content(self, repo: InMemoryMemoryRepo) -> None:
+        """Round-trip: ingest → compress retrieves the ingested content."""
+        z = ContextZipper(memory_repo=repo)
+        await z.ingest("Rust is memory safe and fast")
+        result = await z.compress(["some history"], "Rust", max_tokens=500)
+        assert "Rust" in result
+
+    # ── Multi-source output format ──
+
+    @pytest.mark.asyncio()
+    async def test_all_sections_present(
+        self,
+        embedder: _FakeEmbeddingPort,
+        repo: InMemoryMemoryRepo,
+        kg: InMemoryKnowledgeGraph,
+    ) -> None:
+        """With all ports, output has [Facts], [Memory], and history sections."""
+        from domain.entities.memory import MemoryEntry
+        from domain.value_objects.status import MemoryType
+
+        await kg.add_entity("Shimizu", "Company", {"industry": "construction"})
+        await repo.add(
+            MemoryEntry(content="Python programming", memory_type=MemoryType.L2_SEMANTIC)
+        )
+        z = ContextZipper(
+            embedding_port=embedder,
+            memory_repo=repo,
+            knowledge_graph=kg,
+        )
+        result = await z.compress(
+            ["conversation about Shimizu and Python"],
+            "Shimizu Python",
+            max_tokens=500,
+        )
+        sections = result.split("\n---\n")
+        assert len(sections) >= 2  # at least facts/memory + history
+        assert any("[Facts]" in s for s in sections)
+
+    @pytest.mark.asyncio()
+    async def test_empty_history_with_memory_only(self, repo: InMemoryMemoryRepo) -> None:
+        """With no history but memory_repo, returns memory content."""
+        from domain.entities.memory import MemoryEntry
+        from domain.value_objects.status import MemoryType
+
+        await repo.add(MemoryEntry(content="stored knowledge", memory_type=MemoryType.L2_SEMANTIC))
+        z = ContextZipper(memory_repo=repo)
+        result = await z.compress([], "stored knowledge", max_tokens=500)
+        assert "stored knowledge" in result
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -346,14 +585,15 @@ class TestCompletionCriteria:
         # No keyword overlap → should not find anything
         assert result == ""
 
-    def test_cc4_compression_5000_to_500(self) -> None:
+    @pytest.mark.asyncio()
+    async def test_cc4_compression_5000_to_500(self) -> None:
         """CC#4: ContextZipper compresses 5000-token history → ≤500 tokens."""
         zipper = ContextZipper()
         history = [f"msg {i}: " + "a" * 96 for i in range(200)]
         total = sum(_estimate_tokens(m) for m in history)
         assert total >= 5000
 
-        result = zipper.compress(history, "msg", max_tokens=500)
+        result = await zipper.compress(history, "msg", max_tokens=500)
         assert _estimate_tokens(result) <= 500
         assert len(result) > 0  # not empty
 

@@ -597,14 +597,18 @@ class MemoryHierarchy:
         """L1 → L2 → L3 scan, token-budget-aware, deduplication"""
 ```
 
-#### ContextZipper (Implemented)
+#### ContextZipper (v1 → v2 in Sprint 3.2)
 
 ```python
 class ContextZipper:
-    """Query-adaptive context compression. Pure utility, no dependencies."""
+    """v1: keyword-only scoring. v2 (Sprint 3.2, TD-030): async, semantic scoring,
+    KG/memory augmentation, ingest() method. Optional ports for embedding/memory/KG."""
 
-    def compress(self, history: list[str], query: str, max_tokens: int = 500) -> str:
-        """Score: recency(0.4) + keyword_overlap(0.6) → sort → greedy select"""
+    async def compress(self, history: list[str], query: str, max_tokens: int = 500) -> str:
+        """Score: recency(0.4) + semantic_similarity(0.6) → budget: [Facts]→[Memory]→[History]"""
+
+    async def ingest(self, message: str, role: str = "user") -> None:
+        """Store to L2 memory for future retrieval."""
 ```
 
 #### Key Decisions
@@ -620,7 +624,8 @@ class ContextZipper:
 ```
 Unit tests:  36/36 pass (0.10s)
   TestMemoryHierarchy:      12 tests (add/retrieve, L1 priority, deque overflow, token budget, dedup)
-  TestContextZipper:        10 tests (compression ratio, relevance boost, recency bias, edge cases)
+  TestContextZipper:        10 tests (v1 backward compat, async)
+  TestContextZipperV2:      16 tests (semantic scoring, KG/memory augmentation, ingest, multi-source)
   TestKnowledgeGraphPort:    5 tests (entity/relation CRUD, search, case-insensitive)
   TestCompletionCriteria:    5 tests (CC#1, CC#4 verification)
   TestEstimateTokens:        4 tests (helper function)
@@ -1030,7 +1035,7 @@ Verification:
 | Lint clean | ✅ ruff check + format |
 | Ollama operational | ✅ 2 models ready |
 | Memory hierarchy (L1-L4) foundation | ✅ Sprint 1.5 |
-| ContextZipper v1 | ✅ Sprint 1.5 (keyword-based) |
+| ContextZipper v1 → v2 | ✅ Sprint 1.5 (v1, keyword) → Sprint 3.2 (v2, semantic, TD-030) |
 | KnowledgeGraphPort defined | ✅ domain/ports/ |
 
 ---
@@ -1088,7 +1093,7 @@ Verification:
 | # | Item | File |
 |---|---|---|
 | 3.1 | SemanticFingerprint (LSH) | `infrastructure/memory/semantic_fingerprint.py` | ✅ COMPLETE |
-| 3.2 | ContextZipper full version | `infrastructure/memory/context_zipper.py` |
+| 3.2 | ContextZipper v2 (semantic) | `infrastructure/memory/context_zipper.py` | ✅ COMPLETE (TD-030) |
 | 3.3 | ForgettingCurve | `infrastructure/memory/forgetting_curve.py` |
 | 3.4 | DeltaEncoder | `infrastructure/memory/delta_encoder.py` |
 | 3.5 | HierarchicalSummarizer | `infrastructure/memory/hierarchical_summary.py` |

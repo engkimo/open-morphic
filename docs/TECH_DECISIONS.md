@@ -1302,3 +1302,56 @@ SemanticFingerprint (domain/services)   ← pure, no I/O
 - **Created**: `domain/ports/embedding.py`, `domain/services/semantic_fingerprint.py`, `infrastructure/memory/semantic_fingerprint.py`, `infrastructure/memory/embedding_adapters.py`, `migrations/versions/002_add_embedding_column.py`
 - **Modified**: `shared/config.py` (embedding settings), `models.py` (Vector 1536→384), `in_memory.py` (optional embedding_port), `pg_memory_repository.py` (optional embedding_port + pgvector cosine_distance), `container.py` (DI wiring)
 - **Tests**: 31 new tests (11 domain + 20 infrastructure), total 459 passing
+
+---
+
+## TD-030: ContextZipper v2 — Semantic-Aware Context Compression
+
+**Date**: 2026-02-26
+**Status**: Accepted
+**Sprint**: 3.2
+
+### Decision
+
+Rewrite ContextZipper from sync keyword-only utility to async semantic-aware compressor with optional ports for embedding, memory, and knowledge graph augmentation.
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| `compress()` signature | **async** always | EmbeddingPort.embed() is async. No production callers to break (test-only today) |
+| Scoring fallback | Cosine similarity (with port) → keyword overlap (without) | Backward compat when embedding unavailable |
+| Budget allocation | **Facts-first**: [Facts] → [Memory] → [History] | Structured facts are highest-density info per token (CLAUDE.md principle) |
+| Budget split | facts=20%, memory=30%, history=50% (configurable) | History gets most budget since it's the primary input |
+| `ingest()` method | Stores to MemoryRepository (L2) | ContextZipper becomes the entry point for new messages |
+| Constructor ports | Optional `embedding_port`, `memory_repo`, `knowledge_graph` | Same pattern as InMemoryMemoryRepository from Sprint 3.1 |
+| Entity search | Per-word query splitting | `search_entities("Shimizu Python")` splits to individual word searches, deduplicates by entity ID |
+| New deps | **None** | Reuses EmbeddingPort, MemoryRepository, KnowledgeGraphPort from existing codebase |
+
+### Architecture
+
+```
+ContextZipper(embedding_port?, memory_repo?, knowledge_graph?)
+    │
+    ├── compress(history, query, max_tokens)
+    │   ├── Phase 1: [Facts] from KG (20% budget)
+    │   ├── Phase 2: [Memory] from L2 repo (30% budget)
+    │   └── Phase 3: History scored by semantic/keyword (50% budget)
+    │
+    └── ingest(message, role) → memory_repo.add()
+```
+
+Output format when all sources available:
+```
+[Facts] Shimizu {'industry': 'construction'}
+---
+[Memory] Python is a popular programming language
+---
+conversation message 9: ...
+conversation message 7: ...
+```
+
+### Files Modified
+
+- **Modified**: `infrastructure/memory/context_zipper.py` (full rewrite: async, optional ports, semantic scoring, facts/memory augmentation, ingest())
+- **Modified**: `tests/unit/infrastructure/test_memory.py` (10 existing tests → async, 16 new tests for v2 features)
+- **Modified**: `interface/api/container.py` (wire ContextZipper with embedding_port + memory_repo)
+- **Tests**: 16 new tests, total 475 passing
