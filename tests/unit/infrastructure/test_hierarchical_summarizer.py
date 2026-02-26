@@ -13,14 +13,13 @@ from domain.entities.memory import MemoryEntry
 from domain.ports.llm_gateway import LLMGateway, LLMResponse
 from domain.value_objects.status import MemoryType
 from infrastructure.memory.hierarchical_summarizer import (
-    HierarchicalSummaryManager,
-    SummarizeResult,
     _HIERARCHY_SUMMARIES_KEY,
     _HIERARCHY_TOKEN_COUNTS_KEY,
+    HierarchicalSummaryManager,
+    SummarizeResult,
 )
 from infrastructure.memory.memory_hierarchy import MemoryHierarchy
 from infrastructure.persistence.in_memory import InMemoryMemoryRepository
-
 
 # ── Fake LLM ──
 

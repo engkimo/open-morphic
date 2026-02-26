@@ -20,7 +20,6 @@ from infrastructure.memory.delta_encoder import (
 from infrastructure.memory.memory_hierarchy import MemoryHierarchy
 from infrastructure.persistence.in_memory import InMemoryMemoryRepository
 
-
 # ── DeltaRecordResult ──
 
 
@@ -151,7 +150,7 @@ class TestGetState:
         mgr = DeltaEncoderManager(memory_repo=repo)
 
         # Record first delta
-        r1 = await mgr.record("t", "init", {"a": 1})
+        await mgr.record("t", "init", {"a": 1})
 
         # Get the created_at of the first delta to use as cutoff
         history = await mgr.get_history("t")

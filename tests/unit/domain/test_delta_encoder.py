@@ -13,7 +13,6 @@ import pytest
 from domain.entities.delta import Delta
 from domain.services.delta_encoder import DeltaEncoder
 
-
 # ── Delta Entity ──
 
 
@@ -30,7 +29,7 @@ class TestDeltaEntity:
         assert isinstance(d.created_at, datetime)
 
     def test_strict_validation_rejects_bad_types(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises((TypeError, ValueError)):
             Delta(
                 topic="t",
                 seq="not_int",  # type: ignore[arg-type]
@@ -40,19 +39,19 @@ class TestDeltaEntity:
             )
 
     def test_empty_topic_rejected(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises((TypeError, ValueError)):
             Delta(topic="", seq=0, message="m", changes={"a": 1}, state_hash="h")
 
     def test_empty_message_rejected(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises((TypeError, ValueError)):
             Delta(topic="t", seq=0, message="", changes={"a": 1}, state_hash="h")
 
     def test_empty_changes_rejected(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises((TypeError, ValueError)):
             Delta(topic="t", seq=0, message="m", changes={}, state_hash="h")
 
     def test_negative_seq_rejected(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises((TypeError, ValueError)):
             Delta(topic="t", seq=-1, message="m", changes={"a": 1}, state_hash="h")
 
     def test_is_base_state_default_false(self) -> None:
