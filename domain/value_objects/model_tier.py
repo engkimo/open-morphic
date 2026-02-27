@@ -17,3 +17,5 @@ class TaskType(str, Enum):
     FILE_OPERATION = "file_operation"
     LONG_CONTEXT = "long_context"
     MULTIMODAL = "multimodal"
+    LONG_RUNNING_DEV = "long_running_dev"
+    WORKFLOW_PIPELINE = "workflow_pipeline"

@@ -5,6 +5,7 @@
 > **Phase 1 Foundation: COMPLETE** (2026-02-25) — 7/7 sprints done
 > **Phase 2 Parallel & Planning + CLI: COMPLETE** (2026-02-26) — All 6 sprints (2-A through 2-F) + CLI v1
 > **Phase 3 Semantic Memory & Context Bridge: COMPLETE** (2026-02-26) — Week 5: SemanticFingerprint LSH → ContextZipper v2 → ForgettingCurve → DeltaEncoder → HierarchicalSummarizer | Week 6: Context Bridge → MCP Server → MCP Client → L1-L4 Integration — 725 tests (699 unit + 26 integration)
+> **Phase 4 Agent CLI Orchestration: IN PROGRESS** — Sprint 4.1 complete (AgentEngineType, AgentEnginePort, AgentEngineRouter) — 729 unit tests + 26 integration
 
 ---
 
@@ -179,6 +180,7 @@ Custom code is minimized. Every infrastructure component wraps an established OS
 | `domain/services/forgetting_curve.py` | Ebbinghaus retention scoring R=e^(-t/S) is pure math (Sprint 3.3) |
 | `domain/services/delta_encoder.py` | Git-style delta hashing/reconstruction/diffing is pure logic (Sprint 3.4) |
 | `domain/services/hierarchical_summarizer.py` | 4-level tree compression: extractive summarization + level selection is pure logic (Sprint 3.5) |
+| `domain/services/agent_engine_router.py` | Two-tier routing: task characteristics → execution engine selection, pure static (Sprint 4.1) |
 | `domain/value_objects/*` | Project-specific enums and types |
 | `domain/ports/*` | Interface definitions are project-specific |
 
@@ -202,7 +204,8 @@ morphic-agent/
 │   │   ├── status.py               # TaskStatus, SubTaskStatus, ObservationStatus, MemoryType, PlanStatus
 │   │   ├── risk_level.py           # RiskLevel (5-tier IntEnum)
 │   │   ├── approval_mode.py        # ApprovalMode (3-tier)
-│   │   └── model_tier.py           # ModelTier, TaskType
+│   │   ├── model_tier.py           # ModelTier, TaskType (+LONG_RUNNING_DEV, +WORKFLOW_PIPELINE)
+│   │   └── agent_engine.py         # AgentEngineType (6 engines, Sprint 4.1)
 │   ├── ports/
 │   │   ├── task_repository.py      # TaskRepository ABC
 │   │   ├── task_engine.py          # TaskEngine ABC (decompose + execute)
@@ -213,14 +216,16 @@ morphic-agent/
 │   │   ├── cost_repository.py      # CostRepository ABC
 │   │   ├── plan_repository.py      # PlanRepository ABC
 │   │   ├── embedding.py            # EmbeddingPort ABC (Sprint 3.1)
-│   │   └── mcp_client.py           # MCPClientPort ABC (Sprint 3.8)
+│   │   ├── mcp_client.py           # MCPClientPort ABC (Sprint 3.8)
+│   │   └── agent_engine.py         # AgentEnginePort ABC + Result + Capabilities (Sprint 4.1)
 │   └── services/
 │       ├── risk_assessor.py        # 40+ tool risk mapping + escalation
 │       ├── approval_engine.py      # 3-mode × 5-risk approval matrix
 │       ├── semantic_fingerprint.py # LSH hash + cosine similarity (Sprint 3.1)
 │       ├── forgetting_curve.py    # Ebbinghaus retention scoring R=e^(-t/S) (Sprint 3.3)
 │       ├── delta_encoder.py      # hash_changes, reconstruct, create_delta, compute_diff (Sprint 3.4)
-│       └── hierarchical_summarizer.py # estimate_tokens, split_sentences, extract_summary, build_hierarchy, select_level (Sprint 3.5)
+│       ├── hierarchical_summarizer.py # estimate_tokens, split_sentences, extract_summary, build_hierarchy, select_level (Sprint 3.5)
+│       └── agent_engine_router.py # select, get_fallback_chain, select_with_fallbacks — pure static (Sprint 4.1)
 │
 ├── application/                     # Layer 3: Use Cases
 │   ├── use_cases/
@@ -273,9 +278,11 @@ morphic-agent/
 │   │   ├── knowledge_graph.py       # Neo4j adapter (L3)
 │   │   ├── semantic_fingerprint.py  # SemanticBucketStore (LSH bucketing, Sprint 3.1)
 │   │   └── embedding_adapters.py    # OllamaEmbeddingAdapter (POST /api/embed, Sprint 3.1)
-│   └── mcp/                         # Sprint 3.7–3.8: Model Context Protocol
-│       ├── server.py                # create_mcp_server() — FastMCP, 6 tools + 2 resources
-│       └── client.py               # MCPClient, MCPToolAdapter, discover_and_register
+│   ├── mcp/                         # Sprint 3.7–3.8: Model Context Protocol
+│   │   ├── server.py                # create_mcp_server() — FastMCP, 6 tools + 2 resources
+│   │   └── client.py               # MCPClient, MCPToolAdapter, discover_and_register
+│   └── agent_cli/                   # Sprint 4.1+: Agent CLI Orchestration
+│       └── __init__.py              # Package stub (drivers in Sprint 4.2+)
 │
 ├── interface/                       # Layer 4: Entry Points
 │   ├── api/                         # Sprint 1.6: FastAPI + WebSocket
@@ -330,7 +337,9 @@ morphic-agent/
 │       │   ├── test_semantic_fingerprint.py # 11 tests (LSH hash, cosine sim, Sprint 3.1)
 │       │   ├── test_forgetting_curve.py   # 14 tests (retention score, expiry, hours_since, Sprint 3.3)
 │       │   ├── test_delta_encoder.py     # 34 tests (hash, reconstruct, diff, entity validation, Sprint 3.4)
-│       │   └── test_hierarchical_summarizer.py # 27 tests (tokens, sentences, extract, hierarchy, select, depth, Sprint 3.5)
+│       │   ├── test_hierarchical_summarizer.py # 27 tests (tokens, sentences, extract, hierarchy, select, depth, Sprint 3.5)
+│       │   ├── test_agent_engine_router.py    # 36 tests (select, fallback, with_fallbacks, engine type, task type, Sprint 4.1)
+│       │   └── test_agent_engine_port.py      # 10 tests (result, capabilities, ABC, backward compat, Sprint 4.1)
 │       ├── application/
 │       │   ├── test_create_task.py      # 5 tests (decompose, save, status, deps)
 │       │   └── test_execute_task.py     # 6 tests (success, fallback, failed, cost)
@@ -390,7 +399,8 @@ morphic-agent/
 | `RiskLevel` | `IntEnum` | SAFE(0), LOW(1), MEDIUM(2), HIGH(3), CRITICAL(4) |
 | `ApprovalMode` | `str, Enum` | full-auto, confirm-destructive, confirm-all |
 | `ModelTier` | `str, Enum` | free, low, medium, high |
-| `TaskType` | `str, Enum` | simple_qa, code_generation, etc. |
+| `TaskType` | `str, Enum` | simple_qa, code_generation, ..., long_running_dev, workflow_pipeline |
+| `AgentEngineType` | `str, Enum` | openhands, claude_code, gemini_cli, codex_cli, adk, ollama |
 
 ### 3. Ports Define Boundaries
 
@@ -405,12 +415,13 @@ domain/ports/
 ├── memory_repository.py    # Semantic memory CRUD
 ├── cost_repository.py      # Cost tracking queries
 ├── embedding.py            # Text-to-vector embedding (Sprint 3.1)
-└── mcp_client.py           # MCP client connections (Sprint 3.8)
+├── mcp_client.py           # MCP client connections (Sprint 3.8)
+└── agent_engine.py         # Agent execution engine interface (Sprint 4.1)
 ```
 
 ### 4. Services are Pure Functions
 
-Domain services (`risk_assessor.py`, `approval_engine.py`, `semantic_fingerprint.py`, `forgetting_curve.py`, `delta_encoder.py`, `hierarchical_summarizer.py`) have:
+Domain services (`risk_assessor.py`, `approval_engine.py`, `semantic_fingerprint.py`, `forgetting_curve.py`, `delta_encoder.py`, `hierarchical_summarizer.py`, `agent_engine_router.py`) have:
 - No constructor dependencies (no injected ports)
 - No I/O operations
 - Deterministic output for given input
@@ -503,7 +514,7 @@ discover_and_register(client, configs) → list[MCPToolAdapter]
 
 | Test Type | Location | Dependencies | Speed | What It Tests |
 |---|---|---|---|---|
-| **Unit/Domain** | `tests/unit/domain/` | None | ~0.03s (162 tests) | Entities, value objects, services, LSH fingerprint, forgetting curve, delta encoder, hierarchical summarizer |
+| **Unit/Domain** | `tests/unit/domain/` | None | ~0.03s (208 tests) | Entities, value objects, services, LSH fingerprint, forgetting curve, delta encoder, hierarchical summarizer, agent engine router |
 | **Unit/Application** | `tests/unit/application/` | Mocked ports | Fast (46 tests) | Use case orchestration, cost estimator, planning |
 | **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.2s (417 tests) | LLM gateway, cost, task graph, LAEE, memory, PG repos, Celery, browser/gui/cron, semantic search, forgetting curve, delta encoder, hierarchical summarizer, context bridge, MCP server/client |
 | **Unit/Interface** | `tests/unit/interface/` | Mock container | ~1.4s (58 tests) | API, WebSocket, CORS, CLI commands, plan endpoints |
@@ -517,7 +528,7 @@ discover_and_register(client, configs) → list[MCPToolAdapter]
 2. Green:    Write minimum code to pass
 3. Refactor: Clean up while tests protect
 
-Current: 699 unit tests + 26 integration tests = 725 total, 100% pass (3.5s)
+Current: 729 unit tests + 26 integration tests = 755 total, 100% pass (3.5s)
 Lint: ruff check 0 errors, ruff format 169 files clean
 Default model: qwen3-coder:30b (thinking mode disabled via extra_body)
 Cloud providers verified: Anthropic (Haiku/Sonnet), OpenAI (o4-mini/o3), Gemini (3-flash/3-pro)

@@ -1419,6 +1419,43 @@ Sprint 1.1 (Infra)
 | 3 | Memory compression ratio | 98% (10K→500 tokens) |
 | 3 | Context restoration accuracy | > 90% |
 | 4 | Agent CLI routing accuracy | > 85% |
+
+---
+
+## Phase 4: Agent CLI Orchestration — Sprint Detail
+
+### Sprint 4.1: AgentEngine Domain Foundation (COMPLETE — 2026-02-27)
+
+**Deliverables**: Domain-only foundation for two-tier routing.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | `AgentEngineType` value object (6 engines) | DONE |
+| 2 | `TaskType` extended (+LONG_RUNNING_DEV, +WORKFLOW_PIPELINE) | DONE |
+| 3 | `AgentEnginePort` ABC + `AgentEngineResult` + `AgentEngineCapabilities` | DONE |
+| 4 | `AgentEngineRouter` domain service (pure static, 3 methods) | DONE |
+| 5 | `infrastructure/agent_cli/` package stub | DONE |
+| 6 | `__init__.py` exports updated | DONE |
+
+**Tests**: 46 new (10 port + 36 router), 729 total unit tests, 0 failures.
+**Lint**: ruff check 0 errors, ruff format clean.
+
+**Completion Criteria**: All 46 tests pass. No regressions on existing 683 tests. Lint clean.
+
+### Sprint 4.2: Engine Drivers (Planned)
+
+- OpenHands Driver (REST + WebSocket)
+- Claude Code SDK Driver (headless + parallel)
+- Gemini CLI + ADK Driver (Sequential/Parallel/Loop)
+- OpenAI Codex CLI Driver (exec + MCP server mode)
+- Ollama Driver (wrapper around existing LiteLLMGateway)
+
+### Sprint 4.3: AgentCLIRouter Use Case + Container Wiring (Planned)
+
+- `application/use_cases/route_to_engine.py`
+- `AppContainer` wiring (engine registry, router, availability check)
+- API route: `POST /api/tasks` with engine selection
+- CLI: `morphic engine list`, `morphic engine status`
 | 5 | Auto tool discovery success rate | > 60% |
 | 6 | Monthly improvement rate | +15% |
 | 7 | SWE-bench lite score | TBD |

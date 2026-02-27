@@ -1622,3 +1622,43 @@ hierarchy_token_counts = '{"0": 500, "1": 200, "2": 75, "3": 25}'
 - **Modified**: `infrastructure/memory/memory_hierarchy.py` (added summarize_entry, retrieve_at_depth)
 - **Modified**: `interface/api/container.py` (wired HierarchicalSummaryManager with optional LLM)
 - **Tests**: 51 new tests (27 domain + 24 infrastructure), total 618 passing
+
+---
+
+## TD-038: Two-Tier Routing Architecture (Agent CLI Orchestration)
+
+**Date**: 2026-02-27
+**Status**: Accepted
+**Sprint**: 4.1
+
+### Decision
+
+Introduce a two-tier routing architecture:
+
+| Tier | Component | Selects | Location |
+|---|---|---|---|
+| Tier 1 (NEW) | `AgentEngineRouter` | Execution ENGINE (OpenHands, Claude Code, etc.) | `domain/services/` |
+| Tier 2 (EXISTING) | `LiteLLMGateway` | LLM MODEL (claude-sonnet, qwen3, etc.) | `infrastructure/llm/` |
+
+### Key Decisions
+
+1. **ABC not Protocol**: `AgentEnginePort` uses ABC (consistent with all other ports: `LLMGateway`, `TaskRepository`, etc.)
+2. **Domain router is pure**: `AgentEngineRouter` has static methods only, no I/O, no constructor dependencies (follows `RiskAssessor` pattern)
+3. **TaskType extended**: Added `LONG_RUNNING_DEV` and `WORKFLOW_PIPELINE` to existing `TaskType` enum. Existing `TASK_MODEL_MAP.get()` calls fall through to default — zero impact on LiteLLMGateway
+4. **AgentEngineType**: 6 members matching CLAUDE.md: OPENHANDS, CLAUDE_CODE, GEMINI_CLI, CODEX_CLI, ADK, OLLAMA
+5. **Heuristic priority**: budget=0 → OLLAMA > hours>1 → OPENHANDS > tokens>100K → GEMINI_CLI > primary map
+6. **Fallback chain**: Every engine has a defined fallback chain. OLLAMA is always the ultimate fallback (empty chain itself)
+
+### Files Created/Modified
+
+- **Created**: `domain/value_objects/agent_engine.py` (AgentEngineType enum, 6 members)
+- **Created**: `domain/ports/agent_engine.py` (AgentEnginePort ABC + AgentEngineResult + AgentEngineCapabilities)
+- **Created**: `domain/services/agent_engine_router.py` (pure static: select, get_fallback_chain, select_with_fallbacks)
+- **Created**: `infrastructure/agent_cli/__init__.py` (empty package, drivers in Sprint 4.2+)
+- **Created**: `tests/unit/domain/test_agent_engine_router.py` (36 tests)
+- **Created**: `tests/unit/domain/test_agent_engine_port.py` (10 tests)
+- **Modified**: `domain/value_objects/model_tier.py` (+2 TaskType members)
+- **Modified**: `domain/value_objects/__init__.py` (export AgentEngineType)
+- **Modified**: `domain/ports/__init__.py` (export AgentEnginePort, AgentEngineResult, AgentEngineCapabilities)
+- **Modified**: `domain/services/__init__.py` (export AgentEngineRouter)
+- **Tests**: 46 new tests, total 729 unit tests passing
