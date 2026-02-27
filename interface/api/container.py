@@ -12,11 +12,13 @@ from application.use_cases.cost_estimator import CostEstimator
 from application.use_cases.create_task import CreateTaskUseCase
 from application.use_cases.execute_task import ExecuteTaskUseCase
 from application.use_cases.interactive_plan import InteractivePlanUseCase
+from domain.ports.agent_engine import AgentEnginePort
 from domain.ports.cost_repository import CostRepository
 from domain.ports.embedding import EmbeddingPort
 from domain.ports.memory_repository import MemoryRepository
 from domain.ports.plan_repository import PlanRepository
 from domain.ports.task_repository import TaskRepository
+from domain.value_objects.agent_engine import AgentEngineType
 from infrastructure.llm.cost_tracker import CostTracker
 from infrastructure.llm.litellm_gateway import LiteLLMGateway
 from infrastructure.llm.ollama_manager import OllamaManager
@@ -124,6 +126,44 @@ class AppContainer:
 
         # MCP client (optional — lazy, connects on demand)
         self.mcp_client: MCPClient | None = MCPClient() if self.settings.mcp_enabled else None
+
+        # Agent CLI drivers (Sprint 4.2)
+        self.agent_drivers: dict[AgentEngineType, AgentEnginePort] = self._wire_agent_drivers()
+
+    def _wire_agent_drivers(self) -> dict[AgentEngineType, AgentEnginePort]:
+        """Create all agent engine drivers based on settings."""
+        from infrastructure.agent_cli import (
+            ClaudeCodeDriver,
+            CodexCLIDriver,
+            GeminiCLIDriver,
+            OllamaEngineDriver,
+            OpenHandsDriver,
+        )
+
+        drivers: dict[AgentEngineType, AgentEnginePort] = {
+            AgentEngineType.OLLAMA: OllamaEngineDriver(
+                gateway=self.llm,
+                ollama=self.ollama,
+            ),
+            AgentEngineType.CLAUDE_CODE: ClaudeCodeDriver(
+                enabled=self.settings.claude_code_sdk_enabled,
+                cli_path=self.settings.claude_code_cli_path,
+            ),
+            AgentEngineType.CODEX_CLI: CodexCLIDriver(
+                enabled=self.settings.codex_cli_enabled,
+                cli_path=self.settings.codex_cli_path,
+            ),
+            AgentEngineType.GEMINI_CLI: GeminiCLIDriver(
+                enabled=self.settings.gemini_cli_enabled,
+                cli_path=self.settings.gemini_cli_path,
+            ),
+            AgentEngineType.OPENHANDS: OpenHandsDriver(
+                base_url=self.settings.openhands_base_url,
+                model=self.settings.openhands_model,
+                api_key=self.settings.openhands_api_key,
+            ),
+        }
+        return drivers
 
     def _create_embedding_port(self) -> EmbeddingPort | None:
         """Create embedding port based on settings. Returns None if disabled."""

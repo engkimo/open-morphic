@@ -1662,3 +1662,53 @@ Introduce a two-tier routing architecture:
 - **Modified**: `domain/ports/__init__.py` (export AgentEnginePort, AgentEngineResult, AgentEngineCapabilities)
 - **Modified**: `domain/services/__init__.py` (export AgentEngineRouter)
 - **Tests**: 46 new tests, total 729 unit tests passing
+
+---
+
+## TD-039: Agent CLI Engine Drivers (5 Concrete Implementations)
+
+**Date**: 2026-02-27
+**Status**: Accepted
+**Sprint**: 4.2
+
+### Decision
+
+Implement 5 concrete drivers in `infrastructure/agent_cli/` fulfilling the `AgentEnginePort` interface from TD-038. ADK driver deferred (requires `google-adk` pip dep; router fallback chain handles gracefully).
+
+### Key Decisions
+
+1. **SubprocessMixin** (`_subprocess_base.py`): 3 CLI drivers (Claude Code, Codex, Gemini) share `_run_cli()` + `_check_cli_exists()`. Mixin avoids diamond inheritance with ABC
+2. **OllamaEngineDriver wraps LiteLLMGateway**: Reuses existing cost tracking, model routing. Auto-prefixes `ollama/` to model names
+3. **OpenHandsDriver uses httpx REST**: POST create + GET poll pattern (not subprocess). Supports optional Bearer token auth
+4. **Errors as `AgentEngineResult(success=False)`**: Never raise from `run_task()` — consistent with port contract
+5. **No new pip dependencies**: subprocess (stdlib) + httpx (already available)
+6. **+4 Settings fields**: `openhands_api_key`, `claude_code_cli_path`, `codex_cli_path`, `gemini_cli_path` — all optional with sensible defaults
+7. **ADK skipped entirely**: Fallback chain handles: ADK -> GEMINI_CLI -> CLAUDE_CODE -> OLLAMA
+
+### Driver Summary
+
+| Driver | Engine Type | Transport | Key Capability |
+|---|---|---|---|
+| OllamaEngineDriver | OLLAMA | LiteLLMGateway (reuse) | $0 cost, local |
+| ClaudeCodeDriver | CLAUDE_CODE | subprocess (`claude -p`) | 200K ctx, parallel, streaming |
+| CodexCLIDriver | CODEX_CLI | subprocess (`codex exec`) | sandbox, MCP |
+| GeminiCLIDriver | GEMINI_CLI | subprocess (`gemini -p`) | 2M ctx |
+| OpenHandsDriver | OPENHANDS | httpx REST (POST+poll) | sandbox, parallel, streaming |
+
+### Files Created/Modified
+
+- **Created**: `infrastructure/agent_cli/_subprocess_base.py` (CLIResult + SubprocessMixin)
+- **Created**: `infrastructure/agent_cli/ollama_driver.py`
+- **Created**: `infrastructure/agent_cli/claude_code_driver.py`
+- **Created**: `infrastructure/agent_cli/codex_cli_driver.py`
+- **Created**: `infrastructure/agent_cli/gemini_cli_driver.py`
+- **Created**: `infrastructure/agent_cli/openhands_driver.py`
+- **Created**: `tests/unit/infrastructure/test_ollama_driver.py` (13 tests)
+- **Created**: `tests/unit/infrastructure/test_claude_code_driver.py` (16 tests)
+- **Created**: `tests/unit/infrastructure/test_codex_cli_driver.py` (16 tests)
+- **Created**: `tests/unit/infrastructure/test_gemini_cli_driver.py` (16 tests)
+- **Created**: `tests/unit/infrastructure/test_openhands_driver.py` (18 tests)
+- **Modified**: `shared/config.py` (+4 fields)
+- **Modified**: `infrastructure/agent_cli/__init__.py` (re-exports all 5 drivers)
+- **Modified**: `interface/api/container.py` (+`_wire_agent_drivers()` method)
+- **Tests**: 92 new tests, total 821 unit tests passing

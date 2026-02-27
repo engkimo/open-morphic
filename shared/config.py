@@ -45,9 +45,13 @@ class Settings(BaseSettings):
     # ── Agent CLI ──
     openhands_base_url: str = "http://localhost:3000"
     openhands_model: str = "claude-sonnet-4-6"
+    openhands_api_key: str = ""
     claude_code_sdk_enabled: bool = True
+    claude_code_cli_path: str = "claude"
     gemini_cli_enabled: bool = True
+    gemini_cli_path: str = "gemini"
     codex_cli_enabled: bool = True
+    codex_cli_path: str = "codex"
     agent_default_engine: str = "claude_code"
 
     # ── Database ──

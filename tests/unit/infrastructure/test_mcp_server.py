@@ -31,6 +31,15 @@ class _FakeSettings:
     is_development = False
     memory_retention_threshold = 0.3
     celery_enabled = False
+    openhands_base_url = "http://localhost:3000"
+    openhands_model = "claude-sonnet-4-6"
+    openhands_api_key = ""
+    claude_code_sdk_enabled = False
+    claude_code_cli_path = "claude"
+    gemini_cli_enabled = False
+    gemini_cli_path = "gemini"
+    codex_cli_enabled = False
+    codex_cli_path = "codex"
     context_bridge_default_tokens = 800
     mcp_enabled = True
     mcp_transport = "stdio"

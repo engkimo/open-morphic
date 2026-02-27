@@ -1442,18 +1442,28 @@ Sprint 1.1 (Infra)
 
 **Completion Criteria**: All 46 tests pass. No regressions on existing 683 tests. Lint clean.
 
-### Sprint 4.2: Engine Drivers (Planned)
+### Sprint 4.2: Engine Drivers (COMPLETE — 2026-02-27)
 
-- OpenHands Driver (REST + WebSocket)
-- Claude Code SDK Driver (headless + parallel)
-- Gemini CLI + ADK Driver (Sequential/Parallel/Loop)
-- OpenAI Codex CLI Driver (exec + MCP server mode)
-- Ollama Driver (wrapper around existing LiteLLMGateway)
+**Deliverables**: 5 concrete `AgentEnginePort` implementations + SubprocessMixin + container wiring.
 
-### Sprint 4.3: AgentCLIRouter Use Case + Container Wiring (Planned)
+| # | File | Description |
+|---|---|---|
+| 1 | `infrastructure/agent_cli/_subprocess_base.py` | CLIResult + SubprocessMixin |
+| 2 | `infrastructure/agent_cli/ollama_driver.py` | Wraps LiteLLMGateway + OllamaManager |
+| 3 | `infrastructure/agent_cli/claude_code_driver.py` | `claude -p --output-format json` |
+| 4 | `infrastructure/agent_cli/codex_cli_driver.py` | `codex exec --json --full-auto` |
+| 5 | `infrastructure/agent_cli/gemini_cli_driver.py` | `gemini -p --output-format json` |
+| 6 | `infrastructure/agent_cli/openhands_driver.py` | httpx REST: POST create + GET poll |
+
+**Modified**: `shared/config.py` (+4 fields), `infrastructure/agent_cli/__init__.py` (re-exports), `interface/api/container.py` (+`_wire_agent_drivers`)
+
+**Tests**: 92 new (13+16+16+16+18+13 per driver), total 821 unit tests. Lint clean.
+
+**ADK deferred**: Requires `google-adk` pip dep. Router fallback chain handles: ADK -> GEMINI_CLI -> CLAUDE_CODE -> OLLAMA.
+
+### Sprint 4.3: AgentCLIRouter Use Case + API Integration (Planned)
 
 - `application/use_cases/route_to_engine.py`
-- `AppContainer` wiring (engine registry, router, availability check)
 - API route: `POST /api/tasks` with engine selection
 - CLI: `morphic engine list`, `morphic engine status`
 | 5 | Auto tool discovery success rate | > 60% |

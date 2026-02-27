@@ -281,8 +281,14 @@ morphic-agent/
 │   ├── mcp/                         # Sprint 3.7–3.8: Model Context Protocol
 │   │   ├── server.py                # create_mcp_server() — FastMCP, 6 tools + 2 resources
 │   │   └── client.py               # MCPClient, MCPToolAdapter, discover_and_register
-│   └── agent_cli/                   # Sprint 4.1+: Agent CLI Orchestration
-│       └── __init__.py              # Package stub (drivers in Sprint 4.2+)
+│   └── agent_cli/                   # Sprint 4.1–4.2: Agent CLI Orchestration
+│       ├── __init__.py              # Re-exports all 5 drivers
+│       ├── _subprocess_base.py      # CLIResult + SubprocessMixin (shared by CLI drivers)
+│       ├── ollama_driver.py         # OllamaEngineDriver (wraps LiteLLMGateway, $0)
+│       ├── claude_code_driver.py    # ClaudeCodeDriver (claude -p, 200K ctx)
+│       ├── codex_cli_driver.py      # CodexCLIDriver (codex exec, sandbox+MCP)
+│       ├── gemini_cli_driver.py     # GeminiCLIDriver (gemini -p, 2M ctx)
+│       └── openhands_driver.py      # OpenHandsDriver (httpx REST, Docker sandbox)
 │
 ├── interface/                       # Layer 4: Entry Points
 │   ├── api/                         # Sprint 1.6: FastAPI + WebSocket
