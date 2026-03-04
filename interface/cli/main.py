@@ -77,6 +77,7 @@ def main(
 # Import and register sub-commands (deferred to avoid circular imports)
 def _register_commands() -> None:
     from interface.cli.commands.cost import cost_app
+    from interface.cli.commands.engine import engine_app
     from interface.cli.commands.mcp import mcp_app
     from interface.cli.commands.model import model_app
     from interface.cli.commands.plan import plan_app
@@ -87,6 +88,7 @@ def _register_commands() -> None:
     app.add_typer(model_app, name="model", help="Manage LLM models.")
     app.add_typer(cost_app, name="cost", help="View cost tracking and budget.")
     app.add_typer(mcp_app, name="mcp", help="Manage MCP server.")
+    app.add_typer(engine_app, name="engine", help="Manage agent execution engines.")
 
 
 _register_commands()

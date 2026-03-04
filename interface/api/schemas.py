@@ -14,7 +14,9 @@ from domain.entities.cost import CostRecord
 from domain.entities.task import SubTask, TaskEntity
 
 if TYPE_CHECKING:
+    from application.use_cases.route_to_engine import EngineStatus
     from domain.entities.plan import ExecutionPlan, PlanStep
+    from domain.ports.agent_engine import AgentEngineResult
 
 
 # ── Task schemas ──
@@ -193,3 +195,65 @@ class ContextExportResponse(BaseModel):
     platform: str
     content: str
     token_estimate: int
+
+
+# ── Engine schemas ──
+
+
+class EngineRunRequest(BaseModel):
+    task: str = Field(min_length=1, examples=["Implement a Fibonacci function in Python"])
+    engine: str | None = Field(default=None, examples=["ollama", "claude_code"])
+    task_type: str = Field(default="simple_qa", examples=["simple_qa", "complex_reasoning"])
+    budget: float = Field(default=1.0, ge=0.0)
+    model: str | None = None
+    timeout_seconds: float = Field(default=300.0, gt=0.0)
+
+
+class EngineInfoResponse(BaseModel):
+    engine_type: str
+    available: bool
+    max_context_tokens: int
+    supports_sandbox: bool
+    supports_parallel: bool
+    supports_mcp: bool
+    cost_per_hour_usd: float
+
+    @classmethod
+    def from_status(cls, status: EngineStatus) -> EngineInfoResponse:
+        caps = status.capabilities
+        return cls(
+            engine_type=status.engine_type.value,
+            available=status.available,
+            max_context_tokens=caps.max_context_tokens,
+            supports_sandbox=caps.supports_sandbox,
+            supports_parallel=caps.supports_parallel,
+            supports_mcp=caps.supports_mcp,
+            cost_per_hour_usd=caps.cost_per_hour_usd,
+        )
+
+
+class EngineListResponse(BaseModel):
+    engines: list[EngineInfoResponse]
+    count: int
+
+
+class EngineRunResponse(BaseModel):
+    engine: str
+    success: bool
+    output: str
+    cost_usd: float
+    duration_seconds: float
+    model_used: str | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_result(cls, result: AgentEngineResult) -> EngineRunResponse:
+        return cls(
+            engine=result.engine.value,
+            success=result.success,
+            output=result.output,
+            cost_usd=result.cost_usd,
+            duration_seconds=result.duration_seconds,
+            model_used=result.model_used,
+            error=result.error,
+        )

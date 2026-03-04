@@ -12,7 +12,9 @@ from rich.table import Table
 from rich.tree import Tree
 
 if TYPE_CHECKING:
+    from application.use_cases.route_to_engine import EngineStatus
     from domain.entities.task import TaskEntity
+    from domain.ports.agent_engine import AgentEngineResult
 
 console = Console()
 
@@ -109,6 +111,51 @@ def print_model_status(running: bool, models: list[str], default_model: str) -> 
         console.print(f"Installed: {', '.join(models)}")
     else:
         console.print("[dim]No models installed.[/]")
+
+
+# ── Engine formatters ──
+
+
+def print_engine_table(engines: list[EngineStatus]) -> None:
+    """Print a table of agent execution engines."""
+    if not engines:
+        console.print("[dim]No engines registered.[/]")
+        return
+
+    table = Table(title="Agent Engines")
+    table.add_column("Engine", min_width=12)
+    table.add_column("Available", justify="center")
+    table.add_column("Context", justify="right")
+    table.add_column("Sandbox", justify="center")
+    table.add_column("Parallel", justify="center")
+    table.add_column("MCP", justify="center")
+    table.add_column("$/hr", justify="right")
+
+    for e in engines:
+        caps = e.capabilities
+        avail = "[green]Yes[/]" if e.available else "[red]No[/]"
+        ctx = f"{caps.max_context_tokens:,}"
+        sandbox = "[green]Yes[/]" if caps.supports_sandbox else "[dim]-[/]"
+        parallel = "[green]Yes[/]" if caps.supports_parallel else "[dim]-[/]"
+        mcp = "[green]Yes[/]" if caps.supports_mcp else "[dim]-[/]"
+        cost = "[green]FREE[/]" if caps.cost_per_hour_usd == 0 else f"${caps.cost_per_hour_usd:.2f}"
+
+        table.add_row(e.engine_type.value, avail, ctx, sandbox, parallel, mcp, cost)
+
+    console.print(table)
+
+
+def print_engine_result(result: AgentEngineResult) -> None:
+    """Print the result of an engine execution."""
+    status = "[green]Success[/]" if result.success else "[red]Failed[/]"
+    console.print(f"Engine: [bold]{result.engine.value}[/]  Status: {status}")
+    if result.model_used:
+        console.print(f"Model: {result.model_used}")
+    console.print(f"Cost: ${result.cost_usd:.4f}  Duration: {result.duration_seconds:.1f}s")
+    if result.error:
+        console.print(f"[red]Error: {result.error}[/]")
+    if result.output:
+        console.print(f"\n{result.output}")
 
 
 # ── Cost formatters ──

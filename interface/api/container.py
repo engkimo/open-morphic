@@ -12,6 +12,7 @@ from application.use_cases.cost_estimator import CostEstimator
 from application.use_cases.create_task import CreateTaskUseCase
 from application.use_cases.execute_task import ExecuteTaskUseCase
 from application.use_cases.interactive_plan import InteractivePlanUseCase
+from application.use_cases.route_to_engine import RouteToEngineUseCase
 from domain.ports.agent_engine import AgentEnginePort
 from domain.ports.cost_repository import CostRepository
 from domain.ports.embedding import EmbeddingPort
@@ -129,6 +130,9 @@ class AppContainer:
 
         # Agent CLI drivers (Sprint 4.2)
         self.agent_drivers: dict[AgentEngineType, AgentEnginePort] = self._wire_agent_drivers()
+
+        # Engine routing use case (Sprint 4.3)
+        self.route_to_engine = RouteToEngineUseCase(drivers=self.agent_drivers)
 
     def _wire_agent_drivers(self) -> dict[AgentEngineType, AgentEnginePort]:
         """Create all agent engine drivers based on settings."""

@@ -5,7 +5,7 @@
 > **Phase 1 Foundation: COMPLETE** (2026-02-25) — 7/7 sprints done
 > **Phase 2 Parallel & Planning + CLI: COMPLETE** (2026-02-26) — All 6 sprints (2-A through 2-F) + CLI v1
 > **Phase 3 Semantic Memory & Context Bridge: COMPLETE** (2026-02-26) — Week 5: SemanticFingerprint LSH → ContextZipper v2 → ForgettingCurve → DeltaEncoder → HierarchicalSummarizer | Week 6: Context Bridge → MCP Server → MCP Client → L1-L4 Integration — 725 tests (699 unit + 26 integration)
-> **Phase 4 Agent CLI Orchestration: IN PROGRESS** — Sprint 4.1 complete (AgentEngineType, AgentEnginePort, AgentEngineRouter) — 729 unit tests + 26 integration
+> **Phase 4 Agent CLI Orchestration: IN PROGRESS** — Sprint 4.1–4.3 complete (domain foundation + 5 drivers + RouteToEngine use case + API/CLI) — 864 unit tests + 26 integration
 
 ---
 
@@ -107,14 +107,16 @@ Both CLI and API are first-class interfaces. They call the **same use cases** wi
 │  │ POST /api/tasks  ─────┼──┼── morphic task create ───┤ │
 │  │ GET  /api/cost   ─────┼──┼── morphic cost summary ──┤ │
 │  │ GET  /api/models ─────┼──┼── morphic model list ────┤ │
+│  │ GET  /api/engines ────┼──┼── morphic engine list ───┤ │
+│  │ POST /api/engines/run ┼──┼── morphic engine run  ───┤ │
 │  └───────────────────────┘  └───────────────────────────┘ │
 │              │                          │                  │
 │              └──────────┬───────────────┘                  │
 │                         ▼                                  │
 │              application/use_cases/                        │
 │              ├── create_task.py                            │
-│              ├── cost_summary.py                           │
-│              └── list_models.py                            │
+│              ├── route_to_engine.py                        │
+│              └── ...                                       │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -127,8 +129,9 @@ interface/cli/
 │   ├── task.py        # morphic task {create|list|show|cancel}
 │   ├── model.py       # morphic model {list|status|pull}
 │   ├── cost.py        # morphic cost {summary|budget}
-│   ├── memory.py      # morphic memory {search|stats}
-│   └── exec.py        # morphic exec "..." (LAEE)
+│   ├── plan.py        # morphic plan {create|list|show|approve|reject}
+│   ├── mcp.py         # morphic mcp server
+│   └── engine.py      # morphic engine {list|run} (Sprint 4.3)
 └── formatters.py      # rich-based tables, progress bars, syntax highlighting
 ```
 
@@ -233,7 +236,8 @@ morphic-agent/
 │   │   ├── execute_task.py         # ExecuteTaskUseCase (run DAG + persist)
 │   │   ├── cost_estimator.py       # CostEstimator (per-model token pricing)
 │   │   ├── interactive_plan.py     # InteractivePlanUseCase (create/approve/reject)
-│   │   └── background_planner.py   # BackgroundPlannerUseCase (advisory monitoring)
+│   │   ├── background_planner.py   # BackgroundPlannerUseCase (advisory monitoring)
+│   │   └── route_to_engine.py      # RouteToEngineUseCase (engine selection + fallback execution, Sprint 4.3)
 │   └── dto/                         # (stub — Sprint 1.4)
 │
 ├── infrastructure/                  # Layer 2: Port Implementations
@@ -294,14 +298,15 @@ morphic-agent/
 │   ├── api/                         # Sprint 1.6: FastAPI + WebSocket
 │   │   ├── main.py                  # create_app() factory + lifespan + CORS
 │   │   ├── container.py             # AppContainer DI (Settings → repos → use cases)
-│   │   ├── schemas.py               # 14 Pydantic request/response models
+│   │   ├── schemas.py               # 18 Pydantic request/response models (+4 engine schemas, Sprint 4.3)
 │   │   ├── websocket.py             # /ws/tasks/{id} (poll + delta-only sends + recommendations)
 │   │   └── routes/
 │   │       ├── tasks.py             # POST, GET, GET/{id}, DELETE /api/tasks (+ Celery dispatch)
 │   │       ├── plans.py             # POST, GET, approve, reject /api/plans
 │   │       ├── models.py            # GET /api/models, GET /api/models/status
 │   │       ├── cost.py              # GET /api/cost, GET /api/cost/logs
-│   │       └── memory.py            # GET /api/memory/search?q= + GET /api/memory/export?platform=
+│   │       ├── memory.py            # GET /api/memory/search?q= + GET /api/memory/export?platform=
+│   │       └── engines.py           # GET /api/engines, GET /api/engines/{type}, POST /api/engines/run (Sprint 4.3)
 │   └── cli/                         # Sprint 2.9-2.11: typer + rich
 │       ├── main.py                  # typer app, _get_container() lazy singleton, _run() async bridge
 │       ├── formatters.py            # Rich tables, trees, status styles (all output isolated here)
@@ -310,7 +315,8 @@ morphic-agent/
 │           ├── model.py             # morphic model {list|status|pull}
 │           ├── cost.py              # morphic cost {summary|budget}
 │           ├── plan.py              # morphic plan {create|list|show|approve|reject}
-│           └── mcp.py               # morphic mcp server (stdio/streamable-http)
+│           ├── mcp.py               # morphic mcp server (stdio/streamable-http)
+│           └── engine.py            # morphic engine {list|run} (Sprint 4.3)
 │
 ├── shared/
 │   └── config.py                    # pydantic-settings (all env vars)
@@ -348,7 +354,8 @@ morphic-agent/
 │       │   └── test_agent_engine_port.py      # 10 tests (result, capabilities, ABC, backward compat, Sprint 4.1)
 │       ├── application/
 │       │   ├── test_create_task.py      # 5 tests (decompose, save, status, deps)
-│       │   └── test_execute_task.py     # 6 tests (success, fallback, failed, cost)
+│       │   ├── test_execute_task.py     # 6 tests (success, fallback, failed, cost)
+│       │   └── test_route_to_engine.py  # 23 tests (list/get/execute happy/fallback/chain, Sprint 4.3)
 │       ├── infrastructure/
 │       │   ├── test_ollama_manager.py   # 14 tests (health, list, ensure, recommend)
 │       │   ├── test_cost_tracker.py     # 13 tests (record, queries, budget)
@@ -368,7 +375,9 @@ morphic-agent/
 │       └── interface/
 │           ├── test_api.py              # 22 tests (CRUD, WebSocket, CORS, models, cost, memory)
 │           ├── test_api_e2e.py          # 12 tests (HTTP round-trip: POST→execute→GET→verify)
-│           └── test_cli.py              # 20 tests (3 foundation + 9 task + 5 model + 3 cost)
+│           ├── test_cli.py              # 20 tests (3 foundation + 9 task + 5 model + 3 cost)
+│           ├── test_engine_api.py       # 12 tests (list/get/run engines, validation, Sprint 4.3)
+│           └── test_engine_cli.py       # 8 tests (engine list/run, flags, validation, Sprint 4.3)
 │   └── integration/
 │       ├── test_live_smoke.py           # 10 tests (real Ollama + real filesystem)
 │       ├── test_cloud_llm.py            # 11 tests (Anthropic + OpenAI + Gemini + cost + routing)
@@ -521,9 +530,9 @@ discover_and_register(client, configs) → list[MCPToolAdapter]
 | Test Type | Location | Dependencies | Speed | What It Tests |
 |---|---|---|---|---|
 | **Unit/Domain** | `tests/unit/domain/` | None | ~0.03s (208 tests) | Entities, value objects, services, LSH fingerprint, forgetting curve, delta encoder, hierarchical summarizer, agent engine router |
-| **Unit/Application** | `tests/unit/application/` | Mocked ports | Fast (46 tests) | Use case orchestration, cost estimator, planning |
+| **Unit/Application** | `tests/unit/application/` | Mocked ports | Fast (69 tests) | Use case orchestration, cost estimator, planning, engine routing |
 | **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.2s (417 tests) | LLM gateway, cost, task graph, LAEE, memory, PG repos, Celery, browser/gui/cron, semantic search, forgetting curve, delta encoder, hierarchical summarizer, context bridge, MCP server/client |
-| **Unit/Interface** | `tests/unit/interface/` | Mock container | ~1.4s (58 tests) | API, WebSocket, CORS, CLI commands, plan endpoints |
+| **Unit/Interface** | `tests/unit/interface/` | Mock container | ~1.4s (78 tests) | API, WebSocket, CORS, CLI commands, plan endpoints, engine endpoints |
 | **Integration** | `tests/integration/` | Ollama running | ~18s (26 tests) | Real LLM inference, real filesystem, L1-L4 memory hierarchy |
 | **E2E** | `tests/e2e/` | Full stack | Slowest | API/CLI → Use Case → DB round-trips |
 
@@ -534,8 +543,8 @@ discover_and_register(client, configs) → list[MCPToolAdapter]
 2. Green:    Write minimum code to pass
 3. Refactor: Clean up while tests protect
 
-Current: 729 unit tests + 26 integration tests = 755 total, 100% pass (3.5s)
-Lint: ruff check 0 errors, ruff format 169 files clean
+Current: 864 unit tests + 26 integration tests = 890 total, 100% pass (~6.5s)
+Lint: ruff check 0 errors, ruff format 192 files clean
 Default model: qwen3-coder:30b (thinking mode disabled via extra_body)
 Cloud providers verified: Anthropic (Haiku/Sonnet), OpenAI (o4-mini/o3), Gemini (3-flash/3-pro)
 ```
@@ -552,4 +561,38 @@ Cloud providers verified: Anthropic (Haiku/Sonnet), OpenAI (o4-mini/o3), Gemini 
 ✓ MCP Server:       6 tools + 1 resource + 1 template registered
 ✓ CLI:              morphic {task,plan,model,cost,mcp} — 5 subcommands
 ✓ Context Bridge:   4 platforms output verified (claude_code, chatgpt, cursor, gemini)
+```
+
+### Phase 4 Verification — Sprint 4.1–4.3 (2026-03-02)
+
+```
+✓ Unit tests:       864 passed (6.49s)
+✓ Lint:             ruff check 0 errors, ruff format 192 files clean
+✓ Domain:           AgentEngineType (6), AgentEnginePort ABC, AgentEngineRouter (pure static)
+✓ Drivers:          5 implementations (Ollama, ClaudeCode, Codex, Gemini, OpenHands)
+✓ Use case:         RouteToEngineUseCase — list/get/execute with fallback chain
+✓ API:              GET /api/engines, GET /api/engines/{type}, POST /api/engines/run
+✓ CLI:              morphic engine {list, run} — 6 subcommands total
+✓ AppContainer DI:  agent_drivers dict + RouteToEngineUseCase wired
+✓ New tests:        43 (23 use case + 12 API + 8 CLI)
+```
+
+### Phase 4 Verification — Sprint 4.4 Integration Tests (2026-03-03)
+
+```
+✓ Unit tests:       864 passed (3.89s), 0 regressions
+✓ Integration tests: 30 total (18 passed, 12 skipped, 0 failed)
+✓ Lint:             ruff check 0 errors, ruff format 193 files clean
+✓ Test classes:     9 classes covering all 5 engines + routing + fallback
+✓ Availability:     is_available() verified for all 5 engines
+✓ Disabled drivers: ClaudeCode/Codex disabled=False → proper failure result
+✓ Skip pattern:     Graceful skip on env/auth issues (nested session, 401)
+✓ Cross-engine:     Same task comparison table with success/duration/cost
+✓ Routing:          budget=0→OLLAMA, SIMPLE_QA→OLLAMA, COMPLEX→fallback chain
+✓ Fallback:         LONG_RUNNING_DEV→OpenHands or fallback if unavailable
+
+Completion Criteria:
+  1. ✓ Same task across multiple engines with result comparison
+  2. ✓ Task-type-based automatic engine selection (5 routing tests)
+  3. ✓ Availability check + fallback in live environment (fallback chain)
 ```

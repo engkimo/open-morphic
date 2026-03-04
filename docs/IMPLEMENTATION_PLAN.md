@@ -1461,11 +1461,56 @@ Sprint 1.1 (Infra)
 
 **ADK deferred**: Requires `google-adk` pip dep. Router fallback chain handles: ADK -> GEMINI_CLI -> CLAUDE_CODE -> OLLAMA.
 
-### Sprint 4.3: AgentCLIRouter Use Case + API Integration (Planned)
+### Sprint 4.3: RouteToEngine Use Case + API/CLI Integration (COMPLETE — 2026-03-02)
 
-- `application/use_cases/route_to_engine.py`
-- API route: `POST /api/tasks` with engine selection
-- CLI: `morphic engine list`, `morphic engine status`
+**Deliverables**: RouteToEngineUseCase (fallback chain execution) + 3 API endpoints + 2 CLI commands + formatters.
+
+| # | File | Description |
+|---|---|---|
+| 1 | `application/use_cases/route_to_engine.py` | RouteToEngineUseCase: list_engines, get_engine, execute (fallback chain) |
+| 2 | `interface/api/routes/engines.py` | GET /api/engines, GET /api/engines/{type}, POST /api/engines/run |
+| 3 | `interface/api/schemas.py` | +EngineRunRequest, EngineInfoResponse, EngineListResponse, EngineRunResponse |
+| 4 | `interface/cli/commands/engine.py` | morphic engine {list, run} with --engine, --type, --budget flags |
+| 5 | `interface/cli/formatters.py` | +print_engine_table(), print_engine_result() |
+
+**Modified**: `interface/api/container.py` (+RouteToEngineUseCase DI wiring), `interface/api/main.py` (+engines_router), `interface/cli/main.py` (+engine_app)
+
+**Tests**: 43 new (23 use case + 12 API + 8 CLI), total 864 unit tests, 0 failures.
+**Lint**: ruff check 0 errors, ruff format clean.
+
+**Key design**: RouteToEngineUseCase._build_chain() builds ordered engine list via AgentEngineRouter.select_with_fallbacks(), then iterates: is_available() → run_task() → return on first success. Preferred engine override prepended to chain. All engines fail → returns last error.
+
 | 5 | Auto tool discovery success rate | > 60% |
 | 6 | Monthly improvement rate | +15% |
 | 7 | SWE-bench lite score | TBD |
+
+### Sprint 4.4: Agent Engine Integration Tests (COMPLETE — 2026-03-03)
+
+**Deliverables**: 30 integration tests across 9 test classes verifying Phase 4 completion criteria.
+
+| # | File | Description |
+|---|---|---|
+| 1 | `tests/integration/test_agent_engines.py` | 30 tests, 9 classes — live engine execution + routing + fallback |
+
+**Test Classes**:
+
+| Class | Tests | Purpose |
+|---|---|---|
+| `TestOllamaEngineLive` | 3 | Baseline: task execution + zero cost + availability |
+| `TestClaudeCodeEngineLive` | 3 | Headless CLI: task + capabilities + availability |
+| `TestCodexCLIEngineLive` | 3 | Codex exec: task + capabilities + availability |
+| `TestGeminiCLIEngineLive` | 3 | Gemini CLI: task + capabilities + availability |
+| `TestOpenHandsEngineLive` | 3 | REST API: task + capabilities + availability |
+| `TestAvailabilityDetection` | 5 | All 5 engines: is_available() accuracy |
+| `TestCrossEngineLive` | 3 | **Criteria 1**: same task cross-engine comparison |
+| `TestRoutingLive` | 5 | **Criteria 2,3**: routing + fallback verification |
+| `TestDisabledDriverBehavior` | 2 | Disabled driver returns proper failure |
+
+**Design**: Follows `test_cloud_llm.py` pattern — module-scoped fixtures, graceful skip on env/auth errors (nested Claude session, expired tokens). Engines with CLI on PATH but runtime issues are detected via `_is_env_error()` helper.
+
+**Results**: 18 passed, 12 skipped (Ollama offline + nested/auth skips), 0 failed. Total unit+integration: 864+18 = 882 passing tests.
+
+**Completion Criteria Met**:
+- [x] Same task across multiple engines with result comparison (TestCrossEngineLive)
+- [x] Task-type-based automatic engine selection (TestRoutingLive: budget=0→OLLAMA, SIMPLE_QA→OLLAMA, COMPLEX_REASONING→chain)
+- [x] Availability check + fallback in live environment (TestRoutingLive: fallback_when_primary_unavailable)
