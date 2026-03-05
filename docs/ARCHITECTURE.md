@@ -6,6 +6,8 @@
 > **Phase 2 Parallel & Planning + CLI: COMPLETE** (2026-02-26) — All 6 sprints (2-A through 2-F) + CLI v1
 > **Phase 3 Semantic Memory & Context Bridge: COMPLETE** (2026-02-26) — Week 5: SemanticFingerprint LSH → ContextZipper v2 → ForgettingCurve → DeltaEncoder → HierarchicalSummarizer | Week 6: Context Bridge → MCP Server → MCP Client → L1-L4 Integration — 725 tests (699 unit + 26 integration)
 > **Phase 4 Agent CLI Orchestration: COMPLETE** — Sprint 4.1–4.6 done (domain foundation + 6 drivers + RouteToEngine use case + API/CLI + knowledge file injection) — 898 unit tests + 30 integration
+> **Phase 5 Marketplace & Tools: COMPLETE** — Sprint 5.1–5.6 done (safety scorer + MCP registry + tool installer + auto discoverer + Ollama manager + marketplace UI) — 988 unit tests + 37 integration
+> **Phase 6 Self-Evolution: COMPLETE** — Sprint 6.1–6.5 done (execution recorder + tactical recovery + strategy learning + systemic evolution + evolution dashboard) — 1162 unit tests + 37 integration
 
 ---
 
@@ -36,7 +38,8 @@ Interface → Application → Domain ← Infrastructure
 │  ├── persistence/    SQLAlchemy ORM, pgvector, Neo4j         │
 │  ├── llm/            LiteLLM, Ollama adapters                │
 │  ├── local_execution/ LAEE tool implementations              │
-│  └── memory/         mem0, vector DB adapters                │
+│  ├── memory/         mem0, vector DB adapters                │
+│  └── marketplace/    MCP registry client, tool installer     │
 ├──────────────────────────────────────────────────────────────┤
 │  shared/             Cross-cutting Concerns                   │
 │  └── config.py       pydantic-settings (env vars)            │
@@ -104,11 +107,12 @@ Both CLI and API are first-class interfaces. They call the **same use cases** wi
 │  ┌── api/ ──────────────┐  ┌── cli/ ──────────────────┐ │
 │  │ FastAPI + WebSocket   │  │ typer + rich              │ │
 │  │                       │  │                           │ │
-│  │ POST /api/tasks  ─────┼──┼── morphic task create ───┤ │
-│  │ GET  /api/cost   ─────┼──┼── morphic cost summary ──┤ │
-│  │ GET  /api/models ─────┼──┼── morphic model list ────┤ │
-│  │ GET  /api/engines ────┼──┼── morphic engine list ───┤ │
-│  │ POST /api/engines/run ┼──┼── morphic engine run  ───┤ │
+│  │ POST /api/tasks  ─────┼──┼── morphic task create ──────┤ │
+│  │ GET  /api/cost   ─────┼──┼── morphic cost summary ─────┤ │
+│  │ GET  /api/models ─────┼──┼── morphic model list ───────┤ │
+│  │ GET  /api/engines ────┼──┼── morphic engine list ──────┤ │
+│  │ POST /api/engines/run ┼──┼── morphic engine run  ──────┤ │
+│  │ GET  /api/marketplace ┼──┼── morphic marketplace ──────┤ │
 │  └───────────────────────┘  └───────────────────────────┘ │
 │              │                          │                  │
 │              └──────────┬───────────────┘                  │
@@ -120,18 +124,20 @@ Both CLI and API are first-class interfaces. They call the **same use cases** wi
 └─────────────────────────────────────────────────────────┘
 ```
 
-### CLI Architecture (Phase 2)
+### CLI Architecture (Phase 2 + 5 + 6)
 
 ```
 interface/cli/
 ├── main.py            # typer.Typer() app, entry point: `morphic`
 ├── commands/
 │   ├── task.py        # morphic task {create|list|show|cancel}
-│   ├── model.py       # morphic model {list|status|pull}
+│   ├── model.py       # morphic model {list|status|pull|delete|switch|info} (Sprint 5.5)
 │   ├── cost.py        # morphic cost {summary|budget}
 │   ├── plan.py        # morphic plan {create|list|show|approve|reject}
 │   ├── mcp.py         # morphic mcp server
-│   └── engine.py      # morphic engine {list|run} (Sprint 4.3)
+│   ├── engine.py      # morphic engine {list|run} (Sprint 4.3)
+│   ├── marketplace.py # morphic marketplace {search|install|list|suggest|uninstall} (Sprint 5.3)
+│   └── evolution.py   # morphic evolution {stats|failures|update|report} (Sprint 6.5)
 └── formatters.py      # rich-based tables, progress bars, syntax highlighting
 ```
 
@@ -184,6 +190,8 @@ Custom code is minimized. Every infrastructure component wraps an established OS
 | `domain/services/delta_encoder.py` | Git-style delta hashing/reconstruction/diffing is pure logic (Sprint 3.4) |
 | `domain/services/hierarchical_summarizer.py` | 4-level tree compression: extractive summarization + level selection is pure logic (Sprint 3.5) |
 | `domain/services/agent_engine_router.py` | Two-tier routing: task characteristics → execution engine selection, pure static (Sprint 4.1) |
+| `domain/services/tool_safety_scorer.py` | Multi-signal safety scoring: publisher trust + transport + popularity + metadata (Sprint 5.1) |
+| `domain/services/failure_analyzer.py` | Regex error pattern → MCP search query mapping, pure static (Sprint 5.4) |
 | `domain/value_objects/*` | Project-specific enums and types |
 | `domain/ports/*` | Interface definitions are project-specific |
 
@@ -202,13 +210,18 @@ morphic-agent/
 │   │   ├── memory.py               # MemoryEntry (strict)
 │   │   ├── cost.py                 # CostRecord (strict)
 │   │   ├── delta.py                # Delta — Git-style state change record (strict, Sprint 3.4)
-│   │   └── plan.py                 # PlanStep, ExecutionPlan (strict)
+│   │   ├── plan.py                 # PlanStep, ExecutionPlan (strict)
+│   │   ├── tool_candidate.py       # ToolCandidate — MCP tool metadata (strict, Sprint 5.1)
+│   │   ├── execution_record.py    # ExecutionRecord — single execution outcome (strict, Sprint 6.1)
+│   │   └── strategy.py            # RecoveryRule, ModelPreference, EnginePreference (strict, Sprint 6.3)
 │   ├── value_objects/
 │   │   ├── status.py               # TaskStatus, SubTaskStatus, ObservationStatus, MemoryType, PlanStatus
 │   │   ├── risk_level.py           # RiskLevel (5-tier IntEnum)
 │   │   ├── approval_mode.py        # ApprovalMode (3-tier)
 │   │   ├── model_tier.py           # ModelTier, TaskType (+LONG_RUNNING_DEV, +WORKFLOW_PIPELINE)
-│   │   └── agent_engine.py         # AgentEngineType (6 engines, Sprint 4.1)
+│   │   ├── agent_engine.py         # AgentEngineType (6 engines, Sprint 4.1)
+│   │   ├── tool_safety.py          # SafetyTier (4-tier IntEnum: UNSAFE→VERIFIED, Sprint 5.1)
+│   │   └── evolution.py            # EvolutionLevel (TACTICAL, STRATEGIC, SYSTEMIC, Sprint 6.1)
 │   ├── ports/
 │   │   ├── task_repository.py      # TaskRepository ABC
 │   │   ├── task_engine.py          # TaskEngine ABC (decompose + execute)
@@ -220,7 +233,10 @@ morphic-agent/
 │   │   ├── plan_repository.py      # PlanRepository ABC
 │   │   ├── embedding.py            # EmbeddingPort ABC (Sprint 3.1)
 │   │   ├── mcp_client.py           # MCPClientPort ABC (Sprint 3.8)
-│   │   └── agent_engine.py         # AgentEnginePort ABC + Result + Capabilities (Sprint 4.1)
+│   │   ├── agent_engine.py         # AgentEnginePort ABC + Result + Capabilities (Sprint 4.1)
+│   │   ├── tool_registry.py        # ToolRegistryPort ABC + ToolSearchResult (Sprint 5.2)
+│   │   ├── tool_installer.py       # ToolInstallerPort ABC + InstallResult (Sprint 5.3)
+│   │   └── execution_record_repository.py # ExecutionRecordRepository ABC + ExecutionStats (Sprint 6.1)
 │   └── services/
 │       ├── risk_assessor.py        # 40+ tool risk mapping + escalation
 │       ├── approval_engine.py      # 3-mode × 5-risk approval matrix
@@ -228,7 +244,10 @@ morphic-agent/
 │       ├── forgetting_curve.py    # Ebbinghaus retention scoring R=e^(-t/S) (Sprint 3.3)
 │       ├── delta_encoder.py      # hash_changes, reconstruct, create_delta, compute_diff (Sprint 3.4)
 │       ├── hierarchical_summarizer.py # estimate_tokens, split_sentences, extract_summary, build_hierarchy, select_level (Sprint 3.5)
-│       └── agent_engine_router.py # select, get_fallback_chain, select_with_fallbacks — pure static (Sprint 4.1)
+│       ├── agent_engine_router.py # select, get_fallback_chain, select_with_fallbacks — pure static (Sprint 4.1)
+│       ├── tool_safety_scorer.py  # score() — publisher trust + transport + popularity + metadata (Sprint 5.1)
+│       ├── failure_analyzer.py    # extract_queries() — regex error→search query mapping (Sprint 5.4)
+│       └── tactical_recovery.py   # find_alternative, create_rule, rank_rules — pure static (Sprint 6.2)
 │
 ├── application/                     # Layer 3: Use Cases
 │   ├── use_cases/
@@ -237,7 +256,13 @@ morphic-agent/
 │   │   ├── cost_estimator.py       # CostEstimator (per-model token pricing)
 │   │   ├── interactive_plan.py     # InteractivePlanUseCase (create/approve/reject)
 │   │   ├── background_planner.py   # BackgroundPlannerUseCase (advisory monitoring)
-│   │   └── route_to_engine.py      # RouteToEngineUseCase (engine selection + fallback execution, Sprint 4.3)
+│   │   ├── route_to_engine.py      # RouteToEngineUseCase (engine selection + fallback execution, Sprint 4.3)
+│   │   ├── install_tool.py         # InstallToolUseCase (search + score + install, Sprint 5.3)
+│   │   ├── discover_tools.py       # DiscoverToolsUseCase (failure → suggest tools, Sprint 5.4)
+│   │   ├── manage_ollama.py        # ManageOllamaUseCase (status/pull/delete/switch, Sprint 5.5)
+│   │   ├── analyze_execution.py   # AnalyzeExecutionUseCase (record + stats + failure patterns, Sprint 6.1)
+│   │   ├── update_strategy.py     # UpdateStrategyUseCase (model/engine prefs + recovery rules, Sprint 6.3)
+│   │   └── systemic_evolution.py  # SystemicEvolutionUseCase (tool gap detection + evolution report, Sprint 6.4)
 │   └── dto/                         # (stub — Sprint 1.4)
 │
 ├── infrastructure/                  # Layer 2: Port Implementations
@@ -248,9 +273,10 @@ morphic-agent/
 │   │   ├── pg_task_repository.py    # PgTaskRepository (TaskEntity ↔ TaskModel)
 │   │   ├── pg_cost_repository.py    # PgCostRepository (SQL aggregation)
 │   │   ├── pg_memory_repository.py  # PgMemoryRepository (pgvector cosine + ILIKE fallback)
-│   │   └── pg_plan_repository.py    # PgPlanRepository (ExecutionPlan ↔ PlanModel)
-│   ├── llm/                         # Sprint 1.2: LLM Layer
-│   │   ├── ollama_manager.py        # Ollama lifecycle (health, model pull, RAM recommend)
+│   │   ├── pg_plan_repository.py    # PgPlanRepository (ExecutionPlan ↔ PlanModel)
+│   │   └── in_memory_execution_record.py # InMemoryExecutionRecordRepository (Sprint 6.1)
+│   ├── llm/                         # Sprint 1.2 + 5.5: LLM Layer
+│   │   ├── ollama_manager.py        # Ollama lifecycle (health, pull, delete, info, running, Sprint 5.5)
 │   │   ├── litellm_gateway.py       # LLMGateway impl (LOCAL_FIRST routing + LiteLLM)
 │   │   └── cost_tracker.py          # CostRepository wrapper + budget checking
 │   ├── task_graph/                  # Sprint 1.3: Task Graph Engine
@@ -295,44 +321,66 @@ morphic-agent/
 │       ├── openhands_driver.py      # OpenHandsDriver (httpx REST, Docker sandbox)
 │       ├── adk_driver.py            # ADKDriver (Google ADK Python SDK, 2M ctx, Sprint 4.5)
 │       └── knowledge_loader.py      # KnowledgeFileLoader (engine→file mapping, Sprint 4.6)
+│   ├── marketplace/                 # Sprint 5.2–5.3: Marketplace
+│   │   ├── __init__.py              # Re-exports MCPRegistryClient, MCPToolInstaller
+│   │   ├── mcp_registry_client.py   # MCPRegistryClient(ToolRegistryPort) — httpx, auto-score (Sprint 5.2)
+│   │   └── tool_installer.py        # MCPToolInstaller(ToolInstallerPort) — npm/pip subprocess (Sprint 5.3)
+│   └── evolution/                   # Sprint 6.3: Self-Evolution Engine
+│       ├── __init__.py              # Re-exports StrategyStore
+│       └── strategy_store.py        # StrategyStore — JSONL persistence (recovery rules + preferences)
 │
 ├── interface/                       # Layer 4: Entry Points
 │   ├── api/                         # Sprint 1.6: FastAPI + WebSocket
 │   │   ├── main.py                  # create_app() factory + lifespan + CORS
 │   │   ├── container.py             # AppContainer DI (Settings → repos → use cases)
-│   │   ├── schemas.py               # 18 Pydantic request/response models (+4 engine schemas, Sprint 4.3)
+│   │   ├── schemas.py               # 35+ Pydantic request/response models (+evolution schemas, Sprint 6.1)
 │   │   ├── websocket.py             # /ws/tasks/{id} (poll + delta-only sends + recommendations)
 │   │   └── routes/
 │   │       ├── tasks.py             # POST, GET, GET/{id}, DELETE /api/tasks (+ Celery dispatch)
 │   │       ├── plans.py             # POST, GET, approve, reject /api/plans
-│   │       ├── models.py            # GET /api/models, GET /api/models/status
+│   │       ├── models.py            # GET /api/models/status, POST /pull, DELETE /{name}, POST /switch, GET /running (Sprint 5.5)
 │   │       ├── cost.py              # GET /api/cost, GET /api/cost/logs
 │   │       ├── memory.py            # GET /api/memory/search?q= + GET /api/memory/export?platform=
-│   │       └── engines.py           # GET /api/engines, GET /api/engines/{type}, POST /api/engines/run (Sprint 4.3)
+│   │       ├── engines.py           # GET /api/engines, GET /api/engines/{type}, POST /api/engines/run (Sprint 4.3)
+│   │       ├── marketplace.py       # GET /search, POST /install, GET /installed, POST /suggest, DELETE /{name} (Sprint 5.3)
+│   │       └── evolution.py        # GET /stats, GET /failures, GET /preferences, POST /update, POST /evolve (Sprint 6.1)
 │   └── cli/                         # Sprint 2.9-2.11: typer + rich
 │       ├── main.py                  # typer app, _get_container() lazy singleton, _run() async bridge
-│       ├── formatters.py            # Rich tables, trees, status styles (all output isolated here)
+│       ├── formatters.py            # Rich tables, trees, status styles, safety badge (all output isolated here)
 │       └── commands/
 │           ├── task.py              # morphic task {create|list|show|cancel}
-│           ├── model.py             # morphic model {list|status|pull}
+│           ├── model.py             # morphic model {list|status|pull|delete|switch|info} (Sprint 5.5)
 │           ├── cost.py              # morphic cost {summary|budget}
 │           ├── plan.py              # morphic plan {create|list|show|approve|reject}
 │           ├── mcp.py               # morphic mcp server (stdio/streamable-http)
-│           └── engine.py            # morphic engine {list|run} (Sprint 4.3)
+│           ├── engine.py            # morphic engine {list|run} (Sprint 4.3)
+│           ├── marketplace.py       # morphic marketplace {search|install|list|suggest|uninstall} (Sprint 5.3)
+│           └── evolution.py        # morphic evolution {stats|failures|update|report} (Sprint 6.1)
 │
 ├── shared/
-│   └── config.py                    # pydantic-settings (all env vars)
+│   └── config.py                    # pydantic-settings (all env vars + marketplace + evolution settings)
 │
-├── ui/                              # Sprint 1.6 + 2-F: Next.js 15 (bun, Tailwind CSS 4, @xyflow/react)
+├── ui/                              # Sprint 1.6 + 2-F + 5.6: Next.js 15 (bun, Tailwind CSS 4, @xyflow/react)
 │   ├── lib/
 │   │   ├── theme.ts                 # morphicAgentTheme design tokens
-│   │   └── api.ts                   # Typed fetch wrappers + WebSocket + Plan API
+│   │   └── api.ts                   # Typed fetch wrappers + WebSocket + Plan/Marketplace/Model/Evolution API
 │   ├── app/
-│   │   ├── layout.tsx               # Dark theme root layout (Geist font)
+│   │   ├── layout.tsx               # Dark theme root layout (Geist font, nav: Marketplace/Models/Evolution)
 │   │   ├── globals.css              # CSS variables matching design spec
 │   │   ├── page.tsx                 # Dashboard (Execute/Plan toggle + GoalInput + TaskList)
 │   │   ├── tasks/[id]/page.tsx      # Task detail + TaskGraph with live WebSocket
-│   │   └── plans/[id]/page.tsx      # Plan review page (approve/reject)
+│   │   ├── plans/[id]/page.tsx      # Plan review page (approve/reject)
+│   │   ├── marketplace/             # Sprint 5.6: MCP tool marketplace
+│   │   │   ├── page.tsx             # Search/browse tools + installed tab
+│   │   │   └── components/
+│   │   │       ├── SearchBar.tsx    # Debounced search input (400ms)
+│   │   │       ├── ToolCard.tsx     # Tool result card (SafetyBadge + InstallButton)
+│   │   │       ├── SafetyBadge.tsx  # Color-coded safety tier indicator (4 tiers)
+│   │   │       └── InstallButton.tsx # Install/uninstall with confirm dialog
+│   │   ├── models/                  # Sprint 5.6: Ollama model management
+│   │   │   └── page.tsx             # Pull/delete/switch models + running status
+│   │   └── evolution/               # Sprint 6.5: Evolution dashboard
+│   │       └── page.tsx             # Stats, failure patterns, preferences, evolution trigger
 │   └── components/
 │       ├── GoalInput.tsx            # Textarea + Execute button (Enter to submit)
 │       ├── TaskList.tsx             # Task cards with status icons + FREE badge
@@ -353,13 +401,26 @@ morphic-agent/
 │       │   ├── test_delta_encoder.py     # 34 tests (hash, reconstruct, diff, entity validation, Sprint 3.4)
 │       │   ├── test_hierarchical_summarizer.py # 27 tests (tokens, sentences, extract, hierarchy, select, depth, Sprint 3.5)
 │       │   ├── test_agent_engine_router.py    # 36 tests (select, fallback, with_fallbacks, engine type, task type, Sprint 4.1)
-│       │   └── test_agent_engine_port.py      # 10 tests (result, capabilities, ABC, backward compat, Sprint 4.1)
+│       │   ├── test_agent_engine_port.py      # 10 tests (result, capabilities, ABC, backward compat, Sprint 4.1)
+│       │   ├── test_tool_candidate.py         # 8 tests (strict validation, defaults, fields, Sprint 5.1)
+│       │   ├── test_tool_safety_scorer.py     # 14 tests (trusted publisher, suspicious, tier mapping, Sprint 5.1)
+│       │   ├── test_failure_analyzer.py       # 12 tests (error patterns, query extraction, limits, Sprint 5.4)
+│       │   ├── test_evolution_vo.py           # EvolutionLevel enum validation (Sprint 6.1)
+│       │   ├── test_execution_record.py       # ExecutionRecord strict validation (Sprint 6.1)
+│       │   ├── test_strategy_entities.py      # RecoveryRule, ModelPreference, EnginePreference (Sprint 6.3)
+│       │   └── test_tactical_recovery.py      # find_alternative, create_rule, rank (Sprint 6.2)
 │       ├── application/
 │       │   ├── test_create_task.py      # 5 tests (decompose, save, status, deps)
 │       │   ├── test_execute_task.py     # 6 tests (success, fallback, failed, cost)
-│       │   └── test_route_to_engine.py  # 27 tests (list/get/execute happy/fallback/chain + context injection, Sprint 4.3+4.6)
+│       │   ├── test_route_to_engine.py  # 27 tests (list/get/execute happy/fallback/chain + context injection, Sprint 4.3+4.6)
+│       │   ├── test_install_tool.py     # 9 tests (search, install, install_by_name, uninstall, list, Sprint 5.3)
+│       │   ├── test_discover_tools.py   # 9 tests (suggest, dedup, sort, max_results, context, Sprint 5.4)
+│       │   ├── test_manage_ollama.py    # 10 tests (status, pull, delete, switch, info, Sprint 5.5)
+│       │   ├── test_analyze_execution.py # AnalyzeExecution (record, stats, failure patterns, Sprint 6.1)
+│       │   ├── test_update_strategy.py   # UpdateStrategy (prefs, rules, full update, Sprint 6.3)
+│       │   └── test_systemic_evolution.py # SystemicEvolution (gaps, tools, report, Sprint 6.4)
 │       ├── infrastructure/
-│       │   ├── test_ollama_manager.py   # 14 tests (health, list, ensure, recommend)
+│       │   ├── test_ollama_manager.py   # 20 tests (health, list, ensure, recommend + delete, info, running, Sprint 5.5)
 │       │   ├── test_cost_tracker.py     # 13 tests (record, queries, budget)
 │       │   ├── test_litellm_gateway.py  # 24 tests (route, complete, available, O-series temp)
 │       │   ├── test_intent_analyzer.py  # 6 tests (decompose, deps, JSON parse)
@@ -375,13 +436,21 @@ morphic-agent/
 │       │   ├── test_mcp_server.py      # 19 tests (factory, 6 tools, 2 resources, degradation, Sprint 3.7)
 │       │   ├── test_mcp_client.py      # 21 tests (port, connect, tools, resources, adapter, discover, Sprint 3.8)
 │       │   ├── test_adk_driver.py     # 17 tests (construct, available, run_task, capabilities, Sprint 4.5)
-│       │   └── test_knowledge_loader.py # 13 tests (construction, load, format, missing files, Sprint 4.6)
+│       │   ├── test_knowledge_loader.py # 13 tests (construction, load, format, missing files, Sprint 4.6)
+│       │   ├── test_mcp_registry_client.py # 14 tests (search, parse, error handling, Sprint 5.2)
+│       │   ├── test_tool_installer.py  # 11 tests (install, safety gate, uninstall, tracking, Sprint 5.3)
+│       │   ├── test_execution_record_repo.py # InMemoryExecutionRecordRepository CRUD (Sprint 6.1)
+│       │   └── test_strategy_store.py  # StrategyStore JSONL I/O (Sprint 6.3)
 │       └── interface/
 │           ├── test_api.py              # 22 tests (CRUD, WebSocket, CORS, models, cost, memory)
 │           ├── test_api_e2e.py          # 12 tests (HTTP round-trip: POST→execute→GET→verify)
 │           ├── test_cli.py              # 20 tests (3 foundation + 9 task + 5 model + 3 cost)
 │           ├── test_engine_api.py       # 12 tests (list/get/run engines, validation, Sprint 4.3)
-│           └── test_engine_cli.py       # 8 tests (engine list/run, flags, validation, Sprint 4.3)
+│           ├── test_engine_cli.py       # 8 tests (engine list/run, flags, validation, Sprint 4.3)
+│           ├── test_marketplace_api.py  # 10 tests (search, install, list, uninstall, validation, Sprint 5.3)
+│           ├── test_marketplace_cli.py  # 6 tests (search, install, list, suggest, uninstall, Sprint 5.3)
+│           ├── test_evolution_api.py    # Evolution API endpoints (stats, failures, update, evolve, Sprint 6.1)
+│           └── test_evolution_cli.py    # Evolution CLI commands (stats, failures, update, report, Sprint 6.1)
 │   └── integration/
 │       ├── test_live_smoke.py           # 10 tests (real Ollama + real filesystem)
 │       ├── test_cloud_llm.py            # 11 tests (Anthropic + OpenAI + Gemini + cost + routing)
@@ -421,6 +490,8 @@ morphic-agent/
 | `ModelTier` | `str, Enum` | free, low, medium, high |
 | `TaskType` | `str, Enum` | simple_qa, code_generation, ..., long_running_dev, workflow_pipeline |
 | `AgentEngineType` | `str, Enum` | openhands, claude_code, gemini_cli, codex_cli, adk, ollama |
+| `SafetyTier` | `IntEnum` | UNSAFE(0), EXPERIMENTAL(1), COMMUNITY(2), VERIFIED(3) |
+| `EvolutionLevel` | `str, Enum` | tactical, strategic, systemic |
 
 ### 3. Ports Define Boundaries
 
@@ -436,12 +507,15 @@ domain/ports/
 ├── cost_repository.py      # Cost tracking queries
 ├── embedding.py            # Text-to-vector embedding (Sprint 3.1)
 ├── mcp_client.py           # MCP client connections (Sprint 3.8)
-└── agent_engine.py         # Agent execution engine interface (Sprint 4.1)
+├── agent_engine.py         # Agent execution engine interface (Sprint 4.1)
+├── tool_registry.py        # MCP tool registry search (Sprint 5.2)
+├── tool_installer.py       # Tool install/uninstall (Sprint 5.3)
+└── execution_record_repository.py # Execution record CRUD + stats (Sprint 6.1)
 ```
 
 ### 4. Services are Pure Functions
 
-Domain services (`risk_assessor.py`, `approval_engine.py`, `semantic_fingerprint.py`, `forgetting_curve.py`, `delta_encoder.py`, `hierarchical_summarizer.py`, `agent_engine_router.py`) have:
+Domain services (`risk_assessor.py`, `approval_engine.py`, `semantic_fingerprint.py`, `forgetting_curve.py`, `delta_encoder.py`, `hierarchical_summarizer.py`, `agent_engine_router.py`, `tool_safety_scorer.py`, `failure_analyzer.py`, `tactical_recovery.py`) have:
 - No constructor dependencies (no injected ports)
 - No I/O operations
 - Deterministic output for given input
@@ -534,10 +608,10 @@ discover_and_register(client, configs) → list[MCPToolAdapter]
 
 | Test Type | Location | Dependencies | Speed | What It Tests |
 |---|---|---|---|---|
-| **Unit/Domain** | `tests/unit/domain/` | None | ~0.03s (208 tests) | Entities, value objects, services, LSH fingerprint, forgetting curve, delta encoder, hierarchical summarizer, agent engine router |
-| **Unit/Application** | `tests/unit/application/` | Mocked ports | Fast (73 tests) | Use case orchestration, cost estimator, planning, engine routing + context injection |
-| **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.2s (447 tests) | LLM gateway, cost, task graph, LAEE, memory, PG repos, Celery, browser/gui/cron, semantic search, forgetting curve, delta encoder, hierarchical summarizer, context bridge, MCP server/client, ADK driver, knowledge loader |
-| **Unit/Interface** | `tests/unit/interface/` | Mock container | ~1.4s (78 tests) | API, WebSocket, CORS, CLI commands, plan endpoints, engine endpoints |
+| **Unit/Domain** | `tests/unit/domain/` | None | ~0.03s | Entities, value objects, services, LSH fingerprint, forgetting curve, delta encoder, hierarchical summarizer, agent engine router, tool safety scorer, failure analyzer, tactical recovery |
+| **Unit/Application** | `tests/unit/application/` | Mocked ports | Fast | Use case orchestration, cost estimator, planning, engine routing, tool install, tool discovery, Ollama management, analyze execution, update strategy, systemic evolution |
+| **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.2s | LLM gateway, cost, task graph, LAEE, memory, PG repos, Celery, browser/gui/cron, semantic search, forgetting curve, delta encoder, hierarchical summarizer, context bridge, MCP server/client, ADK driver, knowledge loader, MCP registry, tool installer, execution record repo, strategy store |
+| **Unit/Interface** | `tests/unit/interface/` | Mock container | ~1.4s | API, WebSocket, CORS, CLI commands, plan endpoints, engine endpoints, marketplace endpoints, evolution endpoints |
 | **Integration** | `tests/integration/` | Ollama running | ~18s (37 tests) | Real LLM inference, real filesystem, L1-L4 memory hierarchy, agent engine live tests |
 | **E2E** | `tests/e2e/` | Full stack | Slowest | API/CLI → Use Case → DB round-trips |
 
@@ -548,8 +622,8 @@ discover_and_register(client, configs) → list[MCPToolAdapter]
 2. Green:    Write minimum code to pass
 3. Refactor: Clean up while tests protect
 
-Current: 898 unit tests + 37 integration tests = 935 total, 100% pass (~3.5s)
-Lint: ruff check 0 errors, ruff format 197 files clean
+Current: 1162 unit tests + 37 integration tests = 1199 total, 100% pass (~5s)
+Lint: ruff check 0 errors, ruff format 245 files clean
 Default model: qwen3-coder:30b (thinking mode disabled via extra_body)
 Cloud providers verified: Anthropic (Haiku/Sonnet), OpenAI (o4-mini/o3), Gemini (3-flash/3-pro)
 ```
@@ -627,4 +701,103 @@ Sprint 4.6 — Knowledge File Management:
 
 Phase 4 COMPLETE: 6 drivers, router, use case, API/CLI, knowledge injection
   Total new tests: 34 (Sprint 4.5: 17 unit + Sprint 4.6: 17 unit)
+```
+
+### Phase 5 Verification — Sprint 5.1–5.6 (2026-03-05)
+
+```
+✓ Unit tests:       988 passed (4.90s), 0 regressions
+✓ Lint:             ruff check 0 errors, ruff format 221 files clean
+
+Sprint 5.1 — Tool Safety Scorer:
+  ✓ SafetyTier:          IntEnum (UNSAFE=0, EXPERIMENTAL=1, COMMUNITY=2, VERIFIED=3)
+  ✓ ToolCandidate:       Pydantic entity (strict=True, validate_assignment=True)
+  ✓ ToolSafetyScorer:    score() — publisher trust (0.40) + transport (0.25) + popularity (0.15) + metadata (0.20)
+  ✓ Suspicious patterns: Forced UNSAFE for shell_exec, eval, rm -rf patterns
+  ✓ New tests:           22 (8 entity + 14 scorer)
+
+Sprint 5.2 — MCP Registry Search:
+  ✓ ToolRegistryPort:    ABC + ToolSearchResult dataclass
+  ✓ MCPRegistryClient:   httpx GET registry.modelcontextprotocol.io, auto-score results
+  ✓ Error handling:      Returns empty ToolSearchResult on HTTP failure (never raises)
+  ✓ Response parsing:    Handles both list and dict formats
+  ✓ New tests:           14
+
+Sprint 5.3 — Tool Installer + Use Case + API/CLI:
+  ✓ ToolInstallerPort:   ABC + InstallResult dataclass
+  ✓ MCPToolInstaller:    Safety gate (refuses UNSAFE), subprocess npm/pip, in-memory tracking
+  ✓ InstallToolUseCase:  search + score + install coordination
+  ✓ API endpoints:       GET /search, POST /install, GET /installed, DELETE /{name}
+  ✓ CLI commands:        morphic marketplace {search|install|list|uninstall}
+  ✓ Config:              marketplace_enabled, marketplace_auto_install, marketplace_safety_threshold, mcp_registry_url
+  ✓ New tests:           36 (11 installer + 9 use case + 10 API + 6 CLI)
+
+Sprint 5.4 — Auto Tool Discoverer:
+  ✓ FailureAnalyzer:     Regex error pattern → search query mapping (pure domain)
+  ✓ DiscoverToolsUseCase: suggest_for_failure() — top-3 queries, dedup, sort by score
+  ✓ API:                 POST /api/marketplace/suggest
+  ✓ CLI:                 morphic marketplace suggest
+  ✓ New tests:           21 (12 analyzer + 9 use case)
+
+Sprint 5.5 — Ollama Model Manager Extended:
+  ✓ OllamaManager:       +delete_model(), +model_info(), +get_running_models()
+  ✓ ManageOllamaUseCase: status/pull/delete/info/switch_default
+  ✓ API:                 POST /pull, DELETE /{name}, POST /switch, GET /running, GET /{name}/info
+  ✓ CLI:                 morphic model {delete|switch|info}
+  ✓ New tests:           16 (6 manager + 10 use case)
+
+Sprint 5.6 — Marketplace UI (Next.js):
+  ✓ SearchBar:           Debounced search input (400ms)
+  ✓ ToolCard:            Search result card (SafetyBadge + InstallButton)
+  ✓ SafetyBadge:         Color-coded safety tier (4 tiers)
+  ✓ InstallButton:       Install/uninstall with confirm dialog
+  ✓ Marketplace page:    Search + browse + installed tab
+  ✓ Models page:         Pull/delete/switch + running status display
+  ✓ Navigation:          Header links to Marketplace + Models
+
+Phase 5 COMPLETE: Safety scoring, MCP registry, tool installer, auto discoverer, Ollama manager, marketplace UI
+  Total new tests: ~90 (Sprint 5.1: 22 + 5.2: 14 + 5.3: 36 + 5.4: 21 + 5.5: 16)
+  New API endpoints: 8, New CLI commands: 8, New settings: 4
+```
+
+### Phase 6 Verification — Sprint 6.1–6.5 (2026-03-05)
+
+```
+✓ Unit tests:       1162 passed (4.82s), 0 failures (MCP server tests fixed)
+✓ Lint:             ruff check 0 errors, ruff format 245 files clean
+
+Sprint 6.1 — Execution Recorder + Domain Foundation:
+  ✓ ExecutionRecord:   Pydantic entity (strict=True) — task_type, engine, model, success, cost, cache_hit_rate, user_rating
+  ✓ EvolutionLevel:    str Enum (tactical, strategic, systemic)
+  ✓ ExecutionRecordRepository: ABC + ExecutionStats dataclass (success_rate, avg_cost, total_count)
+  ✓ InMemoryExecutionRecordRepository: List-backed CRUD + filtering + stats aggregation
+  ✓ AnalyzeExecutionUseCase: record() + get_stats() + get_failure_patterns() + get_model_distribution()
+
+Sprint 6.2 — Tactical Recovery (Level 1):
+  ✓ TacticalRecovery:  Pure domain service — find_alternative(), create_rule_from_recovery(), rank_rules()
+  ✓ Pattern matching:  Regex-based error→alternative tool mapping
+  ✓ RecoveryRule:      error_pattern + alternative_tool + success_rate + sample_size
+
+Sprint 6.3 — Strategy Updater (Level 2):
+  ✓ Strategy entities: RecoveryRule, ModelPreference, EnginePreference (all strict Pydantic)
+  ✓ StrategyStore:     JSONL persistence (recovery_rules.jsonl, model_preferences.jsonl, engine_preferences.jsonl)
+  ✓ UpdateStrategyUseCase: update_model_preferences() + update_engine_preferences() + update_recovery_rules() + run_full_update()
+  ✓ Min samples filter: Configurable (default 10) to avoid overfitting
+
+Sprint 6.4 — Systemic Evolver (Level 3):
+  ✓ SystemicEvolutionUseCase: identify_tool_gaps() + suggest_tools_for_gaps() + run_evolution()
+  ✓ Composes:         AnalyzeExecution + UpdateStrategy + DiscoverTools (Phase 5)
+  ✓ EvolutionReport:  level + strategy_update + tool_gaps_found + tools_suggested + summary
+
+Sprint 6.5 — Evolution Interface (API + CLI + UI):
+  ✓ API endpoints:    GET /stats, GET /failures, GET /preferences, POST /update, POST /evolve
+  ✓ CLI commands:     morphic evolution {stats|failures|update|report}
+  ✓ UI page:          Evolution dashboard scaffold (stats, failures, preferences)
+  ✓ AppContainer DI:  execution_record_repo + strategy_store + 3 use cases wired
+  ✓ Config:           evolution_enabled, evolution_strategy_dir, evolution_min_samples
+
+Phase 6 COMPLETE: 3-tier self-evolution (tactical recovery + strategy learning + systemic evolution)
+  Total new tests: ~174 (domain + application + infrastructure + interface)
+  New API endpoints: 5, New CLI commands: 4, New settings: 4
+  Also fixed: 19 pre-existing test_mcp_server.py failures (_FakeSettings updated)
 ```

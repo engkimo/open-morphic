@@ -43,6 +43,9 @@ export default function RootLayout({
               <Link href="/models" className="hover:text-accent">
                 Models
               </Link>
+              <Link href="/evolution" className="hover:text-accent">
+                Evolution
+              </Link>
             </nav>
           </div>
           <span className="text-sm text-text-muted">v0.4.0-alpha</span>

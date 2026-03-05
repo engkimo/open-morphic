@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 
+from application.use_cases.analyze_execution import AnalyzeExecutionUseCase
 from application.use_cases.background_planner import BackgroundPlannerUseCase
 from application.use_cases.cost_estimator import CostEstimator
 from application.use_cases.create_task import CreateTaskUseCase
@@ -16,9 +17,12 @@ from application.use_cases.install_tool import InstallToolUseCase
 from application.use_cases.interactive_plan import InteractivePlanUseCase
 from application.use_cases.manage_ollama import ManageOllamaUseCase
 from application.use_cases.route_to_engine import RouteToEngineUseCase
+from application.use_cases.systemic_evolution import SystemicEvolutionUseCase
+from application.use_cases.update_strategy import UpdateStrategyUseCase
 from domain.ports.agent_engine import AgentEnginePort
 from domain.ports.cost_repository import CostRepository
 from domain.ports.embedding import EmbeddingPort
+from domain.ports.execution_record_repository import ExecutionRecordRepository
 from domain.ports.memory_repository import MemoryRepository
 from domain.ports.plan_repository import PlanRepository
 from domain.ports.task_repository import TaskRepository
@@ -163,6 +167,27 @@ class AppContainer:
         # Engine routing use case (Sprint 4.3)
         self.route_to_engine = RouteToEngineUseCase(drivers=self.agent_drivers)
 
+        # Evolution (Phase 6)
+        self.execution_record_repo: ExecutionRecordRepository = self._create_execution_record_repo()
+        from infrastructure.evolution.strategy_store import StrategyStore
+
+        self.strategy_store = StrategyStore(
+            base_dir=self.settings.evolution_strategy_dir,
+        )
+        self.analyze_execution = AnalyzeExecutionUseCase(
+            repo=self.execution_record_repo,
+        )
+        self.update_strategy = UpdateStrategyUseCase(
+            execution_repo=self.execution_record_repo,
+            strategy_store=self.strategy_store,
+            min_samples=self.settings.evolution_min_samples,
+        )
+        self.systemic_evolution = SystemicEvolutionUseCase(
+            analyze_execution=self.analyze_execution,
+            update_strategy=self.update_strategy,
+            discover_tools=self.discover_tools if self.settings.marketplace_enabled else None,
+        )
+
     def _wire_agent_drivers(self) -> dict[AgentEngineType, AgentEnginePort]:
         """Create all agent engine drivers based on settings."""
         from infrastructure.agent_cli import (
@@ -202,6 +227,14 @@ class AppContainer:
             ),
         }
         return drivers
+
+    def _create_execution_record_repo(self) -> ExecutionRecordRepository:
+        """Create execution record repository (in-memory for now)."""
+        from infrastructure.persistence.in_memory_execution_record import (
+            InMemoryExecutionRecordRepository,
+        )
+
+        return InMemoryExecutionRecordRepository()
 
     def _create_embedding_port(self) -> EmbeddingPort | None:
         """Create embedding port based on settings. Returns None if disabled."""

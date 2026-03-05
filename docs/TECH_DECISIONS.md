@@ -1804,3 +1804,302 @@ Inject engine-specific project context at the **use case layer** (`RouteToEngine
 - **Modified**: `interface/cli/commands/engine.py` (+`--context` / `-c` flag)
 - **Modified**: `tests/unit/application/test_route_to_engine.py` (+4 context injection tests)
 - **Tests**: 17 new tests (13 loader + 4 context), total 898 unit tests passing
+
+---
+
+## TD-042: Tool Safety Scorer — Multi-Signal Scoring (Sprint 5.1)
+
+**Date**: 2026-03-05
+**Status**: Accepted
+**Sprint**: 5.1
+
+### Decision
+
+Implement a pure domain service `ToolSafetyScorer` that computes a composite safety score from metadata signals and maps it to a `SafetyTier` enum. No I/O, no LLM dependency.
+
+### Key Decisions
+
+1. **SafetyTier as IntEnum**: `UNSAFE(0)`, `EXPERIMENTAL(1)`, `COMMUNITY(2)`, `VERIFIED(3)`. IntEnum allows comparison operators (`>=`, `<`) for threshold gating
+2. **4-signal composite score**: Publisher trust (0.40), transport protocol (0.25), popularity (0.15), metadata completeness (0.20). Weights emphasize provenance over popularity
+3. **Trusted publisher list**: `modelcontextprotocol`, `anthropic`, `google`, `microsoft`, `github`, `openai` — hardcoded in domain service, not configurable (security-sensitive)
+4. **Suspicious pattern forced UNSAFE**: Regex patterns for `shell_exec`, `eval`, `rm -rf`, `sudo`, `curl.*|.*sh` force `SafetyTier.UNSAFE` regardless of score
+5. **Transport trust map**: `stdio` (1.0) > `streamable-http` (0.8) > `sse` (0.7) > unknown (0.3). Local transports are more trustworthy
+6. **ToolCandidate entity**: Pydantic strict model with all optional fields except `name` and `safety_tier`. Reused across all marketplace layers
+
+### Tier Mapping
+
+| Score Range | Tier |
+|---|---|
+| >= 0.70 | VERIFIED |
+| >= 0.40 | COMMUNITY |
+| >= 0.20 | EXPERIMENTAL |
+| < 0.20 | UNSAFE |
+
+### Files Created
+
+- `domain/value_objects/tool_safety.py` — SafetyTier IntEnum
+- `domain/entities/tool_candidate.py` — ToolCandidate Pydantic entity
+- `domain/services/tool_safety_scorer.py` — ToolSafetyScorer (static methods)
+- `tests/unit/domain/test_tool_candidate.py` — 8 tests
+- `tests/unit/domain/test_tool_safety_scorer.py` — 14 tests
+
+---
+
+## TD-043: MCP Registry Client — HTTP Search Adapter (Sprint 5.2)
+
+**Date**: 2026-03-05
+**Status**: Accepted
+**Sprint**: 5.2
+
+### Decision
+
+Implement `MCPRegistryClient` as the `ToolRegistryPort` adapter, querying `registry.modelcontextprotocol.io` via httpx GET. Each result is auto-scored by `ToolSafetyScorer`.
+
+### Key Decisions
+
+1. **Constructor injection**: `MCPRegistryClient(safety_scorer, base_url)` — scorer is injected, base_url defaults to MCP Registry
+2. **Graceful error handling**: HTTP failures return empty `ToolSearchResult` with error message — never raises exceptions
+3. **Dual response format**: Handles both list `[{...}]` and dict `{"results": [...]}` response formats from registry
+4. **Auto-generated install commands**: Computes `install_command` from `package_name` and `transport` metadata
+5. **No caching**: Phase 5 scope; caching is Phase 6 optimization
+
+### Files Created
+
+- `domain/ports/tool_registry.py` — ToolRegistryPort ABC + ToolSearchResult
+- `infrastructure/marketplace/mcp_registry_client.py` — MCPRegistryClient
+- `tests/unit/infrastructure/test_mcp_registry_client.py` — 14 tests
+
+---
+
+## TD-044: Tool Installer — Safety-Gated Subprocess Install (Sprint 5.3)
+
+**Date**: 2026-03-05
+**Status**: Accepted
+**Sprint**: 5.3
+
+### Decision
+
+Implement `MCPToolInstaller` as the `ToolInstallerPort` adapter. Installs MCP tool packages via subprocess (`npm install -g` / `pip install`). Refuses `SafetyTier.UNSAFE` tools. Tracks installed tools in-memory.
+
+### Key Decisions
+
+1. **Safety gate**: `install()` returns failure for `SafetyTier.UNSAFE` tools — hard block, not configurable
+2. **Subprocess execution**: Uses `asyncio.create_subprocess_exec` for npm/pip. Based on `SubprocessMixin` pattern from agent CLI drivers
+3. **In-memory tracking**: `_installed: dict[str, ToolCandidate]` — no database table. Resets on process restart (sufficient for Phase 5)
+4. **Sync `list_installed()` and `is_installed()`**: Synchronous methods returning from in-memory dict — no I/O needed
+5. **Full vertical slice**: Port → Infra → Use Case → API → CLI in one sprint for rapid integration testing
+
+### API Endpoints (8 total for Phase 5)
+
+| Endpoint | Method | Sprint |
+|---|---|---|
+| `/api/marketplace/search` | GET | 5.3 |
+| `/api/marketplace/install` | POST | 5.3 |
+| `/api/marketplace/installed` | GET | 5.3 |
+| `/api/marketplace/suggest` | POST | 5.4 |
+| `/api/marketplace/{name}` | DELETE | 5.3 |
+| `/api/models/pull` | POST | 5.5 |
+| `/api/models/{name}` | DELETE | 5.5 |
+| `/api/models/switch` | POST | 5.5 |
+
+### Files Created
+
+- `domain/ports/tool_installer.py` — ToolInstallerPort ABC + InstallResult
+- `infrastructure/marketplace/tool_installer.py` — MCPToolInstaller
+- `application/use_cases/install_tool.py` — InstallToolUseCase + InstallByNameResult
+- `interface/api/routes/marketplace.py` — 5 marketplace endpoints
+- `interface/cli/commands/marketplace.py` — 5 CLI commands
+- Tests: 36 new (11 + 9 + 10 + 6)
+
+---
+
+## TD-045: Auto Tool Discoverer — Error-Pattern-Based Suggestions (Sprint 5.4)
+
+**Date**: 2026-03-05
+**Status**: Accepted
+**Sprint**: 5.4
+
+### Decision
+
+Implement `FailureAnalyzer` (pure domain) + `DiscoverToolsUseCase` (application) for automatic tool suggestions when tasks fail. Uses regex pattern matching, not LLM inference (LLM-based = Phase 6).
+
+### Key Decisions
+
+1. **Pure domain FailureAnalyzer**: Static regex patterns map error keywords to MCP search queries. No I/O, no LLM. Examples: `FileNotFoundError` → `["filesystem", "file"]`, `database.*refused` → `["postgres", "database"]`
+2. **Top-3 query limit**: At most 3 registry searches per failure, preventing API abuse
+3. **Deduplication by name**: Same tool from different queries counted once, keeping highest score
+4. **Sorted by safety_score descending**: Safest tools recommended first
+5. **Optional task_description context**: Adds task-related keywords to error-extracted queries for better search relevance
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| LLM-based error analysis | Too expensive for every failure. Deferred to Phase 6 Self-Evolution |
+| Keyword extraction (TF-IDF) | Over-engineering for Phase 5. Simple regex patterns cover 80% of common errors |
+
+### Files Created
+
+- `domain/services/failure_analyzer.py` — FailureAnalyzer (regex patterns)
+- `application/use_cases/discover_tools.py` — DiscoverToolsUseCase + ToolSuggestions
+- Tests: 21 new (12 + 9)
+
+---
+
+## TD-046: Ollama Manager Extended — Delete/Info/Switch/Running (Sprint 5.5)
+
+**Date**: 2026-03-05
+**Status**: Accepted
+**Sprint**: 5.5
+
+### Decision
+
+Extend existing `OllamaManager` with `delete_model()`, `model_info()`, `get_running_models()`. Create `ManageOllamaUseCase` for orchestration. Add API/CLI endpoints.
+
+### Key Decisions
+
+1. **No new port**: `ManageOllamaUseCase` takes `OllamaManager` directly (same pattern as existing container). Ollama is a concrete infrastructure concern, not a domain abstraction
+2. **Ollama API mapping**: `DELETE /api/delete` (delete), `POST /api/show` (info), `GET /api/ps` (running)
+3. **Switch with auto-pull**: `switch_default()` pulls model if not locally available, then updates settings
+4. **Settings mutation**: `ManageOllamaUseCase.switch_default()` mutates `settings.ollama_default_model` directly — consistent with existing pattern
+
+### Files Created/Modified
+
+- `application/use_cases/manage_ollama.py` — ManageOllamaUseCase
+- Extended: `infrastructure/llm/ollama_manager.py` (+3 methods)
+- Extended: `interface/api/routes/models.py` (+5 endpoints)
+- Extended: `interface/cli/commands/model.py` (+3 commands)
+- Tests: 16 new (6 manager + 10 use case)
+
+---
+
+## TD-047: Marketplace UI — Next.js Search + Model Management (Sprint 5.6)
+
+**Date**: 2026-03-05
+**Status**: Accepted
+**Sprint**: 5.6
+
+### Decision
+
+Implement marketplace search UI and Ollama model management pages following established Next.js patterns (client components, raw Tailwind, CSS custom properties).
+
+### Key Decisions
+
+1. **Debounced search (400ms)**: `SearchBar` uses `useRef` timer to avoid excessive API calls during typing
+2. **Two-tab marketplace**: Search (default) + Installed — single page with tab toggle, same pattern as Dashboard Execute/Plan toggle
+3. **Confirm-before-uninstall**: `InstallButton` requires double-click for uninstall (first click shows "Confirm?")
+4. **Safety badge colors**: Verified=emerald, Community=cyan, Experimental=yellow, Unsafe=red — consistent with CLAUDE.md theme spec
+5. **Header navigation**: Added `Marketplace` and `Models` links to root `layout.tsx` header
+6. **No external UI library**: Raw Tailwind CSS with CSS custom properties, consistent with all existing components
+
+### Files Created
+
+- `ui/app/marketplace/page.tsx` — Search + browse + installed tab
+- `ui/app/marketplace/components/SearchBar.tsx` — Debounced search input
+- `ui/app/marketplace/components/ToolCard.tsx` — Tool result card
+- `ui/app/marketplace/components/SafetyBadge.tsx` — Safety tier badge
+- `ui/app/marketplace/components/InstallButton.tsx` — Install/uninstall with confirm
+- `ui/app/models/page.tsx` — Model pull/delete/switch + status
+- Modified: `ui/app/layout.tsx` — Added nav links
+- Modified: `ui/lib/api.ts` — Added marketplace + model API wrappers
+
+---
+
+## TD-048: Self-Evolution Engine — 3-Tier Architecture (Phase 6)
+
+**Date**: 2026-03-05
+**Status**: Accepted
+**Sprint**: 6.1–6.5
+
+### Decision
+
+Implement a 3-tier self-evolution engine that learns from execution history at different time scales:
+
+| Level | Name | Time Scale | Trigger | Component |
+|---|---|---|---|---|
+| 1 | Tactical | Seconds | Action fails | `TacticalRecovery` (pure domain service) |
+| 2 | Strategic | Minutes | Periodic/manual | `UpdateStrategyUseCase` |
+| 3 | Systemic | Hours | Periodic/manual | `SystemicEvolutionUseCase` |
+
+### Key Decisions
+
+1. **ExecutionRecord as immutable snapshot**: Each execution produces one record with task_type, engine, model, success, cost, duration, cache_hit_rate, user_rating. Append-only (Manus principle 3)
+2. **TacticalRecovery is pure domain**: Static methods with regex pattern matching. No I/O, no constructor deps. Deterministic output
+3. **JSONL persistence for strategies**: `StrategyStore` uses append-only JSONL files (`recovery_rules.jsonl`, `model_preferences.jsonl`, `engine_preferences.jsonl`). Filesystem as infinite context
+4. **Min sample filter**: Requires configurable minimum samples (default 10) before computing preferences. Prevents overfitting on small data
+5. **SystemicEvolution composes existing use cases**: Reuses `AnalyzeExecutionUseCase` + `UpdateStrategyUseCase` + `DiscoverToolsUseCase` (Phase 5). No duplication
+6. **InMemory repository first**: `InMemoryExecutionRecordRepository` for dev/testing. PostgreSQL migration deferred
+
+### Rationale
+
+- 3-tier separation matches natural learning time scales (immediate → session → long-term)
+- Pure domain service for Level 1 enables zero-latency in-task recovery
+- JSONL persistence survives process restarts without DB dependency
+- Composing Phase 5's DiscoverToolsUseCase for Level 3 avoids reimplementing tool gap detection
+
+### Files Created
+
+- `domain/entities/execution_record.py` — ExecutionRecord entity
+- `domain/entities/strategy.py` — RecoveryRule, ModelPreference, EnginePreference
+- `domain/value_objects/evolution.py` — EvolutionLevel enum
+- `domain/ports/execution_record_repository.py` — ABC + ExecutionStats
+- `domain/services/tactical_recovery.py` — Level 1 pure logic
+- `application/use_cases/analyze_execution.py` — Level 1-2 analytics
+- `application/use_cases/update_strategy.py` — Level 2 learning
+- `application/use_cases/systemic_evolution.py` — Level 3 evolution
+- `infrastructure/persistence/in_memory_execution_record.py` — InMemory repo
+- `infrastructure/evolution/strategy_store.py` — JSONL persistence
+- `interface/api/routes/evolution.py` — 5 API endpoints
+- `interface/cli/commands/evolution.py` — 4 CLI commands
+- `ui/app/evolution/page.tsx` — Dashboard scaffold
+- Tests: 11 test files (~174 new tests)
+
+---
+
+## TD-049: Phase 6 Complete — Architecture Retrospective
+
+**Date**: 2026-03-05
+**Status**: Record
+
+### Summary
+
+Phase 6 Self-Evolution (5 sprints, 6.1→6.5) is complete. 1162 unit tests + 37 integration tests, all passing. 0 failures (including fix of 19 pre-existing MCP server test failures).
+
+### What Was Built
+
+| Sprint | Deliverable | Key Metric |
+|---|---|---|
+| 6.1 | ExecutionRecord + EvolutionLevel + ABC + AnalyzeExecution | Domain foundation |
+| 6.2 | TacticalRecovery (Level 1) | Pure domain, 0 I/O |
+| 6.3 | Strategy entities + StrategyStore + UpdateStrategy (Level 2) | JSONL persistence |
+| 6.4 | SystemicEvolution (Level 3) | Composes Phase 5 DiscoverTools |
+| 6.5 | API (5 endpoints) + CLI (4 commands) + UI scaffold | Full vertical slice |
+
+### Architecture Decisions That Proved Correct
+
+1. **Clean Architecture composability**: SystemicEvolutionUseCase trivially composes AnalyzeExecution + UpdateStrategy + DiscoverTools with zero coupling
+2. **JSONL for strategy persistence**: Simple, debuggable, append-only. No DB migration needed
+3. **Pure domain TacticalRecovery**: Testable without mocks, can be called synchronously in action loops
+4. **Configurable min_samples**: Prevents overfitting. Sensible defaults with env var override
+
+### Technical Debt to Address
+
+1. **InMemory execution records**: Lose data on restart → PostgreSQL migration in future
+2. **No auto-recording hook**: ExecutionRecords must be manually recorded → hook into ExecuteTaskUseCase
+3. **No background scheduling**: Strategy updates are manual → Celery/APScheduler periodic jobs
+4. **Regex-only pattern matching**: TacticalRecovery uses regex → LLM-powered analysis in future
+5. **UI is scaffold**: Evolution dashboard needs charts, real-time updates, export
+
+### Key Metrics
+
+```
+Unit tests:          1162 (4.82s), 0 failures
+Integration tests:    37
+Python files:        ~80
+TypeScript files:    ~18
+Domain ports:        14 ABC interfaces
+Domain services:     10 (incl. tactical_recovery)
+Use cases:           12
+API endpoints:       ~30
+CLI subcommands:     ~25
+```

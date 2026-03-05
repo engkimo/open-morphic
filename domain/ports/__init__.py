@@ -12,6 +12,10 @@ from domain.ports.agent_engine import (
 from domain.ports.audit_logger import AuditLogger
 from domain.ports.cost_repository import CostRepository
 from domain.ports.embedding import EmbeddingPort
+from domain.ports.execution_record_repository import (
+    ExecutionRecordRepository,
+    ExecutionStats,
+)
 from domain.ports.llm_gateway import LLMGateway
 from domain.ports.local_executor import LocalExecutorPort
 from domain.ports.mcp_client import MCPClientPort
@@ -27,6 +31,8 @@ __all__ = [
     "AuditLogger",
     "CostRepository",
     "EmbeddingPort",
+    "ExecutionRecordRepository",
+    "ExecutionStats",
     "InstallResult",
     "LLMGateway",
     "LocalExecutorPort",

@@ -332,3 +332,68 @@ class ToolSuggestionResponse(BaseModel):
     suggestions: list[ToolCandidateResponse]
     queries_used: list[str]
     count: int
+
+
+# ── Evolution schemas ──
+
+
+class ExecutionStatsResponse(BaseModel):
+    total_count: int
+    success_count: int
+    failure_count: int
+    success_rate: float
+    avg_cost_usd: float
+    avg_duration_seconds: float
+    model_distribution: dict[str, int]
+    engine_distribution: dict[str, int]
+
+
+class FailurePatternResponse(BaseModel):
+    error_pattern: str
+    count: int
+    task_types: list[str]
+    engines: list[str]
+
+
+class FailurePatternsListResponse(BaseModel):
+    patterns: list[FailurePatternResponse]
+    count: int
+
+
+class ModelPreferenceResponse(BaseModel):
+    task_type: str
+    model: str
+    success_rate: float
+    avg_cost_usd: float
+    avg_duration_seconds: float
+    sample_count: int
+
+
+class EnginePreferenceResponse(BaseModel):
+    task_type: str
+    engine: str
+    success_rate: float
+    avg_cost_usd: float
+    avg_duration_seconds: float
+    sample_count: int
+
+
+class PreferencesResponse(BaseModel):
+    model_preferences: list[ModelPreferenceResponse]
+    engine_preferences: list[EnginePreferenceResponse]
+
+
+class StrategyUpdateResponse(BaseModel):
+    model_preferences_updated: int
+    engine_preferences_updated: int
+    recovery_rules_added: int
+    details: list[str]
+
+
+class EvolutionReportResponse(BaseModel):
+    level: str
+    strategy_update: StrategyUpdateResponse | None
+    tool_gaps_found: int
+    tools_suggested: list[str]
+    summary: str
+    created_at: datetime

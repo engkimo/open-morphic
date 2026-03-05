@@ -118,10 +118,15 @@ class Settings(BaseSettings):
     context_todo_path: Path = Path("todo.md")
     context_cache_dir: Path = Path(".morphic/cache")
 
+    # ── Evolution ──
+    evolution_enabled: bool = True
+    evolution_strategy_dir: Path = Path(".morphic/evolution")
+    evolution_auto_update: bool = True
+    evolution_min_samples: int = 10
+
     # ── General ──
     morphic_agent_env: Environment = Environment.DEVELOPMENT
     auto_tool_install: bool = False
-    evolution_enabled: bool = True
     planning_mode: PlanningMode = PlanningMode.INTERACTIVE
 
     @property

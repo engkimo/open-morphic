@@ -78,6 +78,7 @@ def main(
 def _register_commands() -> None:
     from interface.cli.commands.cost import cost_app
     from interface.cli.commands.engine import engine_app
+    from interface.cli.commands.evolution import evolution_app
     from interface.cli.commands.marketplace import marketplace_app
     from interface.cli.commands.mcp import mcp_app
     from interface.cli.commands.model import model_app
@@ -91,6 +92,11 @@ def _register_commands() -> None:
     app.add_typer(mcp_app, name="mcp", help="Manage MCP server.")
     app.add_typer(engine_app, name="engine", help="Manage agent execution engines.")
     app.add_typer(marketplace_app, name="marketplace", help="Search, install, and manage tools.")
+    app.add_typer(
+        evolution_app,
+        name="evolution",
+        help="Self-evolution stats, strategy updates, and reports.",
+    )
 
 
 _register_commands()

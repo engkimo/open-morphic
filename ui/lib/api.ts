@@ -219,6 +219,97 @@ export function getRunningModels() {
   return request<Record<string, unknown>[]>("/api/models/running");
 }
 
+// ── Evolution API ──
+
+export interface ExecutionStatsResponse {
+  total_count: number;
+  success_count: number;
+  failure_count: number;
+  success_rate: number;
+  avg_cost_usd: number;
+  avg_duration_seconds: number;
+  model_distribution: Record<string, number>;
+  engine_distribution: Record<string, number>;
+}
+
+export interface FailurePattern {
+  error_pattern: string;
+  count: number;
+  task_types: string[];
+  engines: string[];
+}
+
+export interface FailurePatternsResponse {
+  patterns: FailurePattern[];
+  count: number;
+}
+
+export interface ModelPreference {
+  task_type: string;
+  model: string;
+  success_rate: number;
+  avg_cost_usd: number;
+  avg_duration_seconds: number;
+  sample_count: number;
+}
+
+export interface EnginePreference {
+  task_type: string;
+  engine: string;
+  success_rate: number;
+  avg_cost_usd: number;
+  avg_duration_seconds: number;
+  sample_count: number;
+}
+
+export interface PreferencesResponse {
+  model_preferences: ModelPreference[];
+  engine_preferences: EnginePreference[];
+}
+
+export interface StrategyUpdateResponse {
+  model_preferences_updated: number;
+  engine_preferences_updated: number;
+  recovery_rules_added: number;
+  details: string[];
+}
+
+export interface EvolutionReportResponse {
+  level: string;
+  strategy_update: StrategyUpdateResponse | null;
+  tool_gaps_found: number;
+  tools_suggested: string[];
+  summary: string;
+  created_at: string;
+}
+
+export function getEvolutionStats(taskType?: string) {
+  const params = taskType ? `?task_type=${encodeURIComponent(taskType)}` : "";
+  return request<ExecutionStatsResponse>(`/api/evolution/stats${params}`);
+}
+
+export function getFailurePatterns(limit: number = 20) {
+  return request<FailurePatternsResponse>(
+    `/api/evolution/failures?limit=${limit}`,
+  );
+}
+
+export function getPreferences() {
+  return request<PreferencesResponse>("/api/evolution/preferences");
+}
+
+export function triggerStrategyUpdate() {
+  return request<StrategyUpdateResponse>("/api/evolution/update", {
+    method: "POST",
+  });
+}
+
+export function triggerEvolution() {
+  return request<EvolutionReportResponse>("/api/evolution/evolve", {
+    method: "POST",
+  });
+}
+
 // ── WebSocket ──
 
 export function connectTaskWs(

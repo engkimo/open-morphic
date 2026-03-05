@@ -6,6 +6,7 @@ Tests tool and resource delegation using a real AppContainer with InMemory repos
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -47,6 +48,22 @@ class _FakeSettings:
     mcp_transport = "stdio"
     mcp_port = 8100
     mcp_servers = "[]"
+    # Marketplace (Sprint 5.3)
+    marketplace_enabled = True
+    marketplace_auto_install = False
+    marketplace_safety_threshold = "experimental"
+    mcp_registry_url = "https://registry.modelcontextprotocol.io"
+    # Evolution (Phase 6)
+    evolution_enabled = True
+    evolution_strategy_dir = Path("/tmp/morphic_test_evolution")
+    evolution_auto_update = True
+    evolution_min_samples = 10
+
+    @property
+    def marketplace_safety_threshold_tier(self):  # type: ignore[no-untyped-def]
+        from domain.value_objects.tool_safety import SafetyTier
+
+        return SafetyTier.EXPERIMENTAL
 
 
 def _make_container():

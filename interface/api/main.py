@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from interface.api.container import AppContainer
 from interface.api.routes.cost import router as cost_router
 from interface.api.routes.engines import router as engines_router
+from interface.api.routes.evolution import router as evolution_router
 from interface.api.routes.marketplace import router as marketplace_router
 from interface.api.routes.memory import router as memory_router
 from interface.api.routes.models import router as models_router
@@ -59,6 +60,7 @@ def create_app(container: AppContainer | None = None) -> FastAPI:
     app.include_router(memory_router)
     app.include_router(engines_router)
     app.include_router(marketplace_router)
+    app.include_router(evolution_router)
 
     # WebSocket
     app.websocket("/ws/tasks/{task_id}")(task_ws)
