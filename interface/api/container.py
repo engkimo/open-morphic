@@ -10,8 +10,11 @@ import logging
 from application.use_cases.background_planner import BackgroundPlannerUseCase
 from application.use_cases.cost_estimator import CostEstimator
 from application.use_cases.create_task import CreateTaskUseCase
+from application.use_cases.discover_tools import DiscoverToolsUseCase
 from application.use_cases.execute_task import ExecuteTaskUseCase
+from application.use_cases.install_tool import InstallToolUseCase
 from application.use_cases.interactive_plan import InteractivePlanUseCase
+from application.use_cases.manage_ollama import ManageOllamaUseCase
 from application.use_cases.route_to_engine import RouteToEngineUseCase
 from domain.ports.agent_engine import AgentEnginePort
 from domain.ports.cost_repository import CostRepository
@@ -23,6 +26,7 @@ from domain.value_objects.agent_engine import AgentEngineType
 from infrastructure.llm.cost_tracker import CostTracker
 from infrastructure.llm.litellm_gateway import LiteLLMGateway
 from infrastructure.llm.ollama_manager import OllamaManager
+from infrastructure.marketplace import MCPRegistryClient, MCPToolInstaller
 from infrastructure.mcp.client import MCPClient
 from infrastructure.memory.context_bridge import ContextBridge
 from infrastructure.memory.context_zipper import ContextZipper
@@ -127,6 +131,31 @@ class AppContainer:
 
         # MCP client (optional — lazy, connects on demand)
         self.mcp_client: MCPClient | None = MCPClient() if self.settings.mcp_enabled else None
+
+        # Marketplace (Sprint 5.3)
+        from domain.services.tool_safety_scorer import ToolSafetyScorer
+
+        self._safety_scorer = ToolSafetyScorer()
+        self.mcp_registry = MCPRegistryClient(
+            safety_scorer=self._safety_scorer,
+            base_url=self.settings.mcp_registry_url,
+        )
+        self.tool_installer = MCPToolInstaller(
+            safety_threshold=self.settings.marketplace_safety_threshold_tier,
+        )
+        self.install_tool = InstallToolUseCase(
+            registry=self.mcp_registry,
+            installer=self.tool_installer,
+        )
+        self.discover_tools = DiscoverToolsUseCase(
+            registry=self.mcp_registry,
+        )
+
+        # Ollama management (Sprint 5.5)
+        self.manage_ollama = ManageOllamaUseCase(
+            ollama=self.ollama,
+            settings=self.settings,
+        )
 
         # Agent CLI drivers (Sprint 4.2)
         self.agent_drivers: dict[AgentEngineType, AgentEnginePort] = self._wire_agent_drivers()

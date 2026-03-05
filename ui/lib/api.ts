@@ -140,6 +140,85 @@ export function getModelStatus() {
   return request<ModelStatus>("/api/models/status");
 }
 
+// ── Marketplace API ──
+
+export interface ToolCandidateResponse {
+  name: string;
+  description: string;
+  publisher: string;
+  package_name: string;
+  transport: string;
+  install_command: string;
+  source_url: string;
+  download_count: number;
+  safety_tier: string;
+  safety_score: number;
+}
+
+export interface ToolSearchResponse {
+  query: string;
+  candidates: ToolCandidateResponse[];
+  total_count: number;
+  error: string | null;
+}
+
+export interface ToolInstallResponse {
+  tool_name: string;
+  success: boolean;
+  message: string;
+  error: string | null;
+}
+
+export function searchTools(query: string, limit: number = 10) {
+  return request<ToolSearchResponse>(
+    `/api/marketplace/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+  );
+}
+
+export function installTool(name: string) {
+  return request<ToolInstallResponse>("/api/marketplace/install", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function listInstalledTools() {
+  return request<ToolCandidateResponse[]>("/api/marketplace/installed");
+}
+
+export function uninstallTool(name: string) {
+  return request<ToolInstallResponse>(`/api/marketplace/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+  });
+}
+
+// ── Model Management API ──
+
+export function pullModel(name: string) {
+  return request<{ name: string; success: boolean }>("/api/models/pull", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteModel(name: string) {
+  return request<{ name: string; deleted: boolean }>(
+    `/api/models/${encodeURIComponent(name)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function switchModel(name: string) {
+  return request<{ name: string; default: boolean }>("/api/models/switch", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function getRunningModels() {
+  return request<Record<string, unknown>[]>("/api/models/running");
+}
+
 // ── WebSocket ──
 
 export function connectTaskWs(

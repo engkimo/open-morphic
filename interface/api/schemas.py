@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from domain.entities.cost import CostRecord
 from domain.entities.task import SubTask, TaskEntity
+from domain.entities.tool_candidate import ToolCandidate
 
 if TYPE_CHECKING:
     from application.use_cases.route_to_engine import EngineStatus
@@ -127,6 +128,19 @@ class ModelStatusResponse(BaseModel):
     ollama_running: bool
     default_model: str
     models: list[ModelInfo]
+
+
+class OllamaModelDetailResponse(BaseModel):
+    name: str
+    details: dict
+
+
+class OllamaPullRequest(BaseModel):
+    name: str = Field(min_length=1, examples=["qwen3:8b"])
+
+
+class OllamaSwitchRequest(BaseModel):
+    name: str = Field(min_length=1, examples=["qwen3:8b"])
 
 
 # ── Plan schemas ──
@@ -258,3 +272,63 @@ class EngineRunResponse(BaseModel):
             model_used=result.model_used,
             error=result.error,
         )
+
+
+# ── Marketplace schemas ──
+
+
+class ToolCandidateResponse(BaseModel):
+    name: str
+    description: str
+    publisher: str
+    package_name: str
+    transport: str
+    install_command: str
+    source_url: str
+    download_count: int
+    safety_tier: str
+    safety_score: float
+
+    @classmethod
+    def from_candidate(cls, c: ToolCandidate) -> ToolCandidateResponse:
+        return cls(
+            name=c.name,
+            description=c.description,
+            publisher=c.publisher,
+            package_name=c.package_name,
+            transport=c.transport,
+            install_command=c.install_command,
+            source_url=c.source_url,
+            download_count=c.download_count,
+            safety_tier=c.safety_tier.name.lower(),
+            safety_score=c.safety_score,
+        )
+
+
+class ToolSearchResponse(BaseModel):
+    query: str
+    candidates: list[ToolCandidateResponse]
+    total_count: int
+    error: str | None = None
+
+
+class ToolInstallRequest(BaseModel):
+    name: str = Field(min_length=1, examples=["filesystem"])
+
+
+class ToolInstallResponse(BaseModel):
+    tool_name: str
+    success: bool
+    message: str = ""
+    error: str | None = None
+
+
+class ToolSuggestRequest(BaseModel):
+    error_message: str = Field(min_length=1, examples=["FileNotFoundError: config.yaml"])
+    task_description: str = ""
+
+
+class ToolSuggestionResponse(BaseModel):
+    suggestions: list[ToolCandidateResponse]
+    queries_used: list[str]
+    count: int

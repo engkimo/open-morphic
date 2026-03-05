@@ -1,10 +1,16 @@
-"""Model subcommands — list, status, pull."""
+"""Model subcommands — list, status, pull, delete, switch, info."""
 
 from __future__ import annotations
 
 import typer
 
-from interface.cli.formatters import console, print_error, print_model_status, print_model_table
+from interface.cli.formatters import (
+    console,
+    print_error,
+    print_model_detail,
+    print_model_status,
+    print_model_table,
+)
 from interface.cli.main import _get_container, _run
 
 model_app = typer.Typer()
@@ -45,3 +51,43 @@ def pull(
     else:
         print_error(f"Failed to pull {name}")
         raise typer.Exit(code=1)
+
+
+@model_app.command("delete")
+def delete(
+    name: str = typer.Argument(..., help="Model name to delete."),
+) -> None:
+    """Delete a model from local storage."""
+    c = _get_container()
+    with console.status(f"[blue]Deleting {name}...[/]"):
+        success = _run(c.manage_ollama.delete(name))
+    if success:
+        console.print(f"[green]Deleted:[/] {name}")
+    else:
+        print_error(f"Failed to delete {name}")
+        raise typer.Exit(code=1)
+
+
+@model_app.command("switch")
+def switch(
+    name: str = typer.Argument(..., help="Model name to set as default."),
+) -> None:
+    """Switch the default Ollama model."""
+    c = _get_container()
+    with console.status(f"[blue]Switching to {name}...[/]"):
+        success = _run(c.manage_ollama.switch_default(name))
+    if success:
+        console.print(f"[green]Default model:[/] {name}")
+    else:
+        print_error(f"Failed to switch to {name}")
+        raise typer.Exit(code=1)
+
+
+@model_app.command("info")
+def info(
+    name: str = typer.Argument(..., help="Model name to inspect."),
+) -> None:
+    """Show detailed info about a model."""
+    c = _get_container()
+    details = _run(c.manage_ollama.info(name))
+    print_model_detail(name, details)

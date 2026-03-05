@@ -74,6 +74,44 @@ class TestEnsureModel:
         assert await manager.ensure_model("qwen3:8b") is False
 
 
+class TestDeleteModel:
+    async def test_delete_success(self, manager: OllamaManager) -> None:
+        manager._request = AsyncMock(return_value=_ok_response())
+        assert await manager.delete_model("qwen3:8b") is True
+
+    async def test_delete_connection_error(self, manager: OllamaManager) -> None:
+        manager._request = AsyncMock(side_effect=httpx.ConnectError("fail"))
+        assert await manager.delete_model("qwen3:8b") is False
+
+    async def test_delete_server_error(self, manager: OllamaManager) -> None:
+        manager._request = AsyncMock(return_value=_error_response(500))
+        assert await manager.delete_model("qwen3:8b") is False
+
+
+class TestModelInfo:
+    async def test_info_success(self, manager: OllamaManager) -> None:
+        data = {"modelfile": "FROM qwen3", "parameters": "7B"}
+        manager._request = AsyncMock(return_value=_ok_response(data))
+        result = await manager.model_info("qwen3:8b")
+        assert result["parameters"] == "7B"
+
+    async def test_info_connection_error(self, manager: OllamaManager) -> None:
+        manager._request = AsyncMock(side_effect=httpx.ConnectError("fail"))
+        assert await manager.model_info("qwen3:8b") == {}
+
+
+class TestGetRunningModels:
+    async def test_running_success(self, manager: OllamaManager) -> None:
+        data = {"models": [{"name": "qwen3:8b", "size": 4_000_000}]}
+        manager._request = AsyncMock(return_value=_ok_response(data))
+        result = await manager.get_running_models()
+        assert len(result) == 1
+
+    async def test_running_connection_error(self, manager: OllamaManager) -> None:
+        manager._request = AsyncMock(side_effect=httpx.ConnectError("fail"))
+        assert await manager.get_running_models() == []
+
+
 class TestRecommendModel:
     def test_4gb(self) -> None:
         assert OllamaManager.get_recommended_model(4) == "llama3.2:3b"

@@ -108,6 +108,12 @@ class Settings(BaseSettings):
     mcp_port: int = 8100
     mcp_servers: str = "[]"  # JSON-encoded server configs
 
+    # ── Marketplace ──
+    marketplace_enabled: bool = True
+    marketplace_auto_install: bool = False
+    marketplace_safety_threshold: str = "experimental"  # verified | community | experimental
+    mcp_registry_url: str = "https://registry.modelcontextprotocol.io"
+
     # ── Context Engineering ──
     context_todo_path: Path = Path("todo.md")
     context_cache_dir: Path = Path(".morphic/cache")
@@ -117,6 +123,19 @@ class Settings(BaseSettings):
     auto_tool_install: bool = False
     evolution_enabled: bool = True
     planning_mode: PlanningMode = PlanningMode.INTERACTIVE
+
+    @property
+    def marketplace_safety_threshold_tier(self):  # type: ignore[no-untyped-def]
+        """Convert string threshold to SafetyTier enum."""
+        from domain.value_objects.tool_safety import SafetyTier
+
+        mapping = {
+            "verified": SafetyTier.VERIFIED,
+            "community": SafetyTier.COMMUNITY,
+            "experimental": SafetyTier.EXPERIMENTAL,
+            "unsafe": SafetyTier.UNSAFE,
+        }
+        return mapping.get(self.marketplace_safety_threshold.lower(), SafetyTier.EXPERIMENTAL)
 
     @property
     def is_development(self) -> bool:

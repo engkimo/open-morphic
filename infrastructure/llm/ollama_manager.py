@@ -61,6 +61,42 @@ class OllamaManager:
             return True
         return await self.pull_model(model)
 
+    async def delete_model(self, model: str) -> bool:
+        """Delete model from local storage. Returns True on success."""
+        try:
+            resp = await self._request(
+                "delete",
+                "/api/delete",
+                json={"name": model},
+            )
+            return resp.status_code == 200
+        except (httpx.ConnectError, httpx.TimeoutException):
+            return False
+
+    async def model_info(self, model: str) -> dict:
+        """Get detailed info about a model (size, parameters, etc.)."""
+        try:
+            resp = await self._request(
+                "post",
+                "/api/show",
+                json={"name": model},
+            )
+            if resp.status_code == 200:
+                return resp.json()
+            return {}
+        except (httpx.ConnectError, httpx.TimeoutException):
+            return {}
+
+    async def get_running_models(self) -> list[dict]:
+        """Get currently loaded/running models."""
+        try:
+            resp = await self._request("get", "/api/ps")
+            if resp.status_code == 200:
+                return resp.json().get("models", [])
+            return []
+        except (httpx.ConnectError, httpx.TimeoutException):
+            return []
+
     @staticmethod
     def get_recommended_model(ram_gb: int) -> str:
         """Recommend model based on available RAM.

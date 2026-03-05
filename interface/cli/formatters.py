@@ -14,6 +14,7 @@ from rich.tree import Tree
 if TYPE_CHECKING:
     from application.use_cases.route_to_engine import EngineStatus
     from domain.entities.task import TaskEntity
+    from domain.entities.tool_candidate import ToolCandidate
     from domain.ports.agent_engine import AgentEngineResult
 
 console = Console()
@@ -102,6 +103,25 @@ def print_model_table(models: list[str]) -> None:
     console.print(table)
 
 
+def print_model_detail(name: str, details: dict) -> None:
+    """Print detailed model info."""
+    if not details:
+        console.print(f"[dim]No details available for {name}.[/]")
+        return
+
+    tree = Tree(f"[bold]{name}[/]")
+    for key, value in details.items():
+        if isinstance(value, dict):
+            branch = tree.add(f"[bold]{key}[/]")
+            for k, v in value.items():
+                branch.add(f"{k}: {v}")
+        elif isinstance(value, str) and len(value) > 200:
+            tree.add(f"{key}: [dim]{value[:200]}...[/]")
+        else:
+            tree.add(f"{key}: {value}")
+    console.print(tree)
+
+
 def print_model_status(running: bool, models: list[str], default_model: str) -> None:
     """Print Ollama status overview."""
     status = "[green]Running[/]" if running else "[red]Stopped[/]"
@@ -156,6 +176,67 @@ def print_engine_result(result: AgentEngineResult) -> None:
         console.print(f"[red]Error: {result.error}[/]")
     if result.output:
         console.print(f"\n{result.output}")
+
+
+# ── Tool / Marketplace formatters ──
+
+# Safety tier → (style, label) mapping
+SAFETY_STYLES: dict[str, tuple[str, str]] = {
+    "verified": ("green bold", "VERIFIED"),
+    "community": ("cyan", "COMMUNITY"),
+    "experimental": ("yellow", "EXPERIMENTAL"),
+    "unsafe": ("red bold", "UNSAFE"),
+}
+
+
+def print_safety_badge(tier_name: str) -> str:
+    """Return a rich-styled safety badge string."""
+    style, label = SAFETY_STYLES.get(tier_name.lower(), ("dim", tier_name.upper()))
+    return f"[{style}]{label}[/]"
+
+
+def print_tool_table(tools: list[ToolCandidate]) -> None:
+    """Print a table of tool candidates or installed tools."""
+    if not tools:
+        console.print("[dim]No tools found.[/]")
+        return
+
+    table = Table(title="Tools")
+    table.add_column("Name", min_width=15)
+    table.add_column("Publisher")
+    table.add_column("Safety", justify="center")
+    table.add_column("Score", justify="right")
+    table.add_column("Transport")
+    table.add_column("Downloads", justify="right")
+
+    for t in tools:
+        badge = print_safety_badge(t.safety_tier.name)
+        table.add_row(
+            t.name,
+            t.publisher or "[dim]-[/]",
+            badge,
+            f"{t.safety_score:.2f}",
+            t.transport,
+            f"{t.download_count:,}" if t.download_count else "[dim]-[/]",
+        )
+    console.print(table)
+
+
+def print_tool_detail(tool: ToolCandidate) -> None:
+    """Print detailed info for a single tool."""
+    badge = print_safety_badge(tool.safety_tier.name)
+    tree = Tree(f"[bold]{tool.name}[/] {badge}")
+    tree.add(f"Publisher: {tool.publisher or '[dim]unknown[/]'}")
+    tree.add(f"Package: {tool.package_name or '[dim]unknown[/]'}")
+    tree.add(f"Transport: {tool.transport}")
+    tree.add(f"Score: {tool.safety_score:.2f}")
+    if tool.description:
+        tree.add(f"Description: {tool.description}")
+    if tool.install_command:
+        tree.add(f"Install: [dim]{tool.install_command}[/]")
+    if tool.source_url:
+        tree.add(f"Source: [dim]{tool.source_url}[/]")
+    console.print(tree)
 
 
 # ── Cost formatters ──

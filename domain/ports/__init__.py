@@ -17,6 +17,8 @@ from domain.ports.local_executor import LocalExecutorPort
 from domain.ports.mcp_client import MCPClientPort
 from domain.ports.memory_repository import MemoryRepository
 from domain.ports.task_repository import TaskRepository
+from domain.ports.tool_installer import InstallResult, ToolInstallerPort
+from domain.ports.tool_registry import ToolRegistryPort, ToolSearchResult
 
 __all__ = [
     "AgentEngineCapabilities",
@@ -25,9 +27,13 @@ __all__ = [
     "AuditLogger",
     "CostRepository",
     "EmbeddingPort",
+    "InstallResult",
     "LLMGateway",
     "LocalExecutorPort",
     "MCPClientPort",
     "MemoryRepository",
     "TaskRepository",
+    "ToolInstallerPort",
+    "ToolRegistryPort",
+    "ToolSearchResult",
 ]

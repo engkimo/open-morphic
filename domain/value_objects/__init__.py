@@ -10,6 +10,7 @@ from domain.value_objects.status import (
     SubTaskStatus,
     TaskStatus,
 )
+from domain.value_objects.tool_safety import SafetyTier
 from domain.value_objects.tool_state import ToolState
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "ModelTier",
     "ObservationStatus",
     "RiskLevel",
+    "SafetyTier",
     "SubTaskStatus",
     "TaskStatus",
     "TaskType",
