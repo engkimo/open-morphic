@@ -30,6 +30,7 @@ def run(
     budget: float = typer.Option(1.0, "--budget", "-b", help="Budget in USD."),
     model: str = typer.Option(None, "--model", "-m", help="Model override."),
     timeout: float = typer.Option(300.0, "--timeout", help="Timeout in seconds."),
+    context: str = typer.Option(None, "--context", "-c", help="Extra context to prepend to task."),
 ) -> None:
     """Route a task to the best available engine and execute it."""
     c = _get_container()
@@ -60,6 +61,7 @@ def run(
                     preferred_engine=preferred,
                     model=model,
                     timeout_seconds=timeout,
+                    context=context,
                 )
             )
         except Exception as exc:

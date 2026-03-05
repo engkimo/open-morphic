@@ -5,7 +5,7 @@
 > **Phase 1 Foundation: COMPLETE** (2026-02-25) — 7/7 sprints done
 > **Phase 2 Parallel & Planning + CLI: COMPLETE** (2026-02-26) — All 6 sprints (2-A through 2-F) + CLI v1
 > **Phase 3 Semantic Memory & Context Bridge: COMPLETE** (2026-02-26) — Week 5: SemanticFingerprint LSH → ContextZipper v2 → ForgettingCurve → DeltaEncoder → HierarchicalSummarizer | Week 6: Context Bridge → MCP Server → MCP Client → L1-L4 Integration — 725 tests (699 unit + 26 integration)
-> **Phase 4 Agent CLI Orchestration: IN PROGRESS** — Sprint 4.1–4.3 complete (domain foundation + 5 drivers + RouteToEngine use case + API/CLI) — 864 unit tests + 26 integration
+> **Phase 4 Agent CLI Orchestration: COMPLETE** — Sprint 4.1–4.6 done (domain foundation + 6 drivers + RouteToEngine use case + API/CLI + knowledge file injection) — 898 unit tests + 30 integration
 
 ---
 
@@ -285,14 +285,16 @@ morphic-agent/
 │   ├── mcp/                         # Sprint 3.7–3.8: Model Context Protocol
 │   │   ├── server.py                # create_mcp_server() — FastMCP, 6 tools + 2 resources
 │   │   └── client.py               # MCPClient, MCPToolAdapter, discover_and_register
-│   └── agent_cli/                   # Sprint 4.1–4.2: Agent CLI Orchestration
-│       ├── __init__.py              # Re-exports all 5 drivers
+│   └── agent_cli/                   # Sprint 4.1–4.6: Agent CLI Orchestration
+│       ├── __init__.py              # Re-exports all 6 drivers
 │       ├── _subprocess_base.py      # CLIResult + SubprocessMixin (shared by CLI drivers)
 │       ├── ollama_driver.py         # OllamaEngineDriver (wraps LiteLLMGateway, $0)
 │       ├── claude_code_driver.py    # ClaudeCodeDriver (claude -p, 200K ctx)
 │       ├── codex_cli_driver.py      # CodexCLIDriver (codex exec, sandbox+MCP)
 │       ├── gemini_cli_driver.py     # GeminiCLIDriver (gemini -p, 2M ctx)
-│       └── openhands_driver.py      # OpenHandsDriver (httpx REST, Docker sandbox)
+│       ├── openhands_driver.py      # OpenHandsDriver (httpx REST, Docker sandbox)
+│       ├── adk_driver.py            # ADKDriver (Google ADK Python SDK, 2M ctx, Sprint 4.5)
+│       └── knowledge_loader.py      # KnowledgeFileLoader (engine→file mapping, Sprint 4.6)
 │
 ├── interface/                       # Layer 4: Entry Points
 │   ├── api/                         # Sprint 1.6: FastAPI + WebSocket
@@ -355,7 +357,7 @@ morphic-agent/
 │       ├── application/
 │       │   ├── test_create_task.py      # 5 tests (decompose, save, status, deps)
 │       │   ├── test_execute_task.py     # 6 tests (success, fallback, failed, cost)
-│       │   └── test_route_to_engine.py  # 23 tests (list/get/execute happy/fallback/chain, Sprint 4.3)
+│       │   └── test_route_to_engine.py  # 27 tests (list/get/execute happy/fallback/chain + context injection, Sprint 4.3+4.6)
 │       ├── infrastructure/
 │       │   ├── test_ollama_manager.py   # 14 tests (health, list, ensure, recommend)
 │       │   ├── test_cost_tracker.py     # 13 tests (record, queries, budget)
@@ -371,7 +373,9 @@ morphic-agent/
 │       │   ├── test_hierarchical_summarizer.py # 24 tests (extractive, LLM, get_summary, retrieve_at_depth, Sprint 3.5)
 │       │   ├── test_context_bridge.py  # 25 tests (4 platforms, export_all, budget, graceful degradation, Sprint 3.6)
 │       │   ├── test_mcp_server.py      # 19 tests (factory, 6 tools, 2 resources, degradation, Sprint 3.7)
-│       │   └── test_mcp_client.py      # 21 tests (port, connect, tools, resources, adapter, discover, Sprint 3.8)
+│       │   ├── test_mcp_client.py      # 21 tests (port, connect, tools, resources, adapter, discover, Sprint 3.8)
+│       │   ├── test_adk_driver.py     # 17 tests (construct, available, run_task, capabilities, Sprint 4.5)
+│       │   └── test_knowledge_loader.py # 13 tests (construction, load, format, missing files, Sprint 4.6)
 │       └── interface/
 │           ├── test_api.py              # 22 tests (CRUD, WebSocket, CORS, models, cost, memory)
 │           ├── test_api_e2e.py          # 12 tests (HTTP round-trip: POST→execute→GET→verify)
@@ -382,7 +386,8 @@ morphic-agent/
 │       ├── test_live_smoke.py           # 10 tests (real Ollama + real filesystem)
 │       ├── test_cloud_llm.py            # 11 tests (Anthropic + OpenAI + Gemini + cost + routing)
 │       ├── test_e2e_pipeline.py         # 5 tests (Goal → Decompose → DAG → Result)
-│       └── test_memory_hierarchy_full.py # 16 tests (L1-L4 full lifecycle, compression interplay, edge cases, cross-component, Sprint 3.10)
+│       ├── test_memory_hierarchy_full.py # 16 tests (L1-L4 full lifecycle, compression interplay, edge cases, cross-component, Sprint 3.10)
+│       └── test_agent_engines.py        # 37 tests (6 engines live + routing + fallback + availability, Sprint 4.4-4.5)
 │
 ├── migrations/                      # Alembic async migrations (001 initial + 002 embedding)
 ├── docker-compose.yml               # PostgreSQL+pgvector, Redis, Neo4j
@@ -530,10 +535,10 @@ discover_and_register(client, configs) → list[MCPToolAdapter]
 | Test Type | Location | Dependencies | Speed | What It Tests |
 |---|---|---|---|---|
 | **Unit/Domain** | `tests/unit/domain/` | None | ~0.03s (208 tests) | Entities, value objects, services, LSH fingerprint, forgetting curve, delta encoder, hierarchical summarizer, agent engine router |
-| **Unit/Application** | `tests/unit/application/` | Mocked ports | Fast (69 tests) | Use case orchestration, cost estimator, planning, engine routing |
-| **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.2s (417 tests) | LLM gateway, cost, task graph, LAEE, memory, PG repos, Celery, browser/gui/cron, semantic search, forgetting curve, delta encoder, hierarchical summarizer, context bridge, MCP server/client |
+| **Unit/Application** | `tests/unit/application/` | Mocked ports | Fast (73 tests) | Use case orchestration, cost estimator, planning, engine routing + context injection |
+| **Unit/Infra** | `tests/unit/infrastructure/` | Mocked ports | ~1.2s (447 tests) | LLM gateway, cost, task graph, LAEE, memory, PG repos, Celery, browser/gui/cron, semantic search, forgetting curve, delta encoder, hierarchical summarizer, context bridge, MCP server/client, ADK driver, knowledge loader |
 | **Unit/Interface** | `tests/unit/interface/` | Mock container | ~1.4s (78 tests) | API, WebSocket, CORS, CLI commands, plan endpoints, engine endpoints |
-| **Integration** | `tests/integration/` | Ollama running | ~18s (26 tests) | Real LLM inference, real filesystem, L1-L4 memory hierarchy |
+| **Integration** | `tests/integration/` | Ollama running | ~18s (37 tests) | Real LLM inference, real filesystem, L1-L4 memory hierarchy, agent engine live tests |
 | **E2E** | `tests/e2e/` | Full stack | Slowest | API/CLI → Use Case → DB round-trips |
 
 ### TDD Process
@@ -543,8 +548,8 @@ discover_and_register(client, configs) → list[MCPToolAdapter]
 2. Green:    Write minimum code to pass
 3. Refactor: Clean up while tests protect
 
-Current: 864 unit tests + 26 integration tests = 890 total, 100% pass (~6.5s)
-Lint: ruff check 0 errors, ruff format 192 files clean
+Current: 898 unit tests + 37 integration tests = 935 total, 100% pass (~3.5s)
+Lint: ruff check 0 errors, ruff format 197 files clean
 Default model: qwen3-coder:30b (thinking mode disabled via extra_body)
 Cloud providers verified: Anthropic (Haiku/Sonnet), OpenAI (o4-mini/o3), Gemini (3-flash/3-pro)
 ```
@@ -595,4 +600,31 @@ Completion Criteria:
   1. ✓ Same task across multiple engines with result comparison
   2. ✓ Task-type-based automatic engine selection (5 routing tests)
   3. ✓ Availability check + fallback in live environment (fallback chain)
+```
+
+### Phase 4 Verification — Sprint 4.5-4.6 (2026-03-05)
+
+```
+✓ Unit tests:       898 passed (3.53s), 0 regressions
+✓ Lint:             ruff check 0 errors, ruff format 197 files clean
+
+Sprint 4.5 — ADK Driver:
+  ✓ ADKDriver:        google-adk optional dep with try-import guard (_ADK_AVAILABLE)
+  ✓ LlmAgent→Runner:  run_async wrapper with InMemorySessionService
+  ✓ Capabilities:     2M tokens, parallel=True, mcp=True, streaming=True, $0/hr
+  ✓ Container wired:  AgentEngineType.ADK → ADKDriver in AppContainer
+  ✓ Config:           adk_enabled, adk_default_model settings
+  ✓ Integration:      TestADKEngineLive (3 tests) + availability detection
+  ✓ New tests:        17 unit (4 classes: construct, available, run_task, capabilities)
+
+Sprint 4.6 — Knowledge File Management:
+  ✓ KnowledgeFileLoader:  engine→file mapping (CLAUDE.md, AGENTS.md, llms-full.txt)
+  ✓ Context injection:     RouteToEngineUseCase.execute(context=...) prepends to task
+  ✓ API:                   EngineRunRequest.context field → POST /api/engines/run
+  ✓ CLI:                   --context / -c flag on morphic engine run
+  ✓ Backward compatible:   No ABC changes, no driver signature changes
+  ✓ New tests:             13 knowledge loader + 4 context injection = 17
+
+Phase 4 COMPLETE: 6 drivers, router, use case, API/CLI, knowledge injection
+  Total new tests: 34 (Sprint 4.5: 17 unit + Sprint 4.6: 17 unit)
 ```

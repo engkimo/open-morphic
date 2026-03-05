@@ -137,6 +137,7 @@ class AppContainer:
     def _wire_agent_drivers(self) -> dict[AgentEngineType, AgentEnginePort]:
         """Create all agent engine drivers based on settings."""
         from infrastructure.agent_cli import (
+            ADKDriver,
             ClaudeCodeDriver,
             CodexCLIDriver,
             GeminiCLIDriver,
@@ -165,6 +166,10 @@ class AppContainer:
                 base_url=self.settings.openhands_base_url,
                 model=self.settings.openhands_model,
                 api_key=self.settings.openhands_api_key,
+            ),
+            AgentEngineType.ADK: ADKDriver(
+                enabled=self.settings.adk_enabled,
+                model=self.settings.adk_default_model,
             ),
         }
         return drivers

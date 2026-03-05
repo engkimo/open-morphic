@@ -1311,9 +1311,11 @@ class ContextZipper:
 | 4.8 | Knowledge file management | `infrastructure/agent_orchestration/knowledge_files.py` |
 
 **Phase 4 Completion Criteria:**
-- [ ] Same task executed on OpenHands / Claude Code / Gemini / Codex, results compared
-- [ ] AgentCLIRouter auto-selects optimal engine based on task characteristics
-- [ ] Availability check + fallback for each engine
+- [x] Same task executed on OpenHands / Claude Code / Gemini / Codex / ADK, results compared
+- [x] AgentCLIRouter auto-selects optimal engine based on task characteristics
+- [x] Availability check + fallback for each engine
+- [x] ADK Driver (Google ADK Python SDK) with try-import guard (Sprint 4.5)
+- [x] Knowledge file management — engine-specific context injection (Sprint 4.6)
 
 ---
 
@@ -1514,3 +1516,50 @@ Sprint 1.1 (Infra)
 - [x] Same task across multiple engines with result comparison (TestCrossEngineLive)
 - [x] Task-type-based automatic engine selection (TestRoutingLive: budget=0→OLLAMA, SIMPLE_QA→OLLAMA, COMPLEX_REASONING→chain)
 - [x] Availability check + fallback in live environment (TestRoutingLive: fallback_when_primary_unavailable)
+
+### Sprint 4.5: ADK Driver (COMPLETE — 2026-03-05)
+
+**Deliverables**: Google ADK (Agent Development Kit) driver via Python SDK with try-import guard.
+
+| # | File | Description |
+|---|---|---|
+| 1 | `infrastructure/agent_cli/adk_driver.py` | ADKDriver: LlmAgent→Runner→run_async, try-import guard |
+| 2 | `pyproject.toml` | +`adk = ["google-adk>=1.0"]` optional dep |
+| 3 | `shared/config.py` | +`adk_enabled`, `adk_default_model` settings |
+| 4 | `interface/api/container.py` | +ADK wiring in `_wire_agent_drivers()` |
+| 5 | `tests/unit/infrastructure/test_adk_driver.py` | 17 tests (4 classes) |
+| 6 | `tests/integration/test_agent_engines.py` | +TestADKEngineLive (3 tests) + availability |
+
+**Tests**: 17 new unit, total 881 unit tests. Integration: +7 tests (ADK live + availability + count update).
+
+**Key design**: Optional dependency guard (`_ADK_AVAILABLE` sentinel) — same pattern as neo4j/pgvector. Module-level try-import assigns `None` to SDK classes when missing. Disabled/not-installed → error result without raising.
+
+### Sprint 4.6: Knowledge File Management (COMPLETE — 2026-03-05)
+
+**Deliverables**: Engine-specific context injection at the use case layer.
+
+| # | File | Description |
+|---|---|---|
+| 1 | `infrastructure/agent_cli/knowledge_loader.py` | KnowledgeFileLoader: engine→filename mapping, read from project root |
+| 2 | `application/use_cases/route_to_engine.py` | +`context: str | None = None` param, prepend to task |
+| 3 | `interface/api/schemas.py` | +`context` field on EngineRunRequest |
+| 4 | `interface/api/routes/engines.py` | Pass `context=body.context` to execute() |
+| 5 | `interface/cli/commands/engine.py` | +`--context` / `-c` flag on `run` command |
+| 6 | `tests/unit/infrastructure/test_knowledge_loader.py` | 13 tests (3 classes) |
+| 7 | `tests/unit/application/test_route_to_engine.py` | +4 context injection tests |
+
+**Tests**: 17 new (13 loader + 4 context), total 898 unit tests. Lint clean.
+
+**Key design**: Context injected at use case layer (not driver) — backward compatible. No ABC changes. KnowledgeFileLoader maps engine type to conventional filename (CLAUDE.md, AGENTS.md, llms-full.txt). `format_context()` combines knowledge file + optional extra context.
+
+### Phase 4 Summary
+
+```
+Phase 4 COMPLETE: 6 sprints (4.1–4.6)
+  - 6 AgentEnginePort drivers (Ollama, ClaudeCode, Codex, Gemini, OpenHands, ADK)
+  - AgentEngineRouter domain service (pure static, task→engine mapping)
+  - RouteToEngineUseCase (fallback chain + context injection)
+  - KnowledgeFileLoader (engine-specific project context)
+  - 3 API endpoints + 2 CLI commands
+  - 898 unit tests + 37 integration tests = 935 total
+```

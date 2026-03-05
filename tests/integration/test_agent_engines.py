@@ -23,6 +23,7 @@ from application.use_cases.route_to_engine import RouteToEngineUseCase
 from domain.ports.agent_engine import AgentEnginePort, AgentEngineResult
 from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.model_tier import TaskType
+from infrastructure.agent_cli.adk_driver import ADKDriver
 from infrastructure.agent_cli.claude_code_driver import ClaudeCodeDriver
 from infrastructure.agent_cli.codex_cli_driver import CodexCLIDriver
 from infrastructure.agent_cli.gemini_cli_driver import GeminiCLIDriver
@@ -173,12 +174,21 @@ def openhands_driver(settings: Settings) -> OpenHandsDriver:
 
 
 @pytest.fixture(scope="module")
+def adk_driver(settings: Settings) -> ADKDriver:
+    return ADKDriver(
+        enabled=settings.adk_enabled,
+        model=settings.adk_default_model,
+    )
+
+
+@pytest.fixture(scope="module")
 def all_drivers(
     ollama_driver: OllamaEngineDriver,
     claude_driver: ClaudeCodeDriver,
     codex_driver: CodexCLIDriver,
     gemini_driver: GeminiCLIDriver,
     openhands_driver: OpenHandsDriver,
+    adk_driver: ADKDriver,
 ) -> dict[AgentEngineType, AgentEnginePort]:
     return {
         AgentEngineType.OLLAMA: ollama_driver,
@@ -186,6 +196,7 @@ def all_drivers(
         AgentEngineType.CODEX_CLI: codex_driver,
         AgentEngineType.GEMINI_CLI: gemini_driver,
         AgentEngineType.OPENHANDS: openhands_driver,
+        AgentEngineType.ADK: adk_driver,
     }
 
 
@@ -375,6 +386,39 @@ class TestOpenHandsEngineLive:
 
 
 # ══════════════════════════════════════════════════════════
+# ADK Engine Live Tests
+# ══════════════════════════════════════════════════════════
+
+
+class TestADKEngineLive:
+    """Google ADK (Agent Development Kit) engine via Python SDK."""
+
+    async def test_simple_task(self, adk_driver: ADKDriver) -> None:
+        if not await adk_driver.is_available():
+            pytest.skip("ADK not available (google-adk not installed)")
+        result = await adk_driver.run_task(SIMPLE_TASK, timeout_seconds=120.0)
+        if _is_env_error(result):
+            pytest.skip(f"ADK env error: {result.error}")
+        assert result.success, f"ADK failed: {result.error}"
+        assert result.output, "Output should not be empty"
+        assert result.engine == AgentEngineType.ADK
+        print(f"\n  ADK: {result.output[:120]}")
+        print(f"  Duration: {result.duration_seconds:.2f}s")
+
+    async def test_capabilities(self, adk_driver: ADKDriver) -> None:
+        caps = adk_driver.get_capabilities()
+        assert caps.engine_type == AgentEngineType.ADK
+        assert caps.max_context_tokens == 2_000_000
+        assert caps.supports_parallel is True
+        assert caps.cost_per_hour_usd == 0.0
+
+    async def test_availability(self, adk_driver: ADKDriver) -> None:
+        available = await adk_driver.is_available()
+        assert isinstance(available, bool)
+        print(f"\n  ADK available: {available}")
+
+
+# ══════════════════════════════════════════════════════════
 # Availability Detection Tests (always run)
 # ══════════════════════════════════════════════════════════
 
@@ -417,6 +461,11 @@ class TestAvailabilityDetection:
         reachable = await _openhands_available(settings.openhands_base_url)
         assert available == reachable
         print(f"\n  OpenHands: {available}")
+
+    async def test_adk_availability(self, adk_driver: ADKDriver) -> None:
+        available = await adk_driver.is_available()
+        assert isinstance(available, bool)
+        print(f"\n  ADK: {available}")
 
 
 # ══════════════════════════════════════════════════════════
@@ -652,9 +701,9 @@ class TestRoutingLive:
         self,
         use_case: RouteToEngineUseCase,
     ) -> None:
-        """list_engines() should return exactly 5 engines with accurate availability."""
+        """list_engines() should return exactly 6 engines with accurate availability."""
         statuses = await use_case.list_engines()
-        assert len(statuses) == 5, f"Expected 5 engines, got {len(statuses)}"
+        assert len(statuses) == 6, f"Expected 6 engines, got {len(statuses)}"
 
         engine_types = {s.engine_type for s in statuses}
         expected = {
@@ -663,6 +712,7 @@ class TestRoutingLive:
             AgentEngineType.CODEX_CLI,
             AgentEngineType.GEMINI_CLI,
             AgentEngineType.OPENHANDS,
+            AgentEngineType.ADK,
         }
         assert engine_types == expected
 

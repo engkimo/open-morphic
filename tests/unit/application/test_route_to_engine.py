@@ -368,3 +368,66 @@ class TestBuildChain:
             preferred_engine=None,
         )
         assert chain == [AgentEngineType.OLLAMA]
+
+
+# ═══════════════════════════════════════════════════════════════
+# execute — context injection (Sprint 4.6)
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestContextInjection:
+    async def test_context_prepended_to_task(self, drivers: dict) -> None:
+        """When context is provided, it should be prepended to the task string."""
+        uc = RouteToEngineUseCase(drivers)
+        await uc.execute(
+            "Write tests",
+            task_type=TaskType.SIMPLE_QA,
+            context="Use pytest framework",
+        )
+        call_kwargs = drivers[AgentEngineType.OLLAMA].run_task.call_args
+        effective_task = call_kwargs[1]["task"]
+        assert "Use pytest framework" in effective_task
+        assert "Write tests" in effective_task
+        assert "---" in effective_task
+
+    async def test_no_context_passes_task_unchanged(self, drivers: dict) -> None:
+        """When context is None, task string is passed as-is."""
+        uc = RouteToEngineUseCase(drivers)
+        await uc.execute(
+            "Write tests",
+            task_type=TaskType.SIMPLE_QA,
+        )
+        call_kwargs = drivers[AgentEngineType.OLLAMA].run_task.call_args
+        assert call_kwargs[1]["task"] == "Write tests"
+
+    async def test_empty_context_passes_task_unchanged(self, drivers: dict) -> None:
+        """Empty string context should not modify the task."""
+        uc = RouteToEngineUseCase(drivers)
+        await uc.execute(
+            "Write tests",
+            task_type=TaskType.SIMPLE_QA,
+            context="",
+        )
+        call_kwargs = drivers[AgentEngineType.OLLAMA].run_task.call_args
+        assert call_kwargs[1]["task"] == "Write tests"
+
+    async def test_context_with_fallback_still_prepended(self) -> None:
+        """Context prepending survives engine fallback."""
+        drivers = {
+            AgentEngineType.CLAUDE_CODE: _make_driver(AgentEngineType.CLAUDE_CODE, available=False),
+            AgentEngineType.CODEX_CLI: _make_driver(AgentEngineType.CODEX_CLI),
+            AgentEngineType.GEMINI_CLI: _make_driver(AgentEngineType.GEMINI_CLI),
+            AgentEngineType.OLLAMA: _make_driver(AgentEngineType.OLLAMA),
+        }
+        uc = RouteToEngineUseCase(drivers)
+        result = await uc.execute(
+            "Analyze code",
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=5.0,
+            context="Project uses Clean Architecture",
+        )
+        assert result.success is True
+        call_kwargs = drivers[AgentEngineType.CODEX_CLI].run_task.call_args
+        effective_task = call_kwargs[1]["task"]
+        assert "Project uses Clean Architecture" in effective_task
+        assert "Analyze code" in effective_task

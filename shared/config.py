@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     gemini_cli_path: str = "gemini"
     codex_cli_enabled: bool = True
     codex_cli_path: str = "codex"
+    adk_enabled: bool = True
+    adk_default_model: str = "gemini-2.5-flash"
     agent_default_engine: str = "claude_code"
 
     # ── Database ──

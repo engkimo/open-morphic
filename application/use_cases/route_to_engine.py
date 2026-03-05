@@ -75,6 +75,7 @@ class RouteToEngineUseCase:
         preferred_engine: AgentEngineType | None = None,
         model: str | None = None,
         timeout_seconds: float = 300.0,
+        context: str | None = None,
     ) -> AgentEngineResult:
         """Route to best available engine and execute.
 
@@ -82,7 +83,14 @@ class RouteToEngineUseCase:
         Otherwise, use AgentEngineRouter.select_with_fallbacks() for ordering.
         Iterates chain: is_available() → run_task() → return on first success.
         If all engines fail, returns the last error result.
+
+        *context* is prepended to *task* when provided (knowledge file injection).
         """
+        # Prepend context to task if provided
+        effective_task = task
+        if context:
+            effective_task = f"{context}\n\n---\n\nTask: {task}"
+
         chain = self._build_chain(
             task_type=task_type,
             budget=budget,
@@ -106,7 +114,7 @@ class RouteToEngineUseCase:
             start = time.monotonic()
             try:
                 result = await driver.run_task(
-                    task=task,
+                    task=effective_task,
                     model=model,
                     timeout_seconds=timeout_seconds,
                 )

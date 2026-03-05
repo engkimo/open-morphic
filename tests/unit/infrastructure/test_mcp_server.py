@@ -40,6 +40,8 @@ class _FakeSettings:
     gemini_cli_path = "gemini"
     codex_cli_enabled = False
     codex_cli_path = "codex"
+    adk_enabled = False
+    adk_default_model = "gemini-2.5-flash"
     context_bridge_default_tokens = 800
     mcp_enabled = True
     mcp_transport = "stdio"

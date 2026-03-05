@@ -66,5 +66,6 @@ async def run_engine(body: EngineRunRequest, request: Request) -> EngineRunRespo
         preferred_engine=preferred,
         model=body.model,
         timeout_seconds=body.timeout_seconds,
+        context=body.context,
     )
     return EngineRunResponse.from_result(result)
