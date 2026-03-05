@@ -1712,3 +1712,95 @@ Implement 5 concrete drivers in `infrastructure/agent_cli/` fulfilling the `Agen
 - **Modified**: `infrastructure/agent_cli/__init__.py` (re-exports all 5 drivers)
 - **Modified**: `interface/api/container.py` (+`_wire_agent_drivers()` method)
 - **Tests**: 92 new tests, total 821 unit tests passing
+
+---
+
+## TD-040: ADK Driver — Google ADK via Python SDK (Sprint 4.5)
+
+**Date**: 2026-03-05
+**Status**: Accepted
+**Sprint**: 4.5
+
+### Decision
+
+Implement `ADKDriver` using the Google ADK Python SDK (`google-adk`) as an **optional dependency** with try-import guard. Sprint 4.5 wraps a single `LlmAgent.run()` call; SequentialAgent/ParallelAgent workflows are Phase 5+ scope.
+
+### Key Decisions
+
+1. **Optional dependency**: `google-adk` added as `[adk]` extra in pyproject.toml, not a core dependency. Same pattern as neo4j/pgvector elsewhere in the codebase
+2. **Try-import guard**: Module-level `_ADK_AVAILABLE` sentinel. When package missing, SDK classes assigned `None`. `is_available()` checks both `_enabled` flag and `_ADK_AVAILABLE`
+3. **Error result, never raise**: `run_task()` returns `AgentEngineResult(success=False)` for disabled/not-installed/exception cases — consistent with all other drivers (TD-039)
+4. **LlmAgent → Runner → run_async**: Single-agent wrapper using `InMemorySessionService`. No persistent sessions. Final response extracted from event stream via `is_final_response()`
+5. **2M token context**: Capabilities report `max_context_tokens=2_000_000`, same as Gemini CLI driver. `supports_parallel=True`, `supports_mcp=True`, `cost_per_hour_usd=0.0`
+6. **Default model**: `gemini-2.5-flash` (configurable via `adk_default_model` setting)
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| CLI subprocess (`gemini` binary) | Already covered by GeminiCLIDriver. ADK adds SDK-level features (SequentialAgent, ParallelAgent) not available via CLI |
+| Core dependency | google-adk has heavy transitive deps. Optional extra keeps core install lean |
+| Defer indefinitely | ADK is defined in domain (`AgentEngineType.ADK`) and router maps `WORKFLOW_PIPELINE → ADK`. Having the driver completes the engine matrix |
+
+### Files Created/Modified
+
+- **Created**: `infrastructure/agent_cli/adk_driver.py`
+- **Created**: `tests/unit/infrastructure/test_adk_driver.py` (17 tests, 4 classes)
+- **Modified**: `pyproject.toml` (+`adk` optional dep group)
+- **Modified**: `shared/config.py` (+`adk_enabled`, `adk_default_model`)
+- **Modified**: `infrastructure/agent_cli/__init__.py` (re-exports 6 drivers)
+- **Modified**: `interface/api/container.py` (+ADK wiring)
+- **Modified**: `tests/integration/test_agent_engines.py` (+ADK fixture, +TestADKEngineLive, updated counts)
+- **Tests**: 17 new unit tests, total 881 unit tests passing
+
+---
+
+## TD-041: Knowledge File Management — Engine-Specific Context Injection (Sprint 4.6)
+
+**Date**: 2026-03-05
+**Status**: Accepted
+**Sprint**: 4.6
+
+### Decision
+
+Inject engine-specific project context at the **use case layer** (`RouteToEngineUseCase.execute()`), not at the driver level. A new `KnowledgeFileLoader` (infrastructure) reads conventional files from the project root and the use case prepends context to the task string.
+
+### Key Decisions
+
+1. **Use case layer injection**: Context injection is orchestration logic, not driver logic. The `AgentEnginePort.run_task()` signature is unchanged — fully backward compatible. No ABC modifications required
+2. **Conventional file mapping**: Static mapping from engine type to filename. Claude Code → `CLAUDE.md`, Codex CLI → `AGENTS.md`, Gemini CLI/ADK → `llms-full.txt`, Ollama/OpenHands → None
+3. **Prepend format**: `f"{context}\n\n---\n\nTask: {task}"` — simple, clear separator between context and task. Empty/None context passes task unchanged
+4. **`format_context()` combines sources**: Knowledge file content + optional extra context. Returns None when both are absent
+5. **CLI + API surface**: `--context` / `-c` flag on `morphic engine run`, `context` field on `EngineRunRequest`. Both optional, default None
+6. **Infrastructure placement**: `KnowledgeFileLoader` lives in `infrastructure/agent_cli/` alongside drivers — it reads the filesystem (I/O), so it belongs in infrastructure
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| Modify `AgentEnginePort.run_task()` signature | Breaking change to all 6 drivers. Context injection is orchestration, not engine concern |
+| Per-driver knowledge loading | Duplicates logic across 6 drivers. Violates DRY. Use case is the single orchestration point |
+| Domain port for knowledge files | Over-engineering — knowledge files are a thin filesystem read, not a domain concept |
+| Auto-inject on every run | Not all tasks benefit from context. Explicit `context` param gives callers control |
+
+### Engine → Knowledge File Mapping
+
+| Engine | File | Rationale |
+|---|---|---|
+| CLAUDE_CODE | `CLAUDE.md` | Claude Code's native project context file |
+| CODEX_CLI | `AGENTS.md` | Codex CLI's native agents context file |
+| GEMINI_CLI | `llms-full.txt` | ADK convention for LLM knowledge base |
+| ADK | `llms-full.txt` | Same as Gemini CLI (shared Google ecosystem) |
+| OLLAMA | None | Local model, no project context convention |
+| OPENHANDS | None | Docker sandbox, context handled internally |
+
+### Files Created/Modified
+
+- **Created**: `infrastructure/agent_cli/knowledge_loader.py`
+- **Created**: `tests/unit/infrastructure/test_knowledge_loader.py` (13 tests, 3 classes)
+- **Modified**: `application/use_cases/route_to_engine.py` (+`context` param, prepend logic)
+- **Modified**: `interface/api/schemas.py` (+`context` field on `EngineRunRequest`)
+- **Modified**: `interface/api/routes/engines.py` (pass `context=body.context`)
+- **Modified**: `interface/cli/commands/engine.py` (+`--context` / `-c` flag)
+- **Modified**: `tests/unit/application/test_route_to_engine.py` (+4 context injection tests)
+- **Tests**: 17 new tests (13 loader + 4 context), total 898 unit tests passing
