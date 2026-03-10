@@ -8,6 +8,8 @@
 > **Phase 4 Agent CLI Orchestration: COMPLETE** — Sprint 4.1–4.6 done (domain foundation + 6 drivers + RouteToEngine use case + API/CLI + knowledge file injection) — 898 unit tests + 30 integration
 > **Phase 5 Marketplace & Tools: COMPLETE** — Sprint 5.1–5.6 done (safety scorer + MCP registry + tool installer + auto discoverer + Ollama manager + marketplace UI) — 988 unit tests + 37 integration
 > **Phase 6 Self-Evolution: COMPLETE** — Sprint 6.1–6.5 done (execution recorder + tactical recovery + strategy learning + systemic evolution + evolution dashboard) — 1162 unit tests + 37 integration
+> **Phase 7 UCL: Sprint 7.1 COMPLETE** (2026-03-10) — UCL domain foundation (Decision, AgentAction, SharedTaskState, AgentAffinityScore, CognitiveMemoryType, 2 ports, AgentAffinityScorer service) — 1230 unit tests + 37 integration
+> **Phase 7 UCL: Sprint 7.2 COMPLETE** (2026-03-10) — ContextAdapterPort + InMemorySharedTaskStateRepo + 6 context adapters (Claude Code, Gemini, Codex, Ollama, OpenHands, ADK) — 1350 unit tests + 37 integration
 
 ---
 
@@ -236,7 +238,10 @@ morphic-agent/
 │   │   ├── agent_engine.py         # AgentEnginePort ABC + Result + Capabilities (Sprint 4.1)
 │   │   ├── tool_registry.py        # ToolRegistryPort ABC + ToolSearchResult (Sprint 5.2)
 │   │   ├── tool_installer.py       # ToolInstallerPort ABC + InstallResult (Sprint 5.3)
-│   │   └── execution_record_repository.py # ExecutionRecordRepository ABC + ExecutionStats (Sprint 6.1)
+│   │   ├── execution_record_repository.py # ExecutionRecordRepository ABC + ExecutionStats (Sprint 6.1)
+│   │   ├── shared_task_state_repository.py # SharedTaskStateRepository ABC (Sprint 7.1)
+│   │   ├── insight_extractor.py    # InsightExtractorPort ABC + ExtractedInsight (Sprint 7.1)
+│   │   └── context_adapter.py      # ContextAdapterPort ABC + AdapterInsight (Sprint 7.2)
 │   └── services/
 │       ├── risk_assessor.py        # 40+ tool risk mapping + escalation
 │       ├── approval_engine.py      # 3-mode × 5-risk approval matrix
@@ -274,7 +279,8 @@ morphic-agent/
 │   │   ├── pg_cost_repository.py    # PgCostRepository (SQL aggregation)
 │   │   ├── pg_memory_repository.py  # PgMemoryRepository (pgvector cosine + ILIKE fallback)
 │   │   ├── pg_plan_repository.py    # PgPlanRepository (ExecutionPlan ↔ PlanModel)
-│   │   └── in_memory_execution_record.py # InMemoryExecutionRecordRepository (Sprint 6.1)
+│   │   ├── in_memory_execution_record.py # InMemoryExecutionRecordRepository (Sprint 6.1)
+│   │   └── shared_task_state_repo.py # InMemorySharedTaskStateRepository (Sprint 7.2)
 │   ├── llm/                         # Sprint 1.2 + 5.5: LLM Layer
 │   │   ├── ollama_manager.py        # Ollama lifecycle (health, pull, delete, info, running, Sprint 5.5)
 │   │   ├── litellm_gateway.py       # LLMGateway impl (LOCAL_FIRST routing + LiteLLM)
@@ -321,6 +327,17 @@ morphic-agent/
 │       ├── openhands_driver.py      # OpenHandsDriver (httpx REST, Docker sandbox)
 │       ├── adk_driver.py            # ADKDriver (Google ADK Python SDK, 2M ctx, Sprint 4.5)
 │       └── knowledge_loader.py      # KnowledgeFileLoader (engine→file mapping, Sprint 4.6)
+│   ├── cognitive/                   # Sprint 7.2: UCL Context Adapters
+│   │   ├── __init__.py
+│   │   └── adapters/
+│   │       ├── __init__.py          # Re-exports all 6 adapters
+│   │       ├── _base.py             # Shared helpers (format, truncate, regex patterns)
+│   │       ├── claude_code.py       # ClaudeCodeContextAdapter (CLAUDE.md format, 200K ctx)
+│   │       ├── gemini.py            # GeminiContextAdapter (XML blocks, 2M ctx)
+│   │       ├── codex.py             # CodexContextAdapter (AGENTS.md format)
+│   │       ├── ollama.py            # OllamaContextAdapter (ultra-compact, small window)
+│   │       ├── openhands.py         # OpenHandsContextAdapter (REST task context)
+│   │       └── adk.py               # ADKContextAdapter (workflow-context XML)
 │   ├── marketplace/                 # Sprint 5.2–5.3: Marketplace
 │   │   ├── __init__.py              # Re-exports MCPRegistryClient, MCPToolInstaller
 │   │   ├── mcp_registry_client.py   # MCPRegistryClient(ToolRegistryPort) — httpx, auto-score (Sprint 5.2)
@@ -440,7 +457,9 @@ morphic-agent/
 │       │   ├── test_mcp_registry_client.py # 14 tests (search, parse, error handling, Sprint 5.2)
 │       │   ├── test_tool_installer.py  # 11 tests (install, safety gate, uninstall, tracking, Sprint 5.3)
 │       │   ├── test_execution_record_repo.py # InMemoryExecutionRecordRepository CRUD (Sprint 6.1)
-│       │   └── test_strategy_store.py  # StrategyStore JSONL I/O (Sprint 6.3)
+│       │   ├── test_strategy_store.py  # StrategyStore JSONL I/O (Sprint 6.3)
+│       │   ├── test_shared_task_state_repo.py # 16 tests (CRUD, list_active, append, Sprint 7.2)
+│       │   └── test_context_adapters.py # 104 tests (6 adapters × inject/extract, Sprint 7.2)
 │       └── interface/
 │           ├── test_api.py              # 22 tests (CRUD, WebSocket, CORS, models, cost, memory)
 │           ├── test_api_e2e.py          # 12 tests (HTTP round-trip: POST→execute→GET→verify)
@@ -800,6 +819,26 @@ Phase 6 COMPLETE: 3-tier self-evolution (tactical recovery + strategy learning +
   Total new tests: ~174 (domain + application + infrastructure + interface)
   New API endpoints: 5, New CLI commands: 4, New settings: 4
   Also fixed: 19 pre-existing test_mcp_server.py failures (_FakeSettings updated)
+```
+
+### Phase 7 Verification — Sprint 7.1 (2026-03-10)
+
+```
+✓ Unit tests:       1230 passed (6.18s), 0 failures
+✓ New tests:        68 (cognitive domain)
+✓ Lint:             ruff check 0 errors, ruff format 251 files clean
+
+Sprint 7.1 — UCL Domain Foundation:
+  ✓ CognitiveMemoryType:         str Enum (episodic, semantic, procedural, working)
+  ✓ Decision:                    Pydantic entity — description, rationale, agent_engine, confidence [0,1]
+  ✓ AgentAction:                 Pydantic entity — agent_engine, action_type (str), cost_usd, duration
+  ✓ SharedTaskState:             Pydantic entity — task_id, decisions[], artifacts{}, blockers[], agent_history[]
+                                 Methods: add_decision, add_action, add_artifact, add/remove_blocker
+                                 Properties: last_agent, total_cost_usd
+  ✓ AgentAffinityScore:          Pydantic entity — engine, topic, familiarity/recency/success/cost [0,1]
+  ✓ SharedTaskStateRepository:   ABC port (7 methods: save, get, list_active, update_decisions/artifacts, append_action, delete)
+  ✓ InsightExtractorPort:        ABC port + ExtractedInsight dataclass
+  ✓ AgentAffinityScorer:         Pure static service — score()/rank()/select_best() with 4-factor weighting
 ```
 
 ---

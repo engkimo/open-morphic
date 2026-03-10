@@ -1369,37 +1369,41 @@ class ContextZipper:
 >
 > **Key Insight**: A2A (task delegation) is necessary but insufficient. The real value is **shared cognition** — agents that share understanding, not just tasks.
 
-### Sprint 7.1: UCL Domain Foundation
+### Sprint 7.1: UCL Domain Foundation — COMPLETE (2026-03-10)
 
 > Domain entities, value objects, and ports for the Unified Cognitive Layer.
+> **68 tests passed, 0 failures. Total: 1230 unit tests.**
 
-| # | Item | File | Notes |
+| # | Item | File | Status |
 |---|---|---|---|
-| 1 | `CognitiveMemoryType` value object | `domain/value_objects/cognitive.py` | Enum: EPISODIC, SEMANTIC, PROCEDURAL, WORKING |
-| 2 | `Decision` entity | `domain/entities/cognitive.py` | description, rationale, agent_engine, confidence, timestamp |
-| 3 | `AgentAction` entity | `domain/entities/cognitive.py` | agent_engine, action_type, summary, cost_usd, timestamp |
-| 4 | `SharedTaskState` entity | `domain/entities/cognitive.py` | task_id, decisions, artifacts, blockers, agent_history |
-| 5 | `AgentAffinityScore` entity | `domain/entities/cognitive.py` | engine, topic, familiarity, recency, success_rate, cost_efficiency |
-| 6 | `SharedTaskStateRepository` port | `domain/ports/shared_task_state_repository.py` | save, get, list_active, update_decisions, update_artifacts |
-| 7 | `InsightExtractorPort` port | `domain/ports/insight_extractor.py` | extract_from_output(engine, output) → list[MemoryEntry] |
-| 8 | `AgentAffinityScorer` domain service | `domain/services/agent_affinity.py` | Pure scoring: familiarity×0.4 + recency×0.25 + success×0.2 + cost×0.15 |
-| 9 | Tests | `tests/unit/domain/test_cognitive.py` | Strict validation, scoring logic, affinity ranking |
+| 1 | `CognitiveMemoryType` value object | `domain/value_objects/cognitive.py` | ✅ |
+| 2 | `Decision` entity | `domain/entities/cognitive.py` | ✅ |
+| 3 | `AgentAction` entity | `domain/entities/cognitive.py` | ✅ |
+| 4 | `SharedTaskState` entity | `domain/entities/cognitive.py` | ✅ |
+| 5 | `AgentAffinityScore` entity | `domain/entities/cognitive.py` | ✅ |
+| 6 | `SharedTaskStateRepository` port | `domain/ports/shared_task_state_repository.py` | ✅ |
+| 7 | `InsightExtractorPort` port + `ExtractedInsight` | `domain/ports/insight_extractor.py` | ✅ |
+| 8 | `AgentAffinityScorer` domain service | `domain/services/agent_affinity.py` | ✅ |
+| 9 | Tests (68) | `tests/unit/domain/test_cognitive.py` | ✅ |
 
-### Sprint 7.2: Shared Task State + Context Adapters
+### Sprint 7.2: Shared Task State + Context Adapters — COMPLETE (2026-03-10)
 
 > Infrastructure: persist shared task state + bidirectional context translation per engine.
+> **120 tests passed, 0 failures. Total: 1350 unit tests.**
 
-| # | Item | File | Notes |
+| # | Item | File | Status |
 |---|---|---|---|
-| 1 | `InMemorySharedTaskStateRepository` | `infrastructure/persistence/shared_task_state_repo.py` | Implements port, in-memory (PG migration later) |
-| 2 | `ContextAdapterPort` port | `domain/ports/context_adapter.py` | ABC: inject_context(state, memory) → str; extract_insights(output) → list |
-| 3 | `ClaudeCodeContextAdapter` | `infrastructure/cognitive/adapters/claude_code.py` | CLAUDE.md format injection, decision/artifact extraction |
-| 4 | `GeminiContextAdapter` | `infrastructure/cognitive/adapters/gemini.py` | Full context dump (2M window), research insight extraction |
-| 5 | `CodexContextAdapter` | `infrastructure/cognitive/adapters/codex.py` | AGENTS.md format, code output extraction |
-| 6 | `OllamaContextAdapter` | `infrastructure/cognitive/adapters/ollama.py` | Heavily compressed (ContextZipper), basic extraction |
-| 7 | `OpenHandsContextAdapter` | `infrastructure/cognitive/adapters/openhands.py` | REST task context, artifact extraction |
-| 8 | `ADKContextAdapter` | `infrastructure/cognitive/adapters/adk.py` | Workflow state injection, pipeline output extraction |
-| 9 | Tests | `tests/unit/infrastructure/test_context_adapters.py` | Each adapter: inject format + extract structure |
+| 1 | `ContextAdapterPort` port + `AdapterInsight` | `domain/ports/context_adapter.py` | ✅ |
+| 2 | `InMemorySharedTaskStateRepository` | `infrastructure/persistence/shared_task_state_repo.py` | ✅ |
+| 3 | `_base.py` shared helpers | `infrastructure/cognitive/adapters/_base.py` | ✅ |
+| 4 | `ClaudeCodeContextAdapter` | `infrastructure/cognitive/adapters/claude_code.py` | ✅ |
+| 5 | `GeminiContextAdapter` | `infrastructure/cognitive/adapters/gemini.py` | ✅ |
+| 6 | `CodexContextAdapter` | `infrastructure/cognitive/adapters/codex.py` | ✅ |
+| 7 | `OllamaContextAdapter` | `infrastructure/cognitive/adapters/ollama.py` | ✅ |
+| 8 | `OpenHandsContextAdapter` | `infrastructure/cognitive/adapters/openhands.py` | ✅ |
+| 9 | `ADKContextAdapter` | `infrastructure/cognitive/adapters/adk.py` | ✅ |
+| 10 | Repo tests (16) | `tests/unit/infrastructure/test_shared_task_state_repo.py` | ✅ |
+| 11 | Adapter tests (104) | `tests/unit/infrastructure/test_context_adapters.py` | ✅ |
 
 ### Sprint 7.3: Insight Extraction Pipeline
 
