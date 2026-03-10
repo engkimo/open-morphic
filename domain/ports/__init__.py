@@ -16,10 +16,12 @@ from domain.ports.execution_record_repository import (
     ExecutionRecordRepository,
     ExecutionStats,
 )
+from domain.ports.insight_extractor import ExtractedInsight, InsightExtractorPort
 from domain.ports.llm_gateway import LLMGateway
 from domain.ports.local_executor import LocalExecutorPort
 from domain.ports.mcp_client import MCPClientPort
 from domain.ports.memory_repository import MemoryRepository
+from domain.ports.shared_task_state_repository import SharedTaskStateRepository
 from domain.ports.task_repository import TaskRepository
 from domain.ports.tool_installer import InstallResult, ToolInstallerPort
 from domain.ports.tool_registry import ToolRegistryPort, ToolSearchResult
@@ -33,11 +35,14 @@ __all__ = [
     "EmbeddingPort",
     "ExecutionRecordRepository",
     "ExecutionStats",
+    "ExtractedInsight",
+    "InsightExtractorPort",
     "InstallResult",
     "LLMGateway",
     "LocalExecutorPort",
     "MCPClientPort",
     "MemoryRepository",
+    "SharedTaskStateRepository",
     "TaskRepository",
     "ToolInstallerPort",
     "ToolRegistryPort",
