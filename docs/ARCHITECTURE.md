@@ -801,3 +801,104 @@ Phase 6 COMPLETE: 3-tier self-evolution (tactical recovery + strategy learning +
   New API endpoints: 5, New CLI commands: 4, New settings: 4
   Also fixed: 19 pre-existing test_mcp_server.py failures (_FakeSettings updated)
 ```
+
+---
+
+## Unified Cognitive Layer (UCL) — Phase 7 Architecture
+
+> **Key Insight**: Individual AI agents are cognitive islands. The real power isn't a better model — it's shared cognition across all agents. UCL is the "connective tissue" that makes Morphic-Agent more than the sum of its parts.
+
+### Why UCL > Simple A2A
+
+| Approach | What it shares | What it doesn't |
+|---|---|---|
+| A2A Protocol | Task requests | Memory, decisions, context, artifacts |
+| MCP | Tool access | Reasoning, context, task state |
+| **UCL** | **Memory + Tasks + Decisions + Artifacts + Context** | — |
+
+### UCL Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   Unified Cognitive Layer (UCL)                  │
+│                                                                 │
+│  ┌────────────────────┐        ┌────────────────────┐          │
+│  │  Shared Task State  │        │  Shared Memory      │          │
+│  │  goals, subtasks,   │        │  (4-type hierarchy) │          │
+│  │  decisions, artifacts│        │  episodic, semantic, │          │
+│  │  blockers, history  │        │  procedural, working│          │
+│  └────────────────────┘        └────────────────────┘          │
+│                                                                 │
+│  ┌────────────────────┐        ┌────────────────────┐          │
+│  │  Context Adapters   │        │  Insight Extractor  │          │
+│  │  (bidirectional,    │        │  (post-execution,   │          │
+│  │   per-engine)       │        │   auto-store)       │          │
+│  └────────────────────┘        └────────────────────┘          │
+│                                                                 │
+│  ┌────────────────────┐        ┌────────────────────┐          │
+│  │  Agent Affinity     │        │  Conflict Resolver  │          │
+│  │  (context-fit)      │        │  (confidence-weight)│          │
+│  └────────────────────┘        └────────────────────┘          │
+└─────────────────────────────────────────────────────────────────┘
+         ↕              ↕              ↕              ↕
+   Claude Code     Gemini CLI     Codex CLI      Ollama ...
+```
+
+### New Domain Components (Phase 7)
+
+**Entities** (`domain/entities/cognitive.py`):
+- `Decision` — rationale, agent_engine, confidence, timestamp
+- `AgentAction` — action_type, summary, cost_usd
+- `SharedTaskState` — task_id, decisions, artifacts, blockers, agent_history
+- `AgentAffinityScore` — engine, topic, familiarity, recency, success_rate
+
+**Value Objects** (`domain/value_objects/cognitive.py`):
+- `CognitiveMemoryType` — EPISODIC, SEMANTIC, PROCEDURAL, WORKING
+
+**Ports** (new ABCs):
+- `SharedTaskStateRepository` — CRUD for shared task state
+- `InsightExtractorPort` — extract structured insights from agent output
+- `ContextAdapterPort` — bidirectional context translation per engine
+
+**Domain Services** (new):
+- `AgentAffinityScorer` — context-fit scoring (familiarity×0.4 + recency×0.25 + success×0.2 + cost×0.15)
+- `ConflictResolver` — confidence-weighted contradiction resolution
+- `MemoryClassifier` — auto-classify into 4 memory types
+
+**Use Cases** (new):
+- `ExtractInsightsUseCase` — post-execution: extract → conflict check → store → update task state
+- `HandoffTaskUseCase` — Agent A state capture → context prepare → Agent B delegation
+
+### Context Adapter Pattern
+
+Each engine speaks a different "context language". Adapters are OS device drivers for AI:
+
+```
+UCL Unified Memory ─── ContextAdapter ─── Engine-specific format
+                         │
+                    ┌────┴────┐
+                    │ inject  │  UCL → engine (pre-execution)
+                    │ extract │  engine → UCL (post-execution)
+                    └─────────┘
+```
+
+| Engine | inject() format | extract() targets |
+|---|---|---|
+| Claude Code | CLAUDE.md + compressed memory | Decisions, code changes, reasoning |
+| Codex CLI | AGENTS.md + task context | Code output, test results |
+| Gemini CLI | Full context (2M window) | Research findings, analysis |
+| ADK | Workflow state | Pipeline outputs, errors |
+| OpenHands | REST task + sandbox state | Artifacts, test results |
+| Ollama | ContextZipper compressed | Draft outputs |
+
+### Builds on Phase 3 Foundations
+
+| Existing (Phase 3) | UCL Role |
+|---|---|
+| SemanticFingerprint (LSH) | Dedup across agents (same concept = same hash) |
+| ContextZipper | Per-engine compression (token budget varies) |
+| ContextBridge | Evolves into Context Adapters |
+| ForgettingCurve | UCL memory lifecycle management |
+| DeltaEncoder | Shared state change tracking |
+| HierarchicalSummarizer | Multi-level views for different context windows |
+| L1-L4 Memory Hierarchy | 4 memory types map to existing layers |

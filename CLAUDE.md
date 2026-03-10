@@ -15,10 +15,11 @@
 - **OpenClaw超え**: 自律ツール発見・マーケットプレイス登録・他エージェントとの共有 + **ローカルPC直接制御（LAEE）でユーザーのマシンを「手足」にする**
 - **v0.3新軸: メタオーケストレーター**: OpenHands / Claude Code / Gemini CLI / Codex CLIを「専門実行エンジン」として統合管理 + Semantic Fingerprintで全AIの記憶を統一
 - **v0.4新軸: Local Autonomous Execution Engine (LAEE)**: ユーザーのローカルPCを直接操作。シェル・ファイル・ブラウザ・GUI・開発ツールをエージェントが自律制御。3段階承認モードでユーザー自己責任のもと full-auto 運用可能
+- **v0.5新軸: Unified Cognitive Layer (UCL)**: 全エージェントの記憶・タスク状態・判断を統合する共有認知層。タスクをAgent AからAgent Bへ完全引き継ぎ。個々のAIは「脳の領域」、UCLは「記憶と意識の統合」。他フレームワークにない独自性
 
 ---
 
-## 🏗️ Architecture Overview (v0.3)
+## 🏗️ Architecture Overview (v0.5)
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -1919,10 +1920,16 @@ TASK_SANDBOX=docker
 - [ ] エージェントエンジン選択の自動最適化（どのエンジンが得意か学習）
 - [ ] 進化レポートダッシュボード
 
-### Phase 7: A2A & Scale (Week 13-14)
-- [ ] A2Aプロトコル
-- [ ] 並列エージェント協調
-- [ ] ベンチマーク（vs Manus / Devin / OpenHands）
+### Phase 7: Unified Cognitive Layer + Meta-Orchestration v2 (Week 13-16)
+> 全AIエージェントの記憶・タスク状態・判断を共有する「統合認知層」。A2Aを超え、共有認知へ。
+- [ ] UCLドメインモデル（SharedTaskState, Decision, AgentAction, CognitiveMemoryType）
+- [ ] Context Adapters（エンジンごとの双方向コンテキスト変換: Claude Code/Gemini/Codex/Ollama/OpenHands/ADK）
+- [ ] Insight Extraction Pipeline（実行後の自動知識抽出→UCLメモリ＋タスク状態更新）
+- [ ] Agent Affinity Scoring（どのエンジンがこのトピックを最も知っているか）
+- [ ] Task Handoff（Agent A → Agent B、判断・成果物・ブロッカー含む完全引き継ぎ）
+- [ ] Conflict Resolver（エージェント間の矛盾検出・信頼度重み付き解決）
+- [ ] UCL API + CLI + UI
+- [ ] クロスエンジン統合テスト＋コンテキスト継続性ベンチマーク
 
 ---
 
@@ -2078,10 +2085,21 @@ REFERENCES = {
 
 *Morphic-Agent — Intelligence that grows with every task.*
 *"The boat on the rising tide of model progress, not the pillar stuck to the seabed." — Manus*
-*Build date: 2026-02-25 | Version: 0.4.0-alpha*
+*Build date: 2026-03-10 | Version: 0.5.0-alpha*
 
 ---
 
+> **CHANGELOG v0.4 → v0.5:**
+> - **[NEW] Unified Cognitive Layer (UCL)**: 全エージェントの記憶・タスク状態・判断を統合する共有認知層
+> - **[NEW] SharedTaskState**: 判断（Decision）・成果物・ブロッカー・エージェント行動履歴をクロスエージェント共有
+> - **[NEW] Context Adapters**: エンジンごとの双方向コンテキスト変換（inject/extract）。OSのデバイスドライバ的設計
+> - **[NEW] Insight Extraction Pipeline**: 実行後自動知識抽出→UCLメモリ＋タスク状態更新
+> - **[NEW] Agent Affinity Scoring**: コンテキスト適合度でルーティング（どのエンジンがこのトピックを最も理解しているか）
+> - **[NEW] Task Handoff**: Agent A → Agent B、判断・成果物・ブロッカー含む完全引き継ぎ
+> - **[NEW] Conflict Resolver**: エージェント間の矛盾検出・信頼度重み付き解決
+> - **[UPDATE] Phase 7を全面再設計**: A2A & Scale → Unified Cognitive Layer + Meta-Orchestration v2（6スプリント）
+> - **[UPDATE] 差別化軸追加**: v0.5 共有認知（他フレームワークにない独自性）
+>
 > **CHANGELOG v0.3 → v0.4:**
 > - **[NEW] Local Autonomous Execution Engine (LAEE)**: ローカルPC直接操作。shell/fs/browser/gui/dev/cron 6カテゴリ・40+ツール
 > - **[NEW] 3-Tier Approval Mode**: full-auto / confirm-destructive / confirm-all でユーザー自己責任制御

@@ -2103,3 +2103,234 @@ Use cases:           12
 API endpoints:       ~30
 CLI subcommands:     ~25
 ```
+
+---
+
+## TD-050: Unified Cognitive Layer (UCL) — Beyond A2A
+
+**Date**: 2026-03-10
+**Status**: Accepted (Phase 7 redesign)
+
+### Problem
+
+The original Phase 7 plan was "A2A Protocol + Benchmarks" — standard agent-to-agent task delegation. But the real problem is deeper: **every AI agent is a cognitive island**.
+
+```
+Current reality:
+  Claude Code ──── own context, own memory, own task state
+  Cursor     ──── own context, own memory, own task state
+  Gemini     ──── own context, own memory, own task state
+  ChatGPT    ──── own context, own memory, own task state
+
+  Human = the "bus" connecting these islands (copy-paste, re-explain, repeat)
+```
+
+A2A solves task delegation ("Agent A asks Agent B to do X") but does NOT solve:
+- **Memory sharing**: Agent B doesn't know what Agent A learned
+- **Task continuity**: Agent B can't pick up where Agent A left off
+- **Decision context**: Agent B doesn't know WHY Agent A made certain choices
+
+### Decision
+
+Replace Phase 7's simple A2A protocol with a **Unified Cognitive Layer (UCL)** — a shared substrate for memory, task state, and context across all agent engines.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                   Unified Cognitive Layer (UCL)                      │
+│                                                                     │
+│  ┌─────────────────────┐     ┌─────────────────────┐               │
+│  │  Shared Task State   │     │  Shared Memory       │               │
+│  │                     │     │  (4-type hierarchy)  │               │
+│  │  • Active goals     │     │                     │               │
+│  │  • SubTask progress │     │  • Episodic:  what happened          │
+│  │  • Decisions made   │     │  • Semantic:  what we know           │
+│  │  • Artifacts        │     │  • Procedural: how to do things     │
+│  │  • Blockers         │     │  • Working:   what we're doing now  │
+│  └─────────────────────┘     └─────────────────────┘               │
+│                                                                     │
+│  ┌─────────────────────┐     ┌─────────────────────┐               │
+│  │  Context Adapters    │     │  Insight Extractor   │               │
+│  │  (per-engine, bidi) │     │  (post-execution)   │               │
+│  │                     │     │                     │               │
+│  │  UCL → engine fmt   │     │  engine output → UCL │               │
+│  │  CLAUDE.md, AGENTS  │     │  facts, decisions,  │               │
+│  │  .md, llms-full.txt │     │  artifacts, errors  │               │
+│  └─────────────────────┘     └─────────────────────┘               │
+│                                                                     │
+│  ┌─────────────────────┐     ┌─────────────────────┐               │
+│  │  Agent Affinity      │     │  Conflict Resolver   │               │
+│  │  (context-fit score)│     │  (confidence-weight) │               │
+│  │                     │     │                     │               │
+│  │  "Who knows most    │     │  Agent A says X,    │               │
+│  │   about this topic?"│     │  Agent B says Y     │               │
+│  │                     │     │  → resolve by score  │               │
+│  └─────────────────────┘     └─────────────────────┘               │
+└─────────────────────────────────────────────────────────────────────┘
+         ↕                    ↕                    ↕
+   Claude Code           Gemini CLI           Codex CLI ...
+```
+
+### 4 Memory Types
+
+| Type | Purpose | Example | Maps to Existing |
+|---|---|---|---|
+| **Episodic** | What happened (cross-agent history) | "Claude Code refactored auth.py in Sprint 3" | L2 MemoryRepository |
+| **Semantic** | What we know (project world model) | "API uses JWT, DB is PostgreSQL" | L3 KnowledgeGraphPort |
+| **Procedural** | How to do things (learned workflows) | "Tests go in tests/unit/, run with uv run pytest" | RecoveryRule, Strategy |
+| **Working** | What we're doing now (active context) | Current goals, blockers, in-progress tasks | L1 ActiveContext + TaskEntity |
+
+### Shared Task State
+
+Beyond memory, agents share **task state** — not just "what task to do" but full lifecycle:
+
+```python
+class SharedTaskState:
+    """Cross-agent task awareness. Any agent can see and continue any task."""
+    goal: str                          # What we're trying to achieve
+    subtasks: list[SubTask]            # Current decomposition with statuses
+    decisions: list[Decision]          # WHY choices were made (not just WHAT)
+    artifacts: dict[str, str]          # Files created, outputs generated
+    blockers: list[str]               # What's preventing progress
+    agent_history: list[AgentAction]   # Which agent did what (audit trail)
+```
+
+Key capability: **Task handoff** — Agent A partially completes, UCL captures state, Agent B continues seamlessly.
+
+### Context Adapter Pattern
+
+Each engine speaks a different "context language". Adapters translate bidirectionally:
+
+| Engine | Inject Format | Extract Targets |
+|---|---|---|
+| Claude Code | CLAUDE.md + compressed memory | Decisions, code changes, reasoning |
+| Codex CLI | AGENTS.md + task context | Code output, test results |
+| Gemini CLI | Full context dump (2M allows it) | Research findings, analysis |
+| ADK | Workflow state + tool results | Pipeline outputs, errors |
+| OpenHands | REST task description + sandbox state | Artifacts, test results |
+| Ollama | Heavily compressed (small window) | Draft outputs |
+
+This is analogous to **device drivers in an OS** — the kernel has a unified I/O model, each driver translates to hardware-specific protocols.
+
+### Insight Extraction Pipeline
+
+After every agent execution, structured insights flow back to UCL:
+
+```
+Agent execution completes
+    → Extract structured facts (entities, relationships)
+    → Extract decisions (what was chosen and why)
+    → Extract artifacts (files created/modified)
+    → Extract errors (what failed and potential fixes)
+    → Conflict check (does this contradict existing memory?)
+    → Store in appropriate memory type (episodic/semantic/procedural)
+    → Update shared task state (progress, blockers)
+```
+
+### Agent Affinity Scoring
+
+Not just "which engine is cheapest" but "which engine knows most about this topic":
+
+```python
+affinity_score = (
+    context_familiarity * 0.40    # Has this engine worked on related tasks?
+    + recency * 0.25              # How recently did it work on this area?
+    + success_rate * 0.20         # How often does it succeed with this task type?
+    + cost_efficiency * 0.15      # Cost per quality unit
+)
+```
+
+### Builds on Existing Foundations
+
+| Existing Component | Role in UCL |
+|---|---|
+| SemanticFingerprint (LSH) | Content-addressable key for deduplication across agents |
+| ContextZipper | Per-engine compression with token budgets |
+| ContextBridge | Evolves into Context Adapters (already has 4-platform export) |
+| ForgettingCurve | Governs UCL memory lifecycle |
+| DeltaEncoder | Tracks shared state changes (Git-style) |
+| HierarchicalSummarizer | Multi-level UCL views for different context windows |
+| StrategyStore (JSONL) | Persists agent affinity and procedural memory |
+| ExecutionRecord | Feeds insight extraction pipeline |
+| AgentEngineRouter | Extended with affinity scoring |
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| Simple A2A (task delegation only) | Doesn't solve memory sharing or context continuity |
+| Shared vector DB only | No task state sharing, no structured facts, no conflict resolution |
+| Single mega-agent (one model does everything) | No model excels at everything. Specialization + unification > generalization |
+| MCP-only integration | MCP is tool-level, not cognition-level. Agents need shared understanding, not just shared tools |
+
+### Risks and Mitigations
+
+| Risk | Mitigation |
+|---|---|
+| Extraction quality varies by engine | Structured output templates per engine, fallback to keyword extraction |
+| Memory conflicts across agents | Confidence-weighted resolution + human-in-the-loop for high-stakes |
+| Context adapter maintenance burden | Abstract adapter interface, most logic shared |
+| Over-sharing sensitive information | Memory classification (RiskLevel applied to memories) |
+| Performance overhead of extraction | Async post-execution, non-blocking |
+
+---
+
+## TD-051: Shared Task State — Cross-Agent Task Continuity
+
+**Date**: 2026-03-10
+**Status**: Accepted (Phase 7, Sprint 7.2)
+
+### Decision
+
+Extend TaskEntity with cross-agent awareness: decisions log, artifact tracking, and agent action history. Any agent can see full task state and continue where another left off.
+
+### Design
+
+```python
+# New domain entities (domain/entities/cognitive.py)
+
+class Decision(BaseModel):
+    """Records WHY a choice was made, not just WHAT."""
+    model_config = ConfigDict(strict=True, validate_assignment=True)
+    description: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+    agent_engine: AgentEngineType
+    timestamp: datetime
+    confidence: float = Field(ge=0.0, le=1.0)
+
+class AgentAction(BaseModel):
+    """Audit trail of which agent did what."""
+    model_config = ConfigDict(strict=True, validate_assignment=True)
+    agent_engine: AgentEngineType
+    action_type: str = Field(min_length=1)   # "execute", "plan", "review", "handoff"
+    summary: str = Field(min_length=1)
+    timestamp: datetime
+    cost_usd: float = Field(ge=0.0)
+
+class SharedTaskState(BaseModel):
+    """Cross-agent task awareness."""
+    model_config = ConfigDict(strict=True, validate_assignment=True)
+    task_id: str = Field(min_length=1)
+    decisions: list[Decision] = Field(default_factory=list)
+    artifacts: dict[str, str] = Field(default_factory=dict)
+    blockers: list[str] = Field(default_factory=list)
+    agent_history: list[AgentAction] = Field(default_factory=list)
+```
+
+### Rationale
+
+- **Decisions**: Without recording WHY, the next agent makes the same mistake or contradicts
+- **Artifacts**: Agent B needs to know what files Agent A created/modified
+- **Agent history**: Full audit trail enables affinity scoring and debugging
+- **Blockers**: Shared blocker awareness prevents duplicate failed attempts
+
+### Integration with TaskEntity
+
+SharedTaskState is a **companion** to TaskEntity, not a replacement. TaskEntity stays clean (domain). SharedTaskState is managed by UCL (application layer).
+
+```
+TaskEntity (domain)  ←→  SharedTaskState (UCL)
+    goal, subtasks            decisions, artifacts, agent_history
+    status, cost              blockers, handoff context
+```

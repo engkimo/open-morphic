@@ -1363,22 +1363,101 @@ class ContextZipper:
 
 ---
 
-## Phase 7: A2A & Scale (Week 13-14)
+## Phase 7: Unified Cognitive Layer + Meta-Orchestration v2 (Week 13-16)
 
-> **Goal**: Multi-agent coordination + benchmarks
+> **Goal**: Shared memory + shared task state across all agent engines. Any agent can see, continue, and build on any other agent's work. The "memory hub" that makes the whole greater than the sum of parts.
+>
+> **Key Insight**: A2A (task delegation) is necessary but insufficient. The real value is **shared cognition** — agents that share understanding, not just tasks.
 
-| # | Item | File |
-|---|---|---|
-| 7.1 | A2A Protocol implementation | `infrastructure/a2a/protocol.py` |
-| 7.2 | Agent Coordinator | `infrastructure/a2a/coordinator.py` |
-| 7.3 | Multi-Agent Parallel | `infrastructure/a2a/parallel.py` |
-| 7.4 | Benchmark Suite | `benchmarks/` |
-| 7.5 | vs Manus / Devin / OpenHands comparison | `benchmarks/results/` |
+### Sprint 7.1: UCL Domain Foundation
+
+> Domain entities, value objects, and ports for the Unified Cognitive Layer.
+
+| # | Item | File | Notes |
+|---|---|---|---|
+| 1 | `CognitiveMemoryType` value object | `domain/value_objects/cognitive.py` | Enum: EPISODIC, SEMANTIC, PROCEDURAL, WORKING |
+| 2 | `Decision` entity | `domain/entities/cognitive.py` | description, rationale, agent_engine, confidence, timestamp |
+| 3 | `AgentAction` entity | `domain/entities/cognitive.py` | agent_engine, action_type, summary, cost_usd, timestamp |
+| 4 | `SharedTaskState` entity | `domain/entities/cognitive.py` | task_id, decisions, artifacts, blockers, agent_history |
+| 5 | `AgentAffinityScore` entity | `domain/entities/cognitive.py` | engine, topic, familiarity, recency, success_rate, cost_efficiency |
+| 6 | `SharedTaskStateRepository` port | `domain/ports/shared_task_state_repository.py` | save, get, list_active, update_decisions, update_artifacts |
+| 7 | `InsightExtractorPort` port | `domain/ports/insight_extractor.py` | extract_from_output(engine, output) → list[MemoryEntry] |
+| 8 | `AgentAffinityScorer` domain service | `domain/services/agent_affinity.py` | Pure scoring: familiarity×0.4 + recency×0.25 + success×0.2 + cost×0.15 |
+| 9 | Tests | `tests/unit/domain/test_cognitive.py` | Strict validation, scoring logic, affinity ranking |
+
+### Sprint 7.2: Shared Task State + Context Adapters
+
+> Infrastructure: persist shared task state + bidirectional context translation per engine.
+
+| # | Item | File | Notes |
+|---|---|---|---|
+| 1 | `InMemorySharedTaskStateRepository` | `infrastructure/persistence/shared_task_state_repo.py` | Implements port, in-memory (PG migration later) |
+| 2 | `ContextAdapterPort` port | `domain/ports/context_adapter.py` | ABC: inject_context(state, memory) → str; extract_insights(output) → list |
+| 3 | `ClaudeCodeContextAdapter` | `infrastructure/cognitive/adapters/claude_code.py` | CLAUDE.md format injection, decision/artifact extraction |
+| 4 | `GeminiContextAdapter` | `infrastructure/cognitive/adapters/gemini.py` | Full context dump (2M window), research insight extraction |
+| 5 | `CodexContextAdapter` | `infrastructure/cognitive/adapters/codex.py` | AGENTS.md format, code output extraction |
+| 6 | `OllamaContextAdapter` | `infrastructure/cognitive/adapters/ollama.py` | Heavily compressed (ContextZipper), basic extraction |
+| 7 | `OpenHandsContextAdapter` | `infrastructure/cognitive/adapters/openhands.py` | REST task context, artifact extraction |
+| 8 | `ADKContextAdapter` | `infrastructure/cognitive/adapters/adk.py` | Workflow state injection, pipeline output extraction |
+| 9 | Tests | `tests/unit/infrastructure/test_context_adapters.py` | Each adapter: inject format + extract structure |
+
+### Sprint 7.3: Insight Extraction Pipeline
+
+> Post-execution pipeline: agent output → structured insights → UCL memory + task state update.
+
+| # | Item | File | Notes |
+|---|---|---|---|
+| 1 | `InsightExtractor` implementation | `infrastructure/cognitive/insight_extractor.py` | Regex + keyword extraction (LLM-enhanced later) |
+| 2 | `ConflictResolver` domain service | `domain/services/conflict_resolver.py` | Confidence-weighted, recency-biased, detects contradictions |
+| 3 | `ExtractInsightsUseCase` | `application/use_cases/extract_insights.py` | Orchestrates: extract → conflict check → store → update task state |
+| 4 | `MemoryClassifier` domain service | `domain/services/memory_classifier.py` | Auto-classify into EPISODIC/SEMANTIC/PROCEDURAL/WORKING |
+| 5 | Integration with ExecuteTaskUseCase | `application/use_cases/execute_task.py` | Post-execution hook: auto-extract + auto-store |
+| 6 | Tests | `tests/unit/application/test_extract_insights.py` | Extraction accuracy, conflict detection, classification |
+
+### Sprint 7.4: Affinity-Aware Routing + Task Handoff
+
+> Extend AgentEngineRouter with affinity scoring. Enable cross-agent task handoff.
+
+| # | Item | File | Notes |
+|---|---|---|---|
+| 1 | Extend `AgentEngineRouter` | `domain/services/agent_engine_router.py` | Add affinity_score to routing decision (alongside cost/capability) |
+| 2 | `HandoffTaskUseCase` | `application/use_cases/handoff_task.py` | Capture state from Agent A → prepare context for Agent B → delegate |
+| 3 | `AffinityStore` | `infrastructure/cognitive/affinity_store.py` | JSONL persistence (topic → engine → scores), updated after each execution |
+| 4 | Update `RouteToEngineUseCase` | `application/use_cases/route_to_engine.py` | Inject shared context via ContextAdapter before engine execution |
+| 5 | Tests | `tests/unit/application/test_handoff.py` | Handoff preserves decisions, artifacts, blockers |
+
+### Sprint 7.5: UCL API + CLI + UI
+
+> Expose UCL capabilities through all interfaces.
+
+| # | Item | File | Notes |
+|---|---|---|---|
+| 1 | UCL API endpoints | `interface/api/routes/cognitive.py` | GET /cognitive/state/{task_id}, GET /memory/shared, POST /handoff |
+| 2 | UCL CLI commands | `interface/cli/commands/cognitive.py` | morphic cognitive {state|memory|handoff|affinity} |
+| 3 | UCL UI page | `ui/app/cognitive/page.tsx` | Shared state viewer, memory timeline, agent action history |
+| 4 | AppContainer wiring | `interface/api/deps.py` | Wire UCL repos, adapters, use cases |
+| 5 | Tests | `tests/unit/interface/test_cognitive_*.py` | API + CLI endpoint tests |
+
+### Sprint 7.6: Integration Testing + Benchmarks
+
+> Cross-engine scenarios, context continuity measurement, benchmarks.
+
+| # | Item | File | Notes |
+|---|---|---|---|
+| 1 | Cross-engine integration tests | `tests/integration/test_ucl_cross_engine.py` | Start in Claude Code → handoff to Gemini → verify context preserved |
+| 2 | Context continuity benchmark | `benchmarks/context_continuity.py` | Measure: how much context survives cross-agent handoff |
+| 3 | Memory deduplication accuracy | `benchmarks/dedup_accuracy.py` | Same fact from 2 agents → single entry (SemanticFingerprint) |
+| 4 | A2A protocol (if needed) | `infrastructure/a2a/protocol.py` | Standard agent discovery + task delegation (built on UCL) |
+| 5 | Benchmark dashboard | `ui/app/benchmarks/page.tsx` | Results visualization |
 
 **Phase 7 Completion Criteria:**
-- [ ] 3 agents coordinate via A2A to complete a task
-- [ ] SWE-bench lite score measured
-- [ ] Benchmark results dashboard
+- [ ] Shared task state persists across agent handoffs (decisions, artifacts, blockers)
+- [ ] Shared memory accessible from all 6 agent engines
+- [ ] Context adapters inject/extract for each engine type
+- [ ] Insight extraction auto-runs after task execution
+- [ ] Agent affinity scoring influences routing decisions
+- [ ] Cross-engine task handoff demonstrated (Agent A → Agent B with full context)
+- [ ] Context continuity score > 85% in benchmarks
 
 ---
 
@@ -1424,6 +1503,12 @@ Sprint 1.1 (Infra)
 | 3 | Memory compression ratio | 98% (10K→500 tokens) |
 | 3 | Context restoration accuracy | > 90% |
 | 4 | Agent CLI routing accuracy | > 85% |
+| 5 | Memory compression ratio | 98% (10K→500 tokens) |
+| 5 | MCP tool safety scoring accuracy | > 90% |
+| 6 | Self-evolution strategy improvement | +15%/month |
+| 7 | Cross-engine context continuity | > 85% |
+| 7 | Memory deduplication accuracy | > 90% |
+| 7 | Task handoff success rate | > 90% |
 
 ---
 
