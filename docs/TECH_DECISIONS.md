@@ -2334,3 +2334,102 @@ TaskEntity (domain)  ←→  SharedTaskState (UCL)
     goal, subtasks            decisions, artifacts, agent_history
     status, cost              blockers, handoff context
 ```
+
+---
+
+## TD-052: Context Adapter Pattern — OS Device Driver Analogy
+
+**Date**: 2026-03-10
+**Status**: Accepted (Phase 7, Sprint 7.2)
+
+### Problem
+
+Each agent engine speaks a different "context language":
+- Claude Code expects CLAUDE.md markdown
+- Codex CLI expects AGENTS.md format
+- Gemini CLI can accept 2M tokens of XML-tagged context
+- Ollama needs ultra-compact context (small window)
+- OpenHands receives REST task descriptions
+- ADK uses workflow-state XML
+
+UCL needs bidirectional translation: inject shared state into each engine's format, and extract insights from each engine's output.
+
+### Decision
+
+Create a `ContextAdapterPort` ABC with `inject_context()` and `extract_insights()` methods, implemented by 6 engine-specific adapters. Shared regex patterns and formatters live in `_base.py`.
+
+### Architecture
+
+```
+ContextAdapterPort (domain/ports/)
+    │
+    ├── inject_context(state, memory, max_tokens) → str
+    │   Translates UCL SharedTaskState + memory into engine-specific format
+    │
+    └── extract_insights(output) → list[AdapterInsight]
+        Extracts structured insights from raw engine output
+```
+
+Analogous to **OS device drivers**: the kernel (UCL) has a unified I/O model, each driver (adapter) translates to hardware-specific protocols.
+
+### Per-Engine Format Choices
+
+| Engine | Inject Format | Rationale |
+|---|---|---|
+| Claude Code | `# Morphic-Agent Shared Context` markdown | Matches CLAUDE.md convention |
+| Gemini CLI | `<morphic-context>` XML blocks | XML tags help structure in 2M window |
+| Codex CLI | `# AGENTS.md` flat markdown | Matches Codex AGENTS.md convention |
+| Ollama | Ultra-compact key: value lines | Minimizes tokens for small context window |
+| OpenHands | `# Task Context` REST description | Matches OpenHands task input format |
+| ADK | `<workflow-context>` XML | Matches ADK workflow state pattern |
+
+### Extraction Strategy
+
+Regex-based keyword extraction (Phase 1). Patterns in `_base.py`:
+- `_DECISION_PATTERN`: "decided/chose/selected/went with..."
+- `_ERROR_PATTERN`: "error/failed/exception/traceback..."
+- `_FILE_PATTERN`: "created/modified/wrote file..."
+- `_FACT_PATTERN`: "uses/requires/depends on..."
+
+LLM-enhanced extraction planned for Sprint 7.3.
+
+### Confidence Calibration
+
+Engine-specific confidence scores reflect model quality:
+- Codex file artifacts: 0.9 (code-centric engine, high reliability)
+- Claude Code decisions: 0.7 (strong reasoning)
+- Gemini facts: 0.7 (research-focused)
+- Ollama all insights: 0.4-0.6 (smaller models, lower reliability)
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| Single format for all engines | Wastes context window (Ollama), underutilizes capacity (Gemini 2M) |
+| LLM-only extraction | Too slow for post-execution pipeline, regex sufficient for Phase 1 |
+| Engine-specific ports (no shared ABC) | Prevents polymorphic adapter registry and unified testing |
+
+---
+
+## TD-053: InMemorySharedTaskStateRepository — Dev-First Persistence
+
+**Date**: 2026-03-10
+**Status**: Accepted (Phase 7, Sprint 7.2)
+
+### Decision
+
+Implement `SharedTaskStateRepository` as in-memory dict store for dev/testing. PG migration planned when persistence across restarts is needed.
+
+### Design
+
+- `dict[str, SharedTaskState]` storage keyed by `task_id`
+- `list_active()` returns states with blockers OR updated within 24h
+- All methods are async (consistent with DB-backed interface)
+- `append_action()` delegates to `SharedTaskState.add_action()` (entity method)
+- No-op on missing task_id (graceful degradation)
+
+### Rationale
+
+- Matches existing pattern (`InMemoryExecutionRecordRepository`)
+- Zero infrastructure cost for development
+- Port interface unchanged when migrating to PG

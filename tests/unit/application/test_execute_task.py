@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from application.use_cases.execute_task import ExecuteTaskUseCase, TaskNotFoundError
+from application.use_cases.extract_insights import ExtractInsightsUseCase
 from domain.entities.task import SubTask, TaskEntity
 from domain.ports.task_engine import TaskEngine
 from domain.ports.task_repository import TaskRepository
@@ -102,3 +103,101 @@ class TestExecuteTask:
         result = await use_case.execute(task.id)
 
         assert result.total_cost_usd == pytest.approx(0.02)
+
+
+class TestExecuteTaskWithInsights:
+    """Integration of insight extraction into ExecuteTaskUseCase."""
+
+    @pytest.fixture
+    def extract_uc(self) -> AsyncMock:
+        return AsyncMock(spec=ExtractInsightsUseCase)
+
+    @pytest.fixture
+    def uc_with_insights(
+        self, engine: AsyncMock, repo: AsyncMock, extract_uc: AsyncMock
+    ) -> ExecuteTaskUseCase:
+        return ExecuteTaskUseCase(engine, repo, extract_insights=extract_uc)
+
+    async def test_calls_extract_after_execution(
+        self,
+        uc_with_insights: ExecuteTaskUseCase,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        extract_uc: AsyncMock,
+    ) -> None:
+        task = _make_task(SubTaskStatus.SUCCESS)
+        task.subtasks[0].result = "uses PostgreSQL"
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        await uc_with_insights.execute(task.id)
+
+        extract_uc.extract_and_store.assert_called_once()
+
+    async def test_not_called_when_none(self, engine: AsyncMock, repo: AsyncMock) -> None:
+        uc = ExecuteTaskUseCase(engine, repo, extract_insights=None)
+        task = _make_task(SubTaskStatus.SUCCESS)
+        task.subtasks[0].result = "something"
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        result = await uc.execute(task.id)
+        assert result.status == TaskStatus.SUCCESS
+
+    async def test_extraction_failure_does_not_block(
+        self,
+        uc_with_insights: ExecuteTaskUseCase,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        extract_uc: AsyncMock,
+    ) -> None:
+        task = _make_task(SubTaskStatus.SUCCESS)
+        task.subtasks[0].result = "result text"
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+        extract_uc.extract_and_store.side_effect = RuntimeError("boom")
+
+        result = await uc_with_insights.execute(task.id)
+        assert result.status == TaskStatus.SUCCESS
+
+    async def test_receives_subtask_results(
+        self,
+        uc_with_insights: ExecuteTaskUseCase,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        extract_uc: AsyncMock,
+    ) -> None:
+        task = _make_task(SubTaskStatus.SUCCESS, SubTaskStatus.SUCCESS)
+        task.subtasks[0].result = "result A"
+        task.subtasks[1].result = "result B"
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        await uc_with_insights.execute(task.id)
+
+        call_kwargs = extract_uc.extract_and_store.call_args
+        output = (
+            call_kwargs.kwargs.get("output") or call_kwargs[1].get("output") or call_kwargs[0][2]
+        )
+        assert "result A" in output
+        assert "result B" in output
+
+    async def test_receives_subtask_errors(
+        self,
+        uc_with_insights: ExecuteTaskUseCase,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        extract_uc: AsyncMock,
+    ) -> None:
+        task = _make_task(SubTaskStatus.FAILED)
+        task.subtasks[0].error = "connection timeout"
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        await uc_with_insights.execute(task.id)
+
+        call_kwargs = extract_uc.extract_and_store.call_args
+        output = (
+            call_kwargs.kwargs.get("output") or call_kwargs[1].get("output") or call_kwargs[0][2]
+        )
+        assert "connection timeout" in output

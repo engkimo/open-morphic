@@ -529,7 +529,10 @@ domain/ports/
 ├── agent_engine.py         # Agent execution engine interface (Sprint 4.1)
 ├── tool_registry.py        # MCP tool registry search (Sprint 5.2)
 ├── tool_installer.py       # Tool install/uninstall (Sprint 5.3)
-└── execution_record_repository.py # Execution record CRUD + stats (Sprint 6.1)
+├── execution_record_repository.py # Execution record CRUD + stats (Sprint 6.1)
+├── shared_task_state_repository.py # Shared task state CRUD + list_active (Sprint 7.1)
+├── insight_extractor.py    # Insight extraction from agent output (Sprint 7.1)
+└── context_adapter.py      # Bidirectional UCL ↔ engine context translation (Sprint 7.2)
 ```
 
 ### 4. Services are Pure Functions

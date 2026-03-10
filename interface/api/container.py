@@ -13,6 +13,7 @@ from application.use_cases.cost_estimator import CostEstimator
 from application.use_cases.create_task import CreateTaskUseCase
 from application.use_cases.discover_tools import DiscoverToolsUseCase
 from application.use_cases.execute_task import ExecuteTaskUseCase
+from application.use_cases.extract_insights import ExtractInsightsUseCase
 from application.use_cases.install_tool import InstallToolUseCase
 from application.use_cases.interactive_plan import InteractivePlanUseCase
 from application.use_cases.manage_ollama import ManageOllamaUseCase
@@ -20,11 +21,13 @@ from application.use_cases.route_to_engine import RouteToEngineUseCase
 from application.use_cases.systemic_evolution import SystemicEvolutionUseCase
 from application.use_cases.update_strategy import UpdateStrategyUseCase
 from domain.ports.agent_engine import AgentEnginePort
+from domain.ports.context_adapter import ContextAdapterPort
 from domain.ports.cost_repository import CostRepository
 from domain.ports.embedding import EmbeddingPort
 from domain.ports.execution_record_repository import ExecutionRecordRepository
 from domain.ports.memory_repository import MemoryRepository
 from domain.ports.plan_repository import PlanRepository
+from domain.ports.shared_task_state_repository import SharedTaskStateRepository
 from domain.ports.task_repository import TaskRepository
 from domain.value_objects.agent_engine import AgentEngineType
 from infrastructure.llm.cost_tracker import CostTracker
@@ -88,11 +91,6 @@ class AppContainer:
             engine=self.task_engine,
             repo=self.task_repo,
         )
-        self.execute_task = ExecuteTaskUseCase(
-            engine=self.task_engine,
-            repo=self.task_repo,
-        )
-
         # Planning
         self.cost_estimator = CostEstimator()
         self.interactive_plan = InteractivePlanUseCase(
@@ -167,6 +165,28 @@ class AppContainer:
         # Engine routing use case (Sprint 4.3)
         self.route_to_engine = RouteToEngineUseCase(drivers=self.agent_drivers)
 
+        # UCL: Insight Extraction Pipeline (Sprint 7.3)
+        self._context_adapters: dict[AgentEngineType, ContextAdapterPort] = (
+            self._wire_context_adapters()
+        )
+        self.shared_task_state_repo: SharedTaskStateRepository = (
+            self._create_shared_task_state_repo()
+        )
+        from infrastructure.cognitive.insight_extractor import InsightExtractor
+
+        self.insight_extractor = InsightExtractor(adapters=self._context_adapters)
+        self.extract_insights = ExtractInsightsUseCase(
+            extractor=self.insight_extractor,
+            memory_repo=self.memory_repo,
+            task_state_repo=self.shared_task_state_repo,
+        )
+        # Re-wire execute_task with insight extraction
+        self.execute_task = ExecuteTaskUseCase(
+            engine=self.task_engine,
+            repo=self.task_repo,
+            extract_insights=self.extract_insights,
+        )
+
         # Evolution (Phase 6)
         self.execution_record_repo: ExecutionRecordRepository = self._create_execution_record_repo()
         from infrastructure.evolution.strategy_store import StrategyStore
@@ -187,6 +207,34 @@ class AppContainer:
             update_strategy=self.update_strategy,
             discover_tools=self.discover_tools if self.settings.marketplace_enabled else None,
         )
+
+    def _wire_context_adapters(self) -> dict[AgentEngineType, ContextAdapterPort]:
+        """Create UCL context adapters for all engine types."""
+        from infrastructure.cognitive.adapters import (
+            ADKContextAdapter,
+            ClaudeCodeContextAdapter,
+            CodexContextAdapter,
+            GeminiContextAdapter,
+            OllamaContextAdapter,
+            OpenHandsContextAdapter,
+        )
+
+        return {
+            AgentEngineType.CLAUDE_CODE: ClaudeCodeContextAdapter(),
+            AgentEngineType.GEMINI_CLI: GeminiContextAdapter(),
+            AgentEngineType.CODEX_CLI: CodexContextAdapter(),
+            AgentEngineType.OPENHANDS: OpenHandsContextAdapter(),
+            AgentEngineType.ADK: ADKContextAdapter(),
+            AgentEngineType.OLLAMA: OllamaContextAdapter(),
+        }
+
+    def _create_shared_task_state_repo(self) -> SharedTaskStateRepository:
+        """Create SharedTaskState repository (in-memory for now)."""
+        from infrastructure.persistence.shared_task_state_repo import (
+            InMemorySharedTaskStateRepository,
+        )
+
+        return InMemorySharedTaskStateRepository()
 
     def _wire_agent_drivers(self) -> dict[AgentEngineType, AgentEnginePort]:
         """Create all agent engine drivers based on settings."""
