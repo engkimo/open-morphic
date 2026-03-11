@@ -12,6 +12,7 @@
 > **Phase 7 UCL: Sprint 7.2 COMPLETE** (2026-03-10) — ContextAdapterPort + InMemorySharedTaskStateRepo + 6 context adapters (Claude Code, Gemini, Codex, Ollama, OpenHands, ADK) — 1350 unit tests + 37 integration
 > **Phase 7 UCL: Sprint 7.3 COMPLETE** (2026-03-11) — Insight Extraction Pipeline (MemoryClassifier + ConflictResolver + InsightExtractor + ExtractInsightsUseCase + ExecuteTask integration + container wiring) — 1438 unit tests + 37 integration
 > **Phase 7 UCL: Sprint 7.4 COMPLETE** (2026-03-11) — Affinity-Aware Routing + Task Handoff (AgentAffinityRepository port + TopicExtractor + select_with_affinity() + InMemory/JSONL affinity stores + RouteToEngine with affinity/adapter/action recording + HandoffTaskUseCase + container wiring) — 1528 unit tests + 37 integration
+> **Phase 7 UCL: Sprint 7.5 COMPLETE** (2026-03-11) — UCL API + CLI + UI (cognitive API routes + CLI commands + Next.js cognitive page + 30 new tests) — 1558 unit tests + 37 integration
 
 ---
 
@@ -358,7 +359,7 @@ morphic-agent/
 │   ├── api/                         # Sprint 1.6: FastAPI + WebSocket
 │   │   ├── main.py                  # create_app() factory + lifespan + CORS
 │   │   ├── container.py             # AppContainer DI (Settings → repos → use cases)
-│   │   ├── schemas.py               # 35+ Pydantic request/response models (+evolution schemas, Sprint 6.1)
+│   │   ├── schemas.py               # 50+ Pydantic request/response models (+UCL cognitive schemas, Sprint 7.5)
 │   │   ├── websocket.py             # /ws/tasks/{id} (poll + delta-only sends + recommendations)
 │   │   └── routes/
 │   │       ├── tasks.py             # POST, GET, GET/{id}, DELETE /api/tasks (+ Celery dispatch)
@@ -368,7 +369,8 @@ morphic-agent/
 │   │       ├── memory.py            # GET /api/memory/search?q= + GET /api/memory/export?platform=
 │   │       ├── engines.py           # GET /api/engines, GET /api/engines/{type}, POST /api/engines/run (Sprint 4.3)
 │   │       ├── marketplace.py       # GET /search, POST /install, GET /installed, POST /suggest, DELETE /{name} (Sprint 5.3)
-│   │       └── evolution.py        # GET /stats, GET /failures, GET /preferences, POST /update, POST /evolve (Sprint 6.1)
+│   │       ├── evolution.py        # GET /stats, GET /failures, GET /preferences, POST /update, POST /evolve (Sprint 6.1)
+│   │       └── cognitive.py       # GET/DELETE /state, GET /affinity, POST /handoff, POST /insights/extract (Sprint 7.5)
 │   └── cli/                         # Sprint 2.9-2.11: typer + rich
 │       ├── main.py                  # typer app, _get_container() lazy singleton, _run() async bridge
 │       ├── formatters.py            # Rich tables, trees, status styles, safety badge (all output isolated here)
@@ -380,7 +382,8 @@ morphic-agent/
 │           ├── mcp.py               # morphic mcp server (stdio/streamable-http)
 │           ├── engine.py            # morphic engine {list|run} (Sprint 4.3)
 │           ├── marketplace.py       # morphic marketplace {search|install|list|suggest|uninstall} (Sprint 5.3)
-│           └── evolution.py        # morphic evolution {stats|failures|update|report} (Sprint 6.1)
+│           ├── evolution.py        # morphic evolution {stats|failures|update|report} (Sprint 6.1)
+│           └── cognitive.py       # morphic cognitive {state|delete|affinity|handoff|insights} (Sprint 7.5)
 │
 ├── shared/
 │   └── config.py                    # pydantic-settings (all env vars + marketplace + evolution settings)
@@ -388,9 +391,9 @@ morphic-agent/
 ├── ui/                              # Sprint 1.6 + 2-F + 5.6: Next.js 15 (bun, Tailwind CSS 4, @xyflow/react)
 │   ├── lib/
 │   │   ├── theme.ts                 # morphicAgentTheme design tokens
-│   │   └── api.ts                   # Typed fetch wrappers + WebSocket + Plan/Marketplace/Model/Evolution API
+│   │   └── api.ts                   # Typed fetch wrappers + WebSocket + Plan/Marketplace/Model/Evolution/Cognitive API
 │   ├── app/
-│   │   ├── layout.tsx               # Dark theme root layout (Geist font, nav: Marketplace/Models/Evolution)
+│   │   ├── layout.tsx               # Dark theme root layout (Geist font, nav: Marketplace/Models/Evolution/Cognitive)
 │   │   ├── globals.css              # CSS variables matching design spec
 │   │   ├── page.tsx                 # Dashboard (Execute/Plan toggle + GoalInput + TaskList)
 │   │   ├── tasks/[id]/page.tsx      # Task detail + TaskGraph with live WebSocket
@@ -404,8 +407,14 @@ morphic-agent/
 │   │   │       └── InstallButton.tsx # Install/uninstall with confirm dialog
 │   │   ├── models/                  # Sprint 5.6: Ollama model management
 │   │   │   └── page.tsx             # Pull/delete/switch models + running status
-│   │   └── evolution/               # Sprint 6.5: Evolution dashboard
-│   │       └── page.tsx             # Stats, failure patterns, preferences, evolution trigger
+│   │   ├── evolution/               # Sprint 6.5: Evolution dashboard
+│   │   │   └── page.tsx             # Stats, failure patterns, preferences, evolution trigger
+│   │   └── cognitive/               # Sprint 7.5: UCL cognitive dashboard
+│   │       ├── page.tsx             # Shared states + affinity scores (tab UI)
+│   │       └── components/
+│   │           ├── StateCard.tsx    # State card (task_id, last_agent, counts)
+│   │           ├── StateDetail.tsx  # Full state detail (decisions, artifacts, blockers, history)
+│   │           └── AffinityTable.tsx # Affinity scores table (engine, topic, score)
 │   └── components/
 │       ├── GoalInput.tsx            # Textarea + Execute button (Enter to submit)
 │       ├── TaskList.tsx             # Task cards with status icons + FREE badge
@@ -481,7 +490,9 @@ morphic-agent/
 │           ├── test_marketplace_api.py  # 10 tests (search, install, list, uninstall, validation, Sprint 5.3)
 │           ├── test_marketplace_cli.py  # 6 tests (search, install, list, suggest, uninstall, Sprint 5.3)
 │           ├── test_evolution_api.py    # Evolution API endpoints (stats, failures, update, evolve, Sprint 6.1)
-│           └── test_evolution_cli.py    # Evolution CLI commands (stats, failures, update, report, Sprint 6.1)
+│           ├── test_evolution_cli.py    # Evolution CLI commands (stats, failures, update, report, Sprint 6.1)
+│           ├── test_cognitive_api.py   # 19 tests (state CRUD, affinity, handoff, insights, Sprint 7.5)
+│           └── test_cognitive_cli.py   # 11 tests (state, affinity, insights CLI commands, Sprint 7.5)
 │   └── integration/
 │       ├── test_live_smoke.py           # 10 tests (real Ollama + real filesystem)
 │       ├── test_cloud_llm.py            # 11 tests (Anthropic + OpenAI + Gemini + cost + routing)
@@ -911,6 +922,40 @@ Sprint 7.4 — Affinity-Aware Routing + Task Handoff:
   ✓ AppContainer wiring:          InMemoryAffinityRepo + RouteToEngine(adapters, affinity, state) +
                                   HandoffTaskUseCase(route_to_engine, state, adapters, insights)
   ✓ Settings:                     +affinity_min_samples (3) + affinity_boost_threshold (0.6)
+```
+
+### Phase 7 Verification — Sprint 7.5 (2026-03-11)
+
+```
+✓ Unit tests:       1558 passed (5.31s), 0 failures
+✓ New tests:        30 (19 API + 11 CLI)
+✓ Lint:             ruff check 0 errors, ruff format clean
+
+Sprint 7.5 — UCL API + CLI + UI:
+  ✓ API schemas:          DecisionResponse, AgentActionResponse, SharedTaskStateResponse (with from_state()),
+                          SharedTaskStateListResponse, AffinityScoreResponse (with from_affinity()),
+                          AffinityListResponse, HandoffRequestSchema, HandoffResponseSchema (with from_result()),
+                          InsightResponse (with from_insight()), InsightListResponse, InsightExtractRequest
+  ✓ API routes:           GET /api/cognitive/state (list), GET /api/cognitive/state/{task_id},
+                          DELETE /api/cognitive/state/{task_id}, GET /api/cognitive/affinity (?topic, ?engine),
+                          POST /api/cognitive/handoff, POST /api/cognitive/insights/extract
+  ✓ CLI commands:         morphic cognitive {state|delete|affinity|handoff|insights}
+                          state: list all or show by task_id arg
+                          affinity: --topic/-t, --engine/-e filters
+                          handoff: --task-id, --source, --reason, --target, --budget
+                          insights: --task-id, --engine, --output
+  ✓ CLI formatters:       print_shared_state() (rich Tree), print_state_list_table() (rich Table),
+                          print_affinity_table() (rich Table, color-coded scores)
+  ✓ UI page:              /cognitive — tab UI (Shared States + Affinity Scores)
+                          StateCard (task_id, last_agent, counts, cost)
+                          StateDetail (decisions, artifacts, blockers, agent history)
+                          AffinityTable (engine, topic, score, success rate, samples)
+  ✓ API client:           getCognitiveStates(), getCognitiveState(), deleteCognitiveState(),
+                          getAffinityScores() — TypeScript types + fetch wrappers
+  ✓ Navigation:           Header link to Cognitive, version bumped to v0.5.0-alpha
+  ✓ Tests:                19 API tests (state CRUD, affinity filter, handoff valid/invalid, insights)
+                          11 CLI tests (state list/show, delete, affinity filter, insights invalid)
+                          Patch target: interface.cli.commands.cognitive._get_container
 ```
 
 ---

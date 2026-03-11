@@ -266,3 +266,95 @@ def print_cost_summary(
     table.add_row("Budget remaining", f"[{remaining_style}]${remaining_usd:.2f}[/]")
 
     console.print(table)
+
+
+# ---------- Cognitive / UCL ----------
+
+
+def print_shared_state(state: dict) -> None:  # type: ignore[type-arg]
+    """Print a single shared task state."""
+    from rich.tree import Tree
+
+    tree = Tree(f"[bold]Task: {state['task_id']}[/bold]")
+
+    last = state.get("last_agent") or "none"
+    tree.add(f"Last agent: [cyan]{last}[/cyan]")
+    tree.add(f"Total cost: [yellow]${state.get('total_cost_usd', 0):.4f}[/yellow]")
+
+    if state.get("decisions"):
+        dec_branch = tree.add(f"Decisions ({len(state['decisions'])})")
+        for d in state["decisions"][-5:]:
+            dec_branch.add(
+                f"[{d.get('agent_engine', '?')}] {d['description']}"
+                f" (conf={d.get('confidence', 0):.0%})"
+            )
+
+    if state.get("artifacts"):
+        art_branch = tree.add(f"Artifacts ({len(state['artifacts'])})")
+        for k, v in list(state["artifacts"].items())[:10]:
+            art_branch.add(f"{k}: {v[:80]}")
+
+    if state.get("blockers"):
+        blk_branch = tree.add(f"[red]Blockers ({len(state['blockers'])})[/red]")
+        for b in state["blockers"]:
+            blk_branch.add(f"[red]{b}[/red]")
+
+    if state.get("agent_history"):
+        hist_branch = tree.add(f"Agent history ({len(state['agent_history'])})")
+        for a in state["agent_history"][-5:]:
+            hist_branch.add(
+                f"[{a.get('agent_engine', '?')}] {a.get('action_type', '?')}"
+                f": {a.get('summary', '')[:60]}"
+            )
+
+    console.print(tree)
+
+
+def print_state_list_table(states: list) -> None:  # type: ignore[type-arg]
+    """Print a table of shared task states."""
+    table = Table(title="Shared Task States")
+    table.add_column("Task ID", max_width=36)
+    table.add_column("Last Agent")
+    table.add_column("Decisions", justify="right")
+    table.add_column("Blockers", justify="right")
+    table.add_column("Cost", justify="right")
+    table.add_column("Updated")
+
+    for s in states:
+        blocker_count = len(s.get("blockers", []))
+        blocker_style = "red" if blocker_count > 0 else ""
+        table.add_row(
+            s["task_id"][:36],
+            s.get("last_agent") or "-",
+            str(len(s.get("decisions", []))),
+            f"[{blocker_style}]{blocker_count}[/]" if blocker_style else str(blocker_count),
+            f"${s.get('total_cost_usd', 0):.4f}",
+            str(s.get("updated_at", ""))[:19],
+        )
+
+    console.print(table)
+
+
+def print_affinity_table(scores: list) -> None:  # type: ignore[type-arg]
+    """Print affinity scores table."""
+    table = Table(title="Agent Affinity Scores")
+    table.add_column("Engine")
+    table.add_column("Topic")
+    table.add_column("Score", justify="right")
+    table.add_column("Familiarity", justify="right")
+    table.add_column("Success", justify="right")
+    table.add_column("Samples", justify="right")
+
+    for s in scores:
+        score_val = s.get("score", 0)
+        score_style = "green" if score_val >= 0.7 else "yellow" if score_val >= 0.4 else "red"
+        table.add_row(
+            s["engine"],
+            s["topic"],
+            f"[{score_style}]{score_val:.2f}[/]",
+            f"{s.get('familiarity', 0):.2f}",
+            f"{s.get('success_rate', 0):.0%}",
+            str(s.get("sample_count", 0)),
+        )
+
+    console.print(table)

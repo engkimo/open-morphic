@@ -76,6 +76,7 @@ def main(
 
 # Import and register sub-commands (deferred to avoid circular imports)
 def _register_commands() -> None:
+    from interface.cli.commands.cognitive import cognitive_app
     from interface.cli.commands.cost import cost_app
     from interface.cli.commands.engine import engine_app
     from interface.cli.commands.evolution import evolution_app
@@ -96,6 +97,11 @@ def _register_commands() -> None:
         evolution_app,
         name="evolution",
         help="Self-evolution stats, strategy updates, and reports.",
+    )
+    app.add_typer(
+        cognitive_app,
+        name="cognitive",
+        help="UCL shared task state, affinity, handoff, and insights.",
     )
 
 

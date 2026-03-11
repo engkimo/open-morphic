@@ -2658,3 +2658,51 @@ New use case: `HandoffTaskUseCase` with `handoff(HandoffRequest) -> HandoffResul
 - Handoff is the core UCL differentiator: tasks survive engine transitions with full state preservation
 - Fire-and-forget insight extraction: handoff success is never blocked by extraction bugs
 - Error boundary: entire handoff wrapped in try/except with HandoffResult.error for graceful degradation
+
+---
+
+## TD-061: UCL Interface Layer — API + CLI + UI (Sprint 7.5)
+
+**Date:** 2026-03-11 | **Sprint:** 7.5 | **Status:** Accepted
+
+### Decision
+
+Expose all UCL components (SharedTaskState, AgentAffinity, Handoff, Insights) through 3 interface layers: FastAPI API, typer CLI, and Next.js UI. Follow existing patterns from evolution/engines/marketplace interfaces.
+
+### Key Design Choices
+
+| Choice | Rationale |
+|---|---|
+| **Schemas in `schemas.py`** | Centralized API schemas (same file as all other schemas), TYPE_CHECKING imports for domain types |
+| **`from_state()`/`from_affinity()`/`from_result()`/`from_insight()` classmethods** | Factory pattern consistent with all existing response schemas |
+| **Separate router file** (`routes/cognitive.py`) | One module per domain area, consistent with engines/marketplace/evolution |
+| **CLI patch target** (`commands.cognitive._get_container`) | Python binding semantics: `from main import _get_container` creates local binding; must patch the local reference, not the source module |
+| **Tab UI** (states + affinity) | Two primary UCL views in single page; handoff/insights are API-only (no dedicated UI yet) |
+| **`AgentAffinityScorer.score()`** in API | Computed score included in response alongside raw affinity dimensions |
+
+### Architecture
+
+```
+API:   /api/cognitive/state          GET (list), GET/{id}, DELETE/{id}
+       /api/cognitive/affinity       GET (?topic, ?engine filters)
+       /api/cognitive/handoff        POST (full handoff flow)
+       /api/cognitive/insights/extract POST (extract + store)
+
+CLI:   morphic cognitive state [TASK_ID]   — list or show
+       morphic cognitive delete TASK_ID    — delete state
+       morphic cognitive affinity          — list (--topic, --engine)
+       morphic cognitive handoff           — execute handoff (--task-id, --source, --reason)
+       morphic cognitive insights          — extract insights (--task-id, --engine, --output)
+
+UI:    /cognitive                    — tab view: Shared States | Affinity Scores
+       StateCard + StateDetail       — state browsing
+       AffinityTable                 — scored affinity table
+```
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| Separate schemas file for cognitive | Inconsistent with existing pattern; all schemas in one file |
+| GraphQL for UCL queries | Over-engineering; REST is sufficient and consistent with existing API |
+| Dedicated handoff UI page | Handoff is typically programmatic (agent-to-agent); API-only is appropriate for now |

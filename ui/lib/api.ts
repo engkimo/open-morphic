@@ -310,6 +310,91 @@ export function triggerEvolution() {
   });
 }
 
+// ── Cognitive / UCL API ──
+
+export interface DecisionResponse {
+  id: string;
+  description: string;
+  rationale: string;
+  agent_engine: string;
+  confidence: number;
+  timestamp: string;
+}
+
+export interface AgentActionResponse {
+  id: string;
+  agent_engine: string;
+  action_type: string;
+  summary: string;
+  cost_usd: number;
+  duration_seconds: number;
+  timestamp: string;
+}
+
+export interface SharedTaskStateResponse {
+  task_id: string;
+  decisions: DecisionResponse[];
+  artifacts: Record<string, string>;
+  blockers: string[];
+  agent_history: AgentActionResponse[];
+  last_agent: string | null;
+  total_cost_usd: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SharedTaskStateListResponse {
+  states: SharedTaskStateResponse[];
+  count: number;
+}
+
+export interface AffinityScoreResponse {
+  engine: string;
+  topic: string;
+  familiarity: number;
+  recency: number;
+  success_rate: number;
+  cost_efficiency: number;
+  sample_count: number;
+  score: number;
+  last_used: string | null;
+}
+
+export interface AffinityListResponse {
+  scores: AffinityScoreResponse[];
+  count: number;
+}
+
+export function getCognitiveStates() {
+  return request<SharedTaskStateListResponse>("/api/cognitive/state");
+}
+
+export function getCognitiveState(taskId: string) {
+  return request<SharedTaskStateResponse>(
+    `/api/cognitive/state/${encodeURIComponent(taskId)}`,
+  );
+}
+
+export function deleteCognitiveState(taskId: string) {
+  return request<void>(
+    `/api/cognitive/state/${encodeURIComponent(taskId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function getAffinityScores(params?: {
+  topic?: string;
+  engine?: string;
+}) {
+  const searchParams = new URLSearchParams();
+  if (params?.topic) searchParams.set("topic", params.topic);
+  if (params?.engine) searchParams.set("engine", params.engine);
+  const qs = searchParams.toString();
+  return request<AffinityListResponse>(
+    `/api/cognitive/affinity${qs ? `?${qs}` : ""}`,
+  );
+}
+
 // ── WebSocket ──
 
 export function connectTaskWs(

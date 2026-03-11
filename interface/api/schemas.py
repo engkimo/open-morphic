@@ -15,9 +15,12 @@ from domain.entities.task import SubTask, TaskEntity
 from domain.entities.tool_candidate import ToolCandidate
 
 if TYPE_CHECKING:
+    from application.use_cases.handoff_task import HandoffResult
     from application.use_cases.route_to_engine import EngineStatus
+    from domain.entities.cognitive import AgentAffinityScore, SharedTaskState
     from domain.entities.plan import ExecutionPlan, PlanStep
     from domain.ports.agent_engine import AgentEngineResult
+    from domain.ports.insight_extractor import ExtractedInsight
 
 
 # ── Task schemas ──
@@ -397,3 +400,170 @@ class EvolutionReportResponse(BaseModel):
     tools_suggested: list[str]
     summary: str
     created_at: datetime
+
+
+# ---------- UCL / Cognitive ----------
+
+
+class DecisionResponse(BaseModel):
+    id: str
+    description: str
+    rationale: str
+    agent_engine: str
+    confidence: float
+    timestamp: datetime
+
+
+class AgentActionResponse(BaseModel):
+    id: str
+    agent_engine: str
+    action_type: str
+    summary: str
+    cost_usd: float
+    duration_seconds: float
+    timestamp: datetime
+
+
+class SharedTaskStateResponse(BaseModel):
+    task_id: str
+    decisions: list[DecisionResponse]
+    artifacts: dict[str, str]
+    blockers: list[str]
+    agent_history: list[AgentActionResponse]
+    last_agent: str | None
+    total_cost_usd: float
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_state(cls, s: SharedTaskState) -> SharedTaskStateResponse:
+        return cls(
+            task_id=s.task_id,
+            decisions=[
+                DecisionResponse(
+                    id=d.id,
+                    description=d.description,
+                    rationale=d.rationale,
+                    agent_engine=d.agent_engine.value,
+                    confidence=d.confidence,
+                    timestamp=d.timestamp,
+                )
+                for d in s.decisions
+            ],
+            artifacts=dict(s.artifacts),
+            blockers=list(s.blockers),
+            agent_history=[
+                AgentActionResponse(
+                    id=a.id,
+                    agent_engine=a.agent_engine.value,
+                    action_type=a.action_type,
+                    summary=a.summary,
+                    cost_usd=a.cost_usd,
+                    duration_seconds=a.duration_seconds,
+                    timestamp=a.timestamp,
+                )
+                for a in s.agent_history
+            ],
+            last_agent=s.last_agent.value if s.last_agent else None,
+            total_cost_usd=s.total_cost_usd,
+            created_at=s.created_at,
+            updated_at=s.updated_at,
+        )
+
+
+class SharedTaskStateListResponse(BaseModel):
+    states: list[SharedTaskStateResponse]
+    count: int
+
+
+class AffinityScoreResponse(BaseModel):
+    engine: str
+    topic: str
+    familiarity: float
+    recency: float
+    success_rate: float
+    cost_efficiency: float
+    sample_count: int
+    score: float
+    last_used: datetime | None
+
+    @classmethod
+    def from_affinity(cls, a: AgentAffinityScore, score: float) -> AffinityScoreResponse:
+        return cls(
+            engine=a.engine.value,
+            topic=a.topic,
+            familiarity=a.familiarity,
+            recency=a.recency,
+            success_rate=a.success_rate,
+            cost_efficiency=a.cost_efficiency,
+            sample_count=a.sample_count,
+            score=score,
+            last_used=a.last_used,
+        )
+
+
+class AffinityListResponse(BaseModel):
+    scores: list[AffinityScoreResponse]
+    count: int
+
+
+class HandoffRequestSchema(BaseModel):
+    task: str = Field(min_length=1)
+    task_id: str = Field(min_length=1)
+    source_engine: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    target_engine: str | None = None
+    task_type: str = "complex_reasoning"
+    budget: float = Field(default=1.0, ge=0.0)
+    timeout_seconds: float = Field(default=300.0, ge=1.0)
+    extract_insights: bool = False
+    artifacts: dict[str, str] = Field(default_factory=dict)
+
+
+class HandoffResponseSchema(BaseModel):
+    success: bool
+    source_engine: str
+    target_engine: str
+    output: str | None
+    error: str | None
+    state: SharedTaskStateResponse | None
+
+    @classmethod
+    def from_result(cls, r: HandoffResult) -> HandoffResponseSchema:
+        return cls(
+            success=r.success,
+            source_engine=r.source_engine.value,
+            target_engine=r.target_engine.value,
+            output=r.engine_result.output if r.engine_result else None,
+            error=r.error,
+            state=SharedTaskStateResponse.from_state(r.state) if r.state else None,
+        )
+
+
+class InsightResponse(BaseModel):
+    content: str
+    memory_type: str
+    confidence: float
+    source_engine: str
+    tags: list[str]
+
+    @classmethod
+    def from_insight(cls, i: ExtractedInsight) -> InsightResponse:
+        return cls(
+            content=i.content,
+            memory_type=i.memory_type.value,
+            confidence=i.confidence,
+            source_engine=i.source_engine.value,
+            tags=list(i.tags),
+        )
+
+
+class InsightListResponse(BaseModel):
+    insights: list[InsightResponse]
+    count: int
+
+
+class InsightExtractRequest(BaseModel):
+    task_id: str = Field(min_length=1)
+    engine: str = Field(min_length=1)
+    output: str = Field(min_length=1)
