@@ -1,12 +1,17 @@
-"""Tests for RouteToEngineUseCase — engine selection and execution with fallback."""
+"""Tests for RouteToEngineUseCase — engine selection and execution with fallback.
+
+Sprint 4.3: Base routing and execution
+Sprint 7.4: Affinity-aware routing, adapter context injection, action recording
+"""
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from application.use_cases.route_to_engine import RouteToEngineUseCase
+from domain.entities.cognitive import AgentAffinityScore, SharedTaskState
 from domain.ports.agent_engine import AgentEngineCapabilities, AgentEnginePort, AgentEngineResult
 from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.model_tier import TaskType
@@ -70,6 +75,26 @@ def _make_drivers(**overrides: AsyncMock) -> dict[AgentEngineType, AgentEnginePo
     for key, val in overrides.items():
         defaults[AgentEngineType(key)] = val
     return defaults
+
+
+def _make_affinity(
+    engine: AgentEngineType = AgentEngineType.GEMINI_CLI,
+    topic: str = "general",
+    familiarity: float = 0.8,
+    recency: float = 0.7,
+    success_rate: float = 0.9,
+    cost_efficiency: float = 0.6,
+    sample_count: int = 10,
+) -> AgentAffinityScore:
+    return AgentAffinityScore(
+        engine=engine,
+        topic=topic,
+        familiarity=familiarity,
+        recency=recency,
+        success_rate=success_rate,
+        cost_efficiency=cost_efficiency,
+        sample_count=sample_count,
+    )
 
 
 @pytest.fixture()
@@ -324,9 +349,9 @@ class TestExecuteFallback:
 
 
 class TestBuildChain:
-    def test_default_chain_has_preferred_first(self) -> None:
+    async def test_default_chain_has_preferred_first(self) -> None:
         uc = RouteToEngineUseCase({})
-        chain = uc._build_chain(
+        chain = await uc._build_chain(
             task_type=TaskType.COMPLEX_REASONING,
             budget=5.0,
             estimated_hours=0.0,
@@ -336,9 +361,9 @@ class TestBuildChain:
         assert chain[0] == AgentEngineType.CLAUDE_CODE
         assert chain[-1] == AgentEngineType.OLLAMA
 
-    def test_preferred_engine_prepended(self) -> None:
+    async def test_preferred_engine_prepended(self) -> None:
         uc = RouteToEngineUseCase({})
-        chain = uc._build_chain(
+        chain = await uc._build_chain(
             task_type=TaskType.SIMPLE_QA,
             budget=5.0,
             estimated_hours=0.0,
@@ -347,9 +372,9 @@ class TestBuildChain:
         )
         assert chain[0] == AgentEngineType.GEMINI_CLI
 
-    def test_no_duplicates_in_chain(self) -> None:
+    async def test_no_duplicates_in_chain(self) -> None:
         uc = RouteToEngineUseCase({})
-        chain = uc._build_chain(
+        chain = await uc._build_chain(
             task_type=TaskType.COMPLEX_REASONING,
             budget=5.0,
             estimated_hours=0.0,
@@ -358,9 +383,9 @@ class TestBuildChain:
         )
         assert len(chain) == len(set(chain))
 
-    def test_zero_budget_chain_only_ollama(self) -> None:
+    async def test_zero_budget_chain_only_ollama(self) -> None:
         uc = RouteToEngineUseCase({})
-        chain = uc._build_chain(
+        chain = await uc._build_chain(
             task_type=TaskType.COMPLEX_REASONING,
             budget=0.0,
             estimated_hours=0.0,
@@ -431,3 +456,239 @@ class TestContextInjection:
         effective_task = call_kwargs[1]["task"]
         assert "Project uses Clean Architecture" in effective_task
         assert "Analyze code" in effective_task
+
+
+# ═══════════════════════════════════════════════════════════════
+# Affinity-Aware Routing (Sprint 7.4)
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestAffinityAwareRouting:
+    """Affinity data influences engine selection."""
+
+    async def test_affinity_promotes_engine(self) -> None:
+        """High affinity for Gemini promotes it over default Claude Code."""
+        affinity_repo = AsyncMock()
+        affinity_repo.get_by_topic = AsyncMock(
+            return_value=[_make_affinity(AgentEngineType.GEMINI_CLI)]
+        )
+        drivers = _make_drivers()
+        uc = RouteToEngineUseCase(drivers, affinity_repo=affinity_repo)
+        result = await uc.execute(
+            "Analyze code",
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=5.0,
+        )
+        assert result.success is True
+        assert result.engine == AgentEngineType.GEMINI_CLI
+
+    async def test_no_affinity_repo_uses_default(self) -> None:
+        """Without affinity repo, behaves as before."""
+        drivers = _make_drivers()
+        uc = RouteToEngineUseCase(drivers)
+        result = await uc.execute(
+            "Design architecture",
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=5.0,
+        )
+        assert result.engine == AgentEngineType.CLAUDE_CODE
+
+    async def test_preferred_engine_overrides_affinity(self) -> None:
+        """Explicit preferred_engine takes precedence over affinity."""
+        affinity_repo = AsyncMock()
+        affinity_repo.get_by_topic = AsyncMock(
+            return_value=[_make_affinity(AgentEngineType.GEMINI_CLI)]
+        )
+        drivers = _make_drivers()
+        uc = RouteToEngineUseCase(drivers, affinity_repo=affinity_repo)
+        result = await uc.execute(
+            "Review code",
+            preferred_engine=AgentEngineType.CODEX_CLI,
+            budget=5.0,
+        )
+        assert result.engine == AgentEngineType.CODEX_CLI
+
+    async def test_affinity_repo_error_falls_back_gracefully(self) -> None:
+        """If affinity repo raises, falls back to base routing."""
+        affinity_repo = AsyncMock()
+        affinity_repo.get_by_topic = AsyncMock(side_effect=RuntimeError("DB error"))
+        drivers = _make_drivers()
+        uc = RouteToEngineUseCase(drivers, affinity_repo=affinity_repo)
+        result = await uc.execute(
+            "Something",
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=5.0,
+        )
+        assert result.success is True
+        assert result.engine == AgentEngineType.CLAUDE_CODE
+
+
+# ═══════════════════════════════════════════════════════════════
+# Adapter Context Injection (Sprint 7.4)
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestAdapterContextInjection:
+    """ContextAdapterPort.inject_context() replaces simple string prepend."""
+
+    async def test_adapter_inject_used_when_available(self) -> None:
+        """When adapter, task_state_repo, and task_id are provided, uses adapter."""
+        adapter = MagicMock()
+        adapter.inject_context.return_value = "## Injected Context\nSome state"
+        task_state_repo = AsyncMock()
+        task_state_repo.get = AsyncMock(return_value=SharedTaskState(task_id="t1"))
+
+        drivers = {AgentEngineType.OLLAMA: _make_driver(AgentEngineType.OLLAMA)}
+        uc = RouteToEngineUseCase(
+            drivers,
+            context_adapters={AgentEngineType.OLLAMA: adapter},
+            task_state_repo=task_state_repo,
+        )
+        await uc.execute("Do something", task_id="t1")
+        call_kwargs = drivers[AgentEngineType.OLLAMA].run_task.call_args
+        assert "Injected Context" in call_kwargs[1]["task"]
+
+    async def test_no_task_id_falls_back_to_simple(self) -> None:
+        """Without task_id, adapter is not used even if available."""
+        adapter = MagicMock()
+        task_state_repo = AsyncMock()
+
+        drivers = {AgentEngineType.OLLAMA: _make_driver(AgentEngineType.OLLAMA)}
+        uc = RouteToEngineUseCase(
+            drivers,
+            context_adapters={AgentEngineType.OLLAMA: adapter},
+            task_state_repo=task_state_repo,
+        )
+        await uc.execute("Do something", context="plain context")
+        adapter.inject_context.assert_not_called()
+
+    async def test_no_state_found_falls_back(self) -> None:
+        """When SharedTaskState not found, falls back to simple prepend."""
+        adapter = MagicMock()
+        task_state_repo = AsyncMock()
+        task_state_repo.get = AsyncMock(return_value=None)
+
+        drivers = {AgentEngineType.OLLAMA: _make_driver(AgentEngineType.OLLAMA)}
+        uc = RouteToEngineUseCase(
+            drivers,
+            context_adapters={AgentEngineType.OLLAMA: adapter},
+            task_state_repo=task_state_repo,
+        )
+        await uc.execute("Do something", task_id="t1", context="fallback ctx")
+        call_kwargs = drivers[AgentEngineType.OLLAMA].run_task.call_args
+        assert "fallback ctx" in call_kwargs[1]["task"]
+        adapter.inject_context.assert_not_called()
+
+    async def test_adapter_receives_context_as_memory(self) -> None:
+        """The context param is passed as memory_context to the adapter."""
+        adapter = MagicMock()
+        adapter.inject_context.return_value = "injected"
+        task_state_repo = AsyncMock()
+        task_state_repo.get = AsyncMock(return_value=SharedTaskState(task_id="t1"))
+
+        drivers = {AgentEngineType.OLLAMA: _make_driver(AgentEngineType.OLLAMA)}
+        uc = RouteToEngineUseCase(
+            drivers,
+            context_adapters={AgentEngineType.OLLAMA: adapter},
+            task_state_repo=task_state_repo,
+        )
+        await uc.execute("Do work", task_id="t1", context="memory stuff")
+        adapter.inject_context.assert_called_once()
+        call_kwargs = adapter.inject_context.call_args
+        assert call_kwargs[1]["memory_context"] == "memory stuff"
+
+
+# ═══════════════════════════════════════════════════════════════
+# Affinity Update (Sprint 7.4)
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestAffinityUpdate:
+    """Post-success affinity score updates."""
+
+    async def test_creates_new_affinity_on_first_success(self) -> None:
+        affinity_repo = AsyncMock()
+        affinity_repo.get_by_topic = AsyncMock(return_value=[])
+        affinity_repo.get = AsyncMock(return_value=None)
+        affinity_repo.upsert = AsyncMock()
+        drivers = {AgentEngineType.OLLAMA: _make_driver(AgentEngineType.OLLAMA)}
+        uc = RouteToEngineUseCase(drivers, affinity_repo=affinity_repo)
+        await uc.execute("simple task")
+        affinity_repo.upsert.assert_awaited_once()
+        score = affinity_repo.upsert.call_args[0][0]
+        assert score.engine == AgentEngineType.OLLAMA
+        assert score.sample_count == 1
+
+    async def test_updates_existing_affinity(self) -> None:
+        existing = _make_affinity(AgentEngineType.OLLAMA, topic="general", sample_count=5)
+        affinity_repo = AsyncMock()
+        affinity_repo.get_by_topic = AsyncMock(return_value=[])
+        affinity_repo.get = AsyncMock(return_value=existing)
+        affinity_repo.upsert = AsyncMock()
+        drivers = {AgentEngineType.OLLAMA: _make_driver(AgentEngineType.OLLAMA)}
+        uc = RouteToEngineUseCase(drivers, affinity_repo=affinity_repo)
+        await uc.execute("simple task")
+        affinity_repo.upsert.assert_awaited_once()
+        score = affinity_repo.upsert.call_args[0][0]
+        assert score.sample_count == 6
+
+    async def test_no_affinity_repo_no_error(self) -> None:
+        """Without affinity repo, success still works."""
+        drivers = {AgentEngineType.OLLAMA: _make_driver(AgentEngineType.OLLAMA)}
+        uc = RouteToEngineUseCase(drivers)
+        result = await uc.execute("simple task")
+        assert result.success is True
+
+    async def test_affinity_update_error_swallowed(self) -> None:
+        """Affinity update error doesn't break execution."""
+        affinity_repo = AsyncMock()
+        affinity_repo.get_by_topic = AsyncMock(return_value=[])
+        affinity_repo.get = AsyncMock(side_effect=RuntimeError("write error"))
+        affinity_repo.upsert = AsyncMock()
+        drivers = {AgentEngineType.OLLAMA: _make_driver(AgentEngineType.OLLAMA)}
+        uc = RouteToEngineUseCase(drivers, affinity_repo=affinity_repo)
+        result = await uc.execute("simple task")
+        assert result.success is True
+
+
+# ═══════════════════════════════════════════════════════════════
+# Action Recording (Sprint 7.4)
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestActionRecording:
+    """Post-success action recording to SharedTaskState."""
+
+    async def test_records_action_on_success(self) -> None:
+        task_state_repo = AsyncMock()
+        task_state_repo.append_action = AsyncMock()
+        drivers = {AgentEngineType.OLLAMA: _make_driver(AgentEngineType.OLLAMA)}
+        uc = RouteToEngineUseCase(drivers, task_state_repo=task_state_repo)
+        await uc.execute("task", task_id="t1")
+        task_state_repo.append_action.assert_awaited_once()
+        call_args = task_state_repo.append_action.call_args
+        assert call_args[0][0] == "t1"
+        action = call_args[0][1]
+        assert action.agent_engine == AgentEngineType.OLLAMA
+        assert action.action_type == "execute"
+
+    async def test_no_task_id_no_recording(self) -> None:
+        task_state_repo = AsyncMock()
+        drivers = {AgentEngineType.OLLAMA: _make_driver(AgentEngineType.OLLAMA)}
+        uc = RouteToEngineUseCase(drivers, task_state_repo=task_state_repo)
+        await uc.execute("task")
+        task_state_repo.append_action.assert_not_awaited()
+
+    async def test_no_repo_no_recording(self) -> None:
+        drivers = {AgentEngineType.OLLAMA: _make_driver(AgentEngineType.OLLAMA)}
+        uc = RouteToEngineUseCase(drivers)
+        result = await uc.execute("task", task_id="t1")
+        assert result.success is True
+
+    async def test_recording_error_swallowed(self) -> None:
+        task_state_repo = AsyncMock()
+        task_state_repo.append_action = AsyncMock(side_effect=RuntimeError("DB error"))
+        drivers = {AgentEngineType.OLLAMA: _make_driver(AgentEngineType.OLLAMA)}
+        uc = RouteToEngineUseCase(drivers, task_state_repo=task_state_repo)
+        result = await uc.execute("task", task_id="t1")
+        assert result.success is True

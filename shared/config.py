@@ -118,6 +118,10 @@ class Settings(BaseSettings):
     context_todo_path: Path = Path("todo.md")
     context_cache_dir: Path = Path(".morphic/cache")
 
+    # ── Affinity ──
+    affinity_min_samples: int = 3
+    affinity_boost_threshold: float = 0.6
+
     # ── Evolution ──
     evolution_enabled: bool = True
     evolution_strategy_dir: Path = Path(".morphic/evolution")

@@ -53,6 +53,9 @@ class _FakeSettings:
     marketplace_auto_install = False
     marketplace_safety_threshold = "experimental"
     mcp_registry_url = "https://registry.modelcontextprotocol.io"
+    # Affinity (Sprint 7.4)
+    affinity_min_samples = 3
+    affinity_boost_threshold = 0.6
     # Evolution (Phase 6)
     evolution_enabled = True
     evolution_strategy_dir = Path("/tmp/morphic_test_evolution")

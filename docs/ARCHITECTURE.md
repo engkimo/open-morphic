@@ -11,6 +11,7 @@
 > **Phase 7 UCL: Sprint 7.1 COMPLETE** (2026-03-10) — UCL domain foundation (Decision, AgentAction, SharedTaskState, AgentAffinityScore, CognitiveMemoryType, 2 ports, AgentAffinityScorer service) — 1230 unit tests + 37 integration
 > **Phase 7 UCL: Sprint 7.2 COMPLETE** (2026-03-10) — ContextAdapterPort + InMemorySharedTaskStateRepo + 6 context adapters (Claude Code, Gemini, Codex, Ollama, OpenHands, ADK) — 1350 unit tests + 37 integration
 > **Phase 7 UCL: Sprint 7.3 COMPLETE** (2026-03-11) — Insight Extraction Pipeline (MemoryClassifier + ConflictResolver + InsightExtractor + ExtractInsightsUseCase + ExecuteTask integration + container wiring) — 1438 unit tests + 37 integration
+> **Phase 7 UCL: Sprint 7.4 COMPLETE** (2026-03-11) — Affinity-Aware Routing + Task Handoff (AgentAffinityRepository port + TopicExtractor + select_with_affinity() + InMemory/JSONL affinity stores + RouteToEngine with affinity/adapter/action recording + HandoffTaskUseCase + container wiring) — 1528 unit tests + 37 integration
 
 ---
 
@@ -883,6 +884,35 @@ Sprint 7.3 — Insight Extraction Pipeline:
                                   SharedTaskStateRepository (in-memory) added to container
 ```
 
+### Phase 7 Verification — Sprint 7.4 (2026-03-11)
+
+```
+✓ Unit tests:       1528 passed (5.0s), 0 failures
+✓ New tests:        90 (6 port + 17 domain + 18 infra + 16 route_to_engine + 23 handoff + 10 router)
+✓ Lint:             ruff check 0 errors, ruff format 280 files clean
+
+Sprint 7.4 — Affinity-Aware Routing + Task Handoff:
+  ✓ AgentAffinityRepository:      New ABC port — 5 methods (get, get_by_topic, get_by_engine, upsert, list_all)
+                                  Separate from SharedTaskStateRepository (engine×topic keyed)
+  ✓ TopicExtractor:               Pure static service — keyword-based topic extraction
+                                  10 topics (frontend/backend/database/devops/testing/security/ml/data/docs/refactoring)
+                                  Falls back to "general" if no match
+  ✓ select_with_affinity():       New AgentEngineRouter method — affinity-aware reranking
+                                  Base chain + AgentAffinityScorer.rank() + boost_threshold gate
+                                  OLLAMA always last, budget=0 → [OLLAMA], dedup preserved
+  ✓ InMemoryAffinityRepository:   Dict keyed by (engine, topic) tuple
+  ✓ JSONLAffinityStore:           JSONL file persistence (lazy-load + full-overwrite on upsert)
+  ✓ RouteToEngineUseCase:         Extended with affinity-aware routing + adapter context injection +
+                                  post-success affinity updates + action recording to SharedTaskState
+                                  All new params optional (None) → full backward compatibility
+  ✓ HandoffTaskUseCase:           Cross-agent handoff: load state → record handoff action → add decision →
+                                  merge artifacts → adapter inject → execute via RouteToEngine →
+                                  record received_handoff → optional insight extraction → persist
+  ✓ AppContainer wiring:          InMemoryAffinityRepo + RouteToEngine(adapters, affinity, state) +
+                                  HandoffTaskUseCase(route_to_engine, state, adapters, insights)
+  ✓ Settings:                     +affinity_min_samples (3) + affinity_boost_threshold (0.6)
+```
+
 ---
 
 ## Unified Cognitive Layer (UCL) — Phase 7 Architecture
@@ -940,15 +970,22 @@ Sprint 7.3 — Insight Extraction Pipeline:
 - `SharedTaskStateRepository` — CRUD for shared task state
 - `InsightExtractorPort` — extract structured insights from agent output
 - `ContextAdapterPort` — bidirectional context translation per engine
+- `AgentAffinityRepository` — engine×topic affinity score persistence (Sprint 7.4)
 
 **Domain Services** (new):
 - `AgentAffinityScorer` — context-fit scoring (familiarity×0.4 + recency×0.25 + success×0.2 + cost×0.15)
 - `ConflictResolver` — confidence-weighted contradiction resolution
 - `MemoryClassifier` — auto-classify into 4 memory types
+- `TopicExtractor` — keyword-based topic classification for affinity lookup (Sprint 7.4)
 
-**Use Cases** (new):
+**Use Cases** (new/modified):
 - `ExtractInsightsUseCase` — post-execution: extract → conflict check → store → update task state
-- `HandoffTaskUseCase` — Agent A state capture → context prepare → Agent B delegation
+- `HandoffTaskUseCase` — Agent A state capture → context prepare → Agent B delegation (Sprint 7.4)
+- `RouteToEngineUseCase` — extended with affinity routing + adapter injection + action recording (Sprint 7.4)
+
+**Infrastructure** (new):
+- `InMemoryAgentAffinityRepository` — in-memory affinity store (Sprint 7.4)
+- `JSONLAffinityStore` — JSONL persistence for affinity scores (Sprint 7.4)
 
 ### Context Adapter Pattern
 

@@ -1,12 +1,14 @@
 """Tests for AgentEngineRouter — pure domain service for engine selection.
 
 Sprint 4.1: AgentEngine Domain Foundation
+Sprint 7.4: select_with_affinity() — affinity-aware reranking
 """
 
 from __future__ import annotations
 
 import math
 
+from domain.entities.cognitive import AgentAffinityScore
 from domain.services.agent_engine_router import AgentEngineRouter
 from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.model_tier import TaskType
@@ -271,3 +273,150 @@ class TestAgentEngineRouterSelectWithFallbacks:
         # But select_with_fallbacks ensures OLLAMA is present
         assert result[0] == AgentEngineType.OLLAMA
         assert result == [AgentEngineType.OLLAMA]
+
+
+# ---------------------------------------------------------------------------
+# TestSelectWithAffinity (Sprint 7.4)
+# ---------------------------------------------------------------------------
+
+
+def _make_affinity(
+    engine: AgentEngineType,
+    topic: str = "frontend",
+    familiarity: float = 0.8,
+    recency: float = 0.7,
+    success_rate: float = 0.9,
+    cost_efficiency: float = 0.6,
+    sample_count: int = 10,
+) -> AgentAffinityScore:
+    return AgentAffinityScore(
+        engine=engine,
+        topic=topic,
+        familiarity=familiarity,
+        recency=recency,
+        success_rate=success_rate,
+        cost_efficiency=cost_efficiency,
+        sample_count=sample_count,
+    )
+
+
+class TestSelectWithAffinity:
+    """select_with_affinity() — affinity-aware reranking of engine chain."""
+
+    def test_no_affinities_returns_base_chain(self) -> None:
+        """Without affinity data, behaves like select_with_fallbacks."""
+        result = AgentEngineRouter.select_with_affinity(
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=10.0,
+        )
+        expected = AgentEngineRouter.select_with_fallbacks(
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=10.0,
+        )
+        assert result == expected
+
+    def test_empty_affinities_returns_base_chain(self) -> None:
+        result = AgentEngineRouter.select_with_affinity(
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=10.0,
+            affinities=[],
+        )
+        expected = AgentEngineRouter.select_with_fallbacks(
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=10.0,
+        )
+        assert result == expected
+
+    def test_budget_zero_returns_ollama_only(self) -> None:
+        """budget=0 → always [OLLAMA] regardless of affinity."""
+        affinities = [_make_affinity(AgentEngineType.GEMINI_CLI)]
+        result = AgentEngineRouter.select_with_affinity(
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=0.0,
+            affinities=affinities,
+        )
+        assert result == [AgentEngineType.OLLAMA]
+
+    def test_high_affinity_promotes_engine(self) -> None:
+        """Engine with high affinity score is promoted to front of chain."""
+        affinities = [_make_affinity(AgentEngineType.GEMINI_CLI)]
+        result = AgentEngineRouter.select_with_affinity(
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=10.0,
+            affinities=affinities,
+        )
+        assert result[0] == AgentEngineType.GEMINI_CLI
+        assert result[-1] == AgentEngineType.OLLAMA
+
+    def test_low_affinity_no_promotion(self) -> None:
+        """Engine with low score (below threshold) is not promoted."""
+        affinities = [
+            _make_affinity(
+                AgentEngineType.GEMINI_CLI,
+                familiarity=0.1,
+                recency=0.1,
+                success_rate=0.1,
+                cost_efficiency=0.1,
+            )
+        ]
+        result = AgentEngineRouter.select_with_affinity(
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=10.0,
+            affinities=affinities,
+        )
+        # Should be same as base chain (CLAUDE_CODE first)
+        assert result[0] == AgentEngineType.CLAUDE_CODE
+
+    def test_insufficient_samples_ignored(self) -> None:
+        """Affinity with sample_count < min_samples is ignored."""
+        affinities = [_make_affinity(AgentEngineType.GEMINI_CLI, sample_count=1)]
+        result = AgentEngineRouter.select_with_affinity(
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=10.0,
+            affinities=affinities,
+            min_samples=3,
+        )
+        # Should be same as base chain
+        assert result[0] == AgentEngineType.CLAUDE_CODE
+
+    def test_no_duplicates_in_result(self) -> None:
+        """Result chain has no duplicates."""
+        affinities = [_make_affinity(AgentEngineType.CLAUDE_CODE)]
+        result = AgentEngineRouter.select_with_affinity(
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=10.0,
+            affinities=affinities,
+        )
+        assert len(result) == len(set(result))
+
+    def test_ollama_always_last(self) -> None:
+        """OLLAMA is always the last engine in the chain."""
+        affinities = [_make_affinity(AgentEngineType.CODEX_CLI)]
+        result = AgentEngineRouter.select_with_affinity(
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=10.0,
+            affinities=affinities,
+        )
+        assert result[-1] == AgentEngineType.OLLAMA
+
+    def test_engine_already_first_stays_first(self) -> None:
+        """If the high-affinity engine is already first, chain stays stable."""
+        affinities = [_make_affinity(AgentEngineType.CLAUDE_CODE)]
+        result = AgentEngineRouter.select_with_affinity(
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=10.0,
+            affinities=affinities,
+        )
+        assert result[0] == AgentEngineType.CLAUDE_CODE
+
+    def test_custom_boost_threshold(self) -> None:
+        """Custom boost_threshold is respected."""
+        # Score is ~0.77, threshold set to 0.8 → no promotion
+        affinities = [_make_affinity(AgentEngineType.GEMINI_CLI)]
+        result = AgentEngineRouter.select_with_affinity(
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=10.0,
+            affinities=affinities,
+            boost_threshold=0.8,
+        )
+        assert result[0] == AgentEngineType.CLAUDE_CODE

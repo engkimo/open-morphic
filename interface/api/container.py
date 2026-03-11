@@ -14,12 +14,14 @@ from application.use_cases.create_task import CreateTaskUseCase
 from application.use_cases.discover_tools import DiscoverToolsUseCase
 from application.use_cases.execute_task import ExecuteTaskUseCase
 from application.use_cases.extract_insights import ExtractInsightsUseCase
+from application.use_cases.handoff_task import HandoffTaskUseCase
 from application.use_cases.install_tool import InstallToolUseCase
 from application.use_cases.interactive_plan import InteractivePlanUseCase
 from application.use_cases.manage_ollama import ManageOllamaUseCase
 from application.use_cases.route_to_engine import RouteToEngineUseCase
 from application.use_cases.systemic_evolution import SystemicEvolutionUseCase
 from application.use_cases.update_strategy import UpdateStrategyUseCase
+from domain.ports.agent_affinity_repository import AgentAffinityRepository
 from domain.ports.agent_engine import AgentEnginePort
 from domain.ports.context_adapter import ContextAdapterPort
 from domain.ports.cost_repository import CostRepository
@@ -162,10 +164,7 @@ class AppContainer:
         # Agent CLI drivers (Sprint 4.2)
         self.agent_drivers: dict[AgentEngineType, AgentEnginePort] = self._wire_agent_drivers()
 
-        # Engine routing use case (Sprint 4.3)
-        self.route_to_engine = RouteToEngineUseCase(drivers=self.agent_drivers)
-
-        # UCL: Insight Extraction Pipeline (Sprint 7.3)
+        # UCL: Context Adapters + Shared State (Sprint 7.2-7.3)
         self._context_adapters: dict[AgentEngineType, ContextAdapterPort] = (
             self._wire_context_adapters()
         )
@@ -180,6 +179,28 @@ class AppContainer:
             memory_repo=self.memory_repo,
             task_state_repo=self.shared_task_state_repo,
         )
+
+        # Affinity store (Sprint 7.4)
+        self.affinity_repo: AgentAffinityRepository = self._create_affinity_repo()
+
+        # Engine routing use case (Sprint 4.3, enhanced Sprint 7.4)
+        self.route_to_engine = RouteToEngineUseCase(
+            drivers=self.agent_drivers,
+            context_adapters=self._context_adapters,
+            affinity_repo=self.affinity_repo,
+            task_state_repo=self.shared_task_state_repo,
+            affinity_min_samples=self.settings.affinity_min_samples,
+            affinity_boost_threshold=self.settings.affinity_boost_threshold,
+        )
+
+        # Task handoff use case (Sprint 7.4)
+        self.handoff_task = HandoffTaskUseCase(
+            route_to_engine=self.route_to_engine,
+            task_state_repo=self.shared_task_state_repo,
+            context_adapters=self._context_adapters,
+            insight_extractor=self.extract_insights,
+        )
+
         # Re-wire execute_task with insight extraction
         self.execute_task = ExecuteTaskUseCase(
             engine=self.task_engine,
@@ -227,6 +248,12 @@ class AppContainer:
             AgentEngineType.ADK: ADKContextAdapter(),
             AgentEngineType.OLLAMA: OllamaContextAdapter(),
         }
+
+    def _create_affinity_repo(self) -> AgentAffinityRepository:
+        """Create affinity repository (in-memory for now)."""
+        from infrastructure.cognitive.affinity_store import InMemoryAgentAffinityRepository
+
+        return InMemoryAgentAffinityRepository()
 
     def _create_shared_task_state_repo(self) -> SharedTaskStateRepository:
         """Create SharedTaskState repository (in-memory for now)."""

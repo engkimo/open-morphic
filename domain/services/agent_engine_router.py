@@ -10,6 +10,8 @@ Follows the same pattern as RiskAssessor and ApprovalEngine.
 
 from __future__ import annotations
 
+from domain.entities.cognitive import AgentAffinityScore
+from domain.services.agent_affinity import AgentAffinityScorer
 from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.model_tier import TaskType
 
@@ -127,3 +129,58 @@ class AgentEngineRouter:
         chain.append(AgentEngineType.OLLAMA)
 
         return chain
+
+    @staticmethod
+    def select_with_affinity(
+        task_type: TaskType,
+        budget: float = 0.0,
+        estimated_hours: float = 0.0,
+        context_tokens: int = 0,
+        affinities: list[AgentAffinityScore] | None = None,
+        min_samples: int = 3,
+        boost_threshold: float = 0.6,
+    ) -> list[AgentEngineType]:
+        """Select engines with affinity-aware reranking.
+
+        1. Compute base chain via select_with_fallbacks()
+        2. If budget <= 0 → return [OLLAMA] (unchanged)
+        3. Rank affinity scores via AgentAffinityScorer.rank()
+        4. If top engine scores >= boost_threshold and is in chain → promote to front
+        5. If top engine not in chain but scores >= threshold → insert at position 1
+        6. OLLAMA stays last, dedup preserved
+        """
+        base_chain = AgentEngineRouter.select_with_fallbacks(
+            task_type=task_type,
+            budget=budget,
+            estimated_hours=estimated_hours,
+            context_tokens=context_tokens,
+        )
+
+        # budget=0 → only OLLAMA
+        if budget <= 0:
+            return base_chain
+
+        # No affinity data → return base chain
+        if not affinities:
+            return base_chain
+
+        ranked = AgentAffinityScorer.rank(affinities, min_samples=min_samples)
+        if not ranked:
+            return base_chain
+
+        top_engine, top_score = ranked[0]
+        if top_score < boost_threshold:
+            return base_chain
+
+        # Build new chain with affinity-boosted engine at front
+        new_chain: list[AgentEngineType] = [top_engine]
+        for engine in base_chain:
+            if engine not in new_chain:
+                new_chain.append(engine)
+
+        # Ensure OLLAMA is last
+        if AgentEngineType.OLLAMA in new_chain:
+            new_chain.remove(AgentEngineType.OLLAMA)
+        new_chain.append(AgentEngineType.OLLAMA)
+
+        return new_chain

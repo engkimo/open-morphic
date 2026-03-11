@@ -4,6 +4,7 @@ Domain defines WHAT it needs. Infrastructure provides HOW.
 Dependencies always point inward: Infrastructure → Application → Domain.
 """
 
+from domain.ports.agent_affinity_repository import AgentAffinityRepository
 from domain.ports.agent_engine import (
     AgentEngineCapabilities,
     AgentEnginePort,
@@ -27,6 +28,7 @@ from domain.ports.tool_installer import InstallResult, ToolInstallerPort
 from domain.ports.tool_registry import ToolRegistryPort, ToolSearchResult
 
 __all__ = [
+    "AgentAffinityRepository",
     "AgentEngineCapabilities",
     "AgentEnginePort",
     "AgentEngineResult",

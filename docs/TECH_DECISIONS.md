@@ -2554,3 +2554,107 @@ A 4-stage pipeline connecting context adapter extraction to memory storage and t
 - Fire-and-forget ensures extraction bugs never degrade core task execution
 - Reclassification threshold (0.5) compensates for low-quality adapter extractions (e.g., Ollama at 0.3-0.6)
 - Tag-based routing ("decision", "artifact", "file") enables structured state updates without LLM
+
+---
+
+## TD-057: AgentAffinityRepository — Separate Port for Affinity Scores
+
+**Date:** 2026-03-11 | **Sprint:** 7.4 | **Status:** Accepted
+
+### Decision
+
+Create a dedicated `AgentAffinityRepository` port (ABC) separate from `SharedTaskStateRepository`. Five methods: `get(engine, topic)`, `get_by_topic(topic)`, `get_by_engine(engine)`, `upsert(score)`, `list_all()`.
+
+### Alternatives Considered
+
+1. **Add affinity methods to SharedTaskStateRepository** — rejected because access patterns differ fundamentally (engine×topic keyed vs task_id keyed).
+2. **In-memory only, no port** — rejected because JSONL persistence needed for cross-session learning.
+
+### Rationale
+
+- Engine×topic keyed access pattern is a different domain concept from task state (1:N engine:topic vs 1:1 task)
+- Two implementations: `InMemoryAgentAffinityRepository` (fast, dev) and `JSONLAffinityStore` (persistent, prod)
+- JSONL follows established `StrategyStore` pattern: lazy-load + full-overwrite on upsert
+
+---
+
+## TD-058: TopicExtractor — Keyword-Based Topic Classification
+
+**Date:** 2026-03-11 | **Sprint:** 7.4 | **Status:** Accepted
+
+### Decision
+
+Pure static domain service. Extracts normalized topic from task text using pre-compiled regex patterns. 10 topics (frontend, backend, database, devops, testing, security, ml, data, documentation, refactoring). Falls back to `"general"`. Topic with most keyword matches wins.
+
+### Alternatives Considered
+
+1. **LLM-based topic extraction** — rejected: adds latency and cost to every routing decision; keyword matching is sufficient for affinity bucketing.
+2. **Embedding-based clustering** — rejected: over-engineered for the current need; can be added later as an enhancement.
+
+### Rationale
+
+- Zero-cost, zero-latency topic extraction suitable for every routing call
+- Deterministic: same input → same topic (important for affinity consistency)
+- Extensible: add new topics by adding keyword entries
+
+---
+
+## TD-059: select_with_affinity() — Affinity-Aware Engine Reranking
+
+**Date:** 2026-03-11 | **Sprint:** 7.4 | **Status:** Accepted
+
+### Decision
+
+Add `select_with_affinity()` static method to `AgentEngineRouter`. Pipeline:
+1. Compute base chain via `select_with_fallbacks()`
+2. Budget=0 → `[OLLAMA]` (unchanged)
+3. Rank affinities via `AgentAffinityScorer.rank()` (filters by min_samples)
+4. Top score >= boost_threshold (0.6) → promote to front of chain
+5. OLLAMA always last, dedup preserved
+
+### Key Design Choices
+
+- **Additive, not replacement**: `select_with_affinity()` builds on `select_with_fallbacks()`, which is untouched
+- **Threshold gate** (0.6): prevents low-confidence affinity from overriding heuristic routing
+- **min_samples** (3): prevents single-run flukes from biasing routing
+- **Configurable**: both thresholds exposed in Settings
+
+### Rationale
+
+- Affinity data is sparse initially (cold start); threshold + min_samples prevent premature optimization
+- OLLAMA-last invariant maintained for cost safety
+- Static method: no state, pure logic, easy to test
+
+---
+
+## TD-060: HandoffTaskUseCase — Cross-Agent Task Handoff
+
+**Date:** 2026-03-11 | **Sprint:** 7.4 | **Status:** Accepted
+
+### Decision
+
+New use case: `HandoffTaskUseCase` with `handoff(HandoffRequest) -> HandoffResult`. Flow:
+1. Load/create SharedTaskState
+2. Record "handoff" AgentAction on source engine
+3. Add Decision (reason for handoff)
+4. Merge request artifacts into state
+5. Persist intermediate state
+6. Build context (adapter-injected or plain text fallback)
+7. Execute via `RouteToEngineUseCase.execute()` with target as preferred_engine
+8. Record "received_handoff" AgentAction on target
+9. Optional insight extraction (fire-and-forget)
+10. Persist final state
+
+### Key Design Choices
+
+- **Composes RouteToEngineUseCase** — doesn't duplicate engine selection/fallback logic
+- **State persisted twice** — before execution (captures handoff intent) and after (captures result)
+- **target_engine optional** — can specify target or let router decide (affinity-aware)
+- **Adapter-injected context** — uses ContextAdapterPort for engine-specific formatting when available
+- **Plain text fallback** — builds readable context from state when no adapter available
+
+### Rationale
+
+- Handoff is the core UCL differentiator: tasks survive engine transitions with full state preservation
+- Fire-and-forget insight extraction: handoff success is never blocked by extraction bugs
+- Error boundary: entire handoff wrapped in try/except with HandoffResult.error for graceful degradation
