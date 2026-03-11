@@ -2433,3 +2433,124 @@ Implement `SharedTaskStateRepository` as in-memory dict store for dev/testing. P
 - Matches existing pattern (`InMemoryExecutionRecordRepository`)
 - Zero infrastructure cost for development
 - Port interface unchanged when migrating to PG
+
+---
+
+## TD-054: MemoryClassifier — Regex-Based Cognitive Type Classification
+
+**Date**: 2026-03-11
+**Status**: Accepted (Phase 7, Sprint 7.3)
+
+### Decision
+
+Pure static domain service using 4 pre-compiled regex patterns to classify free text into `CognitiveMemoryType`. Priority order: PROCEDURAL > SEMANTIC > WORKING > EPISODIC (default fallback).
+
+### Design
+
+- `classify(text)` → first-match wins (O(4) regexes)
+- `classify_with_confidence(text)` → count hits per category, best category wins. Confidence = min(0.3 + hits × 0.2, 0.9)
+- Keyword groups:
+  - PROCEDURAL: "how to", "steps to", "strategy", "best practice", "always", "never", "avoid", "prefer"
+  - SEMANTIC: "uses", "requires", "depends on", "version", "is a", "configured with", "supports"
+  - WORKING: "currently", "in progress", "next step", "blocked", "pending", "remaining"
+  - EPISODIC: "decided", "created", "failed", "error", "completed", "installed", "fixed"
+
+### Rationale
+
+- Regex is deterministic, fast, and zero-cost (no LLM needed)
+- Priority ordering handles multi-category overlap predictably
+- Hit-count confidence enables downstream use (e.g., reclassification threshold in InsightExtractor)
+- Pure static → easy to test, no mocking required
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| LLM-based classification | Too slow for inline pipeline; regex sufficient for Phase 1 |
+| ML classifier (sklearn) | Adds dependency; insufficient training data at this stage |
+| Single-label only (no confidence) | Loses information needed by InsightExtractor reclassification logic |
+
+---
+
+## TD-055: ConflictResolver — Jaccard + Negation Conflict Detection
+
+**Date**: 2026-03-11
+**Status**: Accepted (Phase 7, Sprint 7.3)
+
+### Decision
+
+Pure static domain service that detects contradictions between `ExtractedInsight` items using three criteria, then resolves via confidence comparison.
+
+### Design
+
+**Conflict detection** (all three must be true):
+1. Different `source_engine` (same engine can't conflict with itself)
+2. Jaccard overlap ≥ 0.4 on non-negation, non-stopword tokens
+3. Exactly one side contains negation words ("not", "never", "instead", "replaced", etc.)
+
+**Resolution**: higher confidence wins; tie → first insight (stable ordering).
+
+**API**:
+- `detect_conflicts(insights)` → `list[ConflictPair]` (pairwise, O(n²))
+- `resolve(a, b)` → winner
+- `resolve_all(insights)` → `(survivors, conflicts)` — removes losers in-place
+
+### Rationale
+
+- Jaccard on content tokens gives topic similarity without embeddings
+- Negation contrast is a reliable signal for contradiction ("uses X" vs "not use X")
+- O(n²) is acceptable: typical insight lists are 5-20 items
+- Confidence-based resolution is simple, explainable, and deterministic
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| Embedding-based similarity | Requires embedding port; overkill for regex-extracted insights |
+| LLM-based contradiction detection | Too slow for inline pipeline |
+| Voting (majority wins) | Doesn't apply — typically only 2 conflicting sources |
+| Keep all (no resolution) | Conflicting facts in memory degrade downstream quality |
+
+---
+
+## TD-056: Insight Extraction Pipeline — Extract → Resolve → Store → Update
+
+**Date**: 2026-03-11
+**Status**: Accepted (Phase 7, Sprint 7.3)
+
+### Decision
+
+A 4-stage pipeline connecting context adapter extraction to memory storage and task state updates:
+
+1. **Extract**: `InsightExtractor` looks up engine-specific adapter, calls `extract_insights()`, deduplicates by normalised content
+2. **Reclassify**: Insights with confidence < 0.5 get reclassified via `MemoryClassifier.classify_with_confidence()`
+3. **Conflict resolve**: `ConflictResolver.resolve_all()` removes losers, logs conflicts
+4. **Store**: Each survivor → `MemoryEntry` in `MemoryRepository` (with CognitiveMemoryType→MemoryType mapping)
+5. **Update state**: "decision"-tagged → `SharedTaskState.add_decision()`, "artifact"/"file"-tagged → `state.add_artifact()`
+
+### CognitiveMemoryType → MemoryType Mapping
+
+| CognitiveMemoryType | MemoryType |
+|---|---|
+| EPISODIC | L2_SEMANTIC |
+| PROCEDURAL | L2_SEMANTIC |
+| SEMANTIC | L3_FACTS |
+| WORKING | L1_ACTIVE |
+
+### Integration with ExecuteTaskUseCase
+
+- Optional `extract_insights: ExtractInsightsUseCase | None` parameter
+- `_safe_extract_insights()` gathers subtask results + errors, wrapped in try/except
+- Extraction failure never blocks task execution (fire-and-forget safety)
+
+### Container Wiring
+
+- 6 context adapters → `InsightExtractor` → `ExtractInsightsUseCase` → `ExecuteTaskUseCase`
+- `InMemorySharedTaskStateRepository` added to `AppContainer`
+
+### Rationale
+
+- Pipeline is the "nervous system" connecting extraction (Sprint 7.2) to storage (Phase 3)
+- Fire-and-forget ensures extraction bugs never degrade core task execution
+- Reclassification threshold (0.5) compensates for low-quality adapter extractions (e.g., Ollama at 0.3-0.6)
+- Tag-based routing ("decision", "artifact", "file") enables structured state updates without LLM

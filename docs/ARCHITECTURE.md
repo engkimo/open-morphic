@@ -10,6 +10,7 @@
 > **Phase 6 Self-Evolution: COMPLETE** — Sprint 6.1–6.5 done (execution recorder + tactical recovery + strategy learning + systemic evolution + evolution dashboard) — 1162 unit tests + 37 integration
 > **Phase 7 UCL: Sprint 7.1 COMPLETE** (2026-03-10) — UCL domain foundation (Decision, AgentAction, SharedTaskState, AgentAffinityScore, CognitiveMemoryType, 2 ports, AgentAffinityScorer service) — 1230 unit tests + 37 integration
 > **Phase 7 UCL: Sprint 7.2 COMPLETE** (2026-03-10) — ContextAdapterPort + InMemorySharedTaskStateRepo + 6 context adapters (Claude Code, Gemini, Codex, Ollama, OpenHands, ADK) — 1350 unit tests + 37 integration
+> **Phase 7 UCL: Sprint 7.3 COMPLETE** (2026-03-11) — Insight Extraction Pipeline (MemoryClassifier + ConflictResolver + InsightExtractor + ExtractInsightsUseCase + ExecuteTask integration + container wiring) — 1438 unit tests + 37 integration
 
 ---
 
@@ -194,6 +195,8 @@ Custom code is minimized. Every infrastructure component wraps an established OS
 | `domain/services/agent_engine_router.py` | Two-tier routing: task characteristics → execution engine selection, pure static (Sprint 4.1) |
 | `domain/services/tool_safety_scorer.py` | Multi-signal safety scoring: publisher trust + transport + popularity + metadata (Sprint 5.1) |
 | `domain/services/failure_analyzer.py` | Regex error pattern → MCP search query mapping, pure static (Sprint 5.4) |
+| `domain/services/memory_classifier.py` | Regex-based text → CognitiveMemoryType classification, pure static (Sprint 7.3) |
+| `domain/services/conflict_resolver.py` | Jaccard+negation contradiction detection, confidence-weighted resolution, pure static (Sprint 7.3) |
 | `domain/value_objects/*` | Project-specific enums and types |
 | `domain/ports/*` | Interface definitions are project-specific |
 
@@ -252,12 +255,14 @@ morphic-agent/
 │       ├── agent_engine_router.py # select, get_fallback_chain, select_with_fallbacks — pure static (Sprint 4.1)
 │       ├── tool_safety_scorer.py  # score() — publisher trust + transport + popularity + metadata (Sprint 5.1)
 │       ├── failure_analyzer.py    # extract_queries() — regex error→search query mapping (Sprint 5.4)
-│       └── tactical_recovery.py   # find_alternative, create_rule, rank_rules — pure static (Sprint 6.2)
+│       ├── tactical_recovery.py   # find_alternative, create_rule, rank_rules — pure static (Sprint 6.2)
+│       ├── memory_classifier.py   # classify(), classify_with_confidence() — regex→CognitiveMemoryType (Sprint 7.3)
+│       └── conflict_resolver.py   # detect_conflicts(), resolve(), resolve_all() — Jaccard+negation (Sprint 7.3)
 │
 ├── application/                     # Layer 3: Use Cases
 │   ├── use_cases/
 │   │   ├── create_task.py          # CreateTaskUseCase (decompose + persist)
-│   │   ├── execute_task.py         # ExecuteTaskUseCase (run DAG + persist)
+│   │   ├── execute_task.py         # ExecuteTaskUseCase (run DAG + persist + insight extraction hook)
 │   │   ├── cost_estimator.py       # CostEstimator (per-model token pricing)
 │   │   ├── interactive_plan.py     # InteractivePlanUseCase (create/approve/reject)
 │   │   ├── background_planner.py   # BackgroundPlannerUseCase (advisory monitoring)
@@ -267,7 +272,8 @@ morphic-agent/
 │   │   ├── manage_ollama.py        # ManageOllamaUseCase (status/pull/delete/switch, Sprint 5.5)
 │   │   ├── analyze_execution.py   # AnalyzeExecutionUseCase (record + stats + failure patterns, Sprint 6.1)
 │   │   ├── update_strategy.py     # UpdateStrategyUseCase (model/engine prefs + recovery rules, Sprint 6.3)
-│   │   └── systemic_evolution.py  # SystemicEvolutionUseCase (tool gap detection + evolution report, Sprint 6.4)
+│   │   ├── systemic_evolution.py  # SystemicEvolutionUseCase (tool gap detection + evolution report, Sprint 6.4)
+│   │   └── extract_insights.py   # ExtractInsightsUseCase (extract → resolve → store → update state, Sprint 7.3)
 │   └── dto/                         # (stub — Sprint 1.4)
 │
 ├── infrastructure/                  # Layer 2: Port Implementations
@@ -327,8 +333,9 @@ morphic-agent/
 │       ├── openhands_driver.py      # OpenHandsDriver (httpx REST, Docker sandbox)
 │       ├── adk_driver.py            # ADKDriver (Google ADK Python SDK, 2M ctx, Sprint 4.5)
 │       └── knowledge_loader.py      # KnowledgeFileLoader (engine→file mapping, Sprint 4.6)
-│   ├── cognitive/                   # Sprint 7.2: UCL Context Adapters
-│   │   ├── __init__.py
+│   ├── cognitive/                   # Sprint 7.2-7.3: UCL Context Adapters + Insight Extraction
+│   │   ├── __init__.py              # Re-exports InsightExtractor (Sprint 7.3)
+│   │   ├── insight_extractor.py     # InsightExtractorPort impl — adapters + dedup + reclassify (Sprint 7.3)
 │   │   └── adapters/
 │   │       ├── __init__.py          # Re-exports all 6 adapters
 │   │       ├── _base.py             # Shared helpers (format, truncate, regex patterns)
@@ -425,17 +432,20 @@ morphic-agent/
 │       │   ├── test_evolution_vo.py           # EvolutionLevel enum validation (Sprint 6.1)
 │       │   ├── test_execution_record.py       # ExecutionRecord strict validation (Sprint 6.1)
 │       │   ├── test_strategy_entities.py      # RecoveryRule, ModelPreference, EnginePreference (Sprint 6.3)
-│       │   └── test_tactical_recovery.py      # find_alternative, create_rule, rank (Sprint 6.2)
+│       │   ├── test_tactical_recovery.py      # find_alternative, create_rule, rank (Sprint 6.2)
+│       │   ├── test_memory_classifier.py     # 30 tests (classify + classify_with_confidence, Sprint 7.3)
+│       │   └── test_conflict_resolver.py     # 25 tests (detect, resolve, resolve_all + helpers, Sprint 7.3)
 │       ├── application/
 │       │   ├── test_create_task.py      # 5 tests (decompose, save, status, deps)
-│       │   ├── test_execute_task.py     # 6 tests (success, fallback, failed, cost)
+│       │   ├── test_execute_task.py     # 11 tests (success, fallback, failed, cost + insight extraction, Sprint 7.3)
 │       │   ├── test_route_to_engine.py  # 27 tests (list/get/execute happy/fallback/chain + context injection, Sprint 4.3+4.6)
 │       │   ├── test_install_tool.py     # 9 tests (search, install, install_by_name, uninstall, list, Sprint 5.3)
 │       │   ├── test_discover_tools.py   # 9 tests (suggest, dedup, sort, max_results, context, Sprint 5.4)
 │       │   ├── test_manage_ollama.py    # 10 tests (status, pull, delete, switch, info, Sprint 5.5)
 │       │   ├── test_analyze_execution.py # AnalyzeExecution (record, stats, failure patterns, Sprint 6.1)
 │       │   ├── test_update_strategy.py   # UpdateStrategy (prefs, rules, full update, Sprint 6.3)
-│       │   └── test_systemic_evolution.py # SystemicEvolution (gaps, tools, report, Sprint 6.4)
+│       │   ├── test_systemic_evolution.py # SystemicEvolution (gaps, tools, report, Sprint 6.4)
+│       │   └── test_extract_insights.py # 15 tests (extract, store, conflict resolve, task state update, Sprint 7.3)
 │       ├── infrastructure/
 │       │   ├── test_ollama_manager.py   # 20 tests (health, list, ensure, recommend + delete, info, running, Sprint 5.5)
 │       │   ├── test_cost_tracker.py     # 13 tests (record, queries, budget)
@@ -459,7 +469,8 @@ morphic-agent/
 │       │   ├── test_execution_record_repo.py # InMemoryExecutionRecordRepository CRUD (Sprint 6.1)
 │       │   ├── test_strategy_store.py  # StrategyStore JSONL I/O (Sprint 6.3)
 │       │   ├── test_shared_task_state_repo.py # 16 tests (CRUD, list_active, append, Sprint 7.2)
-│       │   └── test_context_adapters.py # 104 tests (6 adapters × inject/extract, Sprint 7.2)
+│       │   ├── test_context_adapters.py # 104 tests (6 adapters × inject/extract, Sprint 7.2)
+│       │   └── test_insight_extractor.py # 13 tests (extract, dedup, reclassify, tags, Sprint 7.3)
 │       └── interface/
 │           ├── test_api.py              # 22 tests (CRUD, WebSocket, CORS, models, cost, memory)
 │           ├── test_api_e2e.py          # 12 tests (HTTP round-trip: POST→execute→GET→verify)
@@ -842,6 +853,34 @@ Sprint 7.1 — UCL Domain Foundation:
   ✓ SharedTaskStateRepository:   ABC port (7 methods: save, get, list_active, update_decisions/artifacts, append_action, delete)
   ✓ InsightExtractorPort:        ABC port + ExtractedInsight dataclass
   ✓ AgentAffinityScorer:         Pure static service — score()/rank()/select_best() with 4-factor weighting
+```
+
+### Phase 7 Verification — Sprint 7.3 (2026-03-11)
+
+```
+✓ Unit tests:       1438 passed (4.40s), 0 failures
+✓ New tests:        88 (30 domain + 15 application + 13 infrastructure + 5 execute_task extension + 25 domain)
+✓ Lint:             ruff check 0 errors, ruff format 272 files clean
+
+Sprint 7.3 — Insight Extraction Pipeline:
+  ✓ MemoryClassifier:             Pure static service — classify()/classify_with_confidence()
+                                  4 regex patterns (PROCEDURAL > SEMANTIC > WORKING > EPISODIC priority)
+                                  Confidence: min(0.3 + hits * 0.2, 0.9)
+  ✓ ConflictResolver:             Pure static service — detect_conflicts()/resolve()/resolve_all()
+                                  3 criteria: different engine + Jaccard overlap ≥ 0.4 + negation contrast
+                                  Resolution: higher confidence wins, tie → first (stable)
+                                  ConflictPair dataclass for conflict audit trail
+  ✓ InsightExtractor:             InsightExtractorPort impl — adapter lookup + dedup + reclassification
+                                  Dedup: normalised content (strip+lowercase)
+                                  Low confidence (<0.5) → MemoryClassifier override
+  ✓ ExtractInsightsUseCase:       Full pipeline: extract → ConflictResolver.resolve_all → MemoryEntry storage → SharedTaskState update
+                                  CognitiveMemoryType → MemoryType mapping:
+                                    EPISODIC/PROCEDURAL → L2_SEMANTIC, SEMANTIC → L3_FACTS, WORKING → L1_ACTIVE
+                                  "decision" tag → state.add_decision(), "artifact"/"file" tag → state.add_artifact()
+  ✓ ExecuteTaskUseCase:           +extract_insights optional param, _safe_extract_insights hook (try/except, never blocks)
+                                  Gathers subtask results + errors into combined output
+  ✓ AppContainer wiring:          6 context adapters → InsightExtractor → ExtractInsightsUseCase → ExecuteTaskUseCase
+                                  SharedTaskStateRepository (in-memory) added to container
 ```
 
 ---
