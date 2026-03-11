@@ -1430,17 +1430,17 @@ class ContextZipper:
 | 4 | Update `RouteToEngineUseCase` | `application/use_cases/route_to_engine.py` | Inject shared context via ContextAdapter before engine execution |
 | 5 | Tests | `tests/unit/application/test_handoff.py` | Handoff preserves decisions, artifacts, blockers |
 
-### Sprint 7.5: UCL API + CLI + UI
+### Sprint 7.5: UCL API + CLI + UI ✅ (2026-03-11)
 
 > Expose UCL capabilities through all interfaces.
 
-| # | Item | File | Notes |
+| # | Item | File | Status |
 |---|---|---|---|
-| 1 | UCL API endpoints | `interface/api/routes/cognitive.py` | GET /cognitive/state/{task_id}, GET /memory/shared, POST /handoff |
-| 2 | UCL CLI commands | `interface/cli/commands/cognitive.py` | morphic cognitive {state|memory|handoff|affinity} |
-| 3 | UCL UI page | `ui/app/cognitive/page.tsx` | Shared state viewer, memory timeline, agent action history |
-| 4 | AppContainer wiring | `interface/api/deps.py` | Wire UCL repos, adapters, use cases |
-| 5 | Tests | `tests/unit/interface/test_cognitive_*.py` | API + CLI endpoint tests |
+| 1 | UCL API schemas | `interface/api/schemas.py` | ✅ 12 schemas (DecisionResponse, SharedTaskStateResponse, AffinityScoreResponse, HandoffRequestSchema, InsightResponse, etc.) |
+| 2 | UCL API endpoints | `interface/api/routes/cognitive.py` | ✅ 6 endpoints (state CRUD, affinity, handoff, insights/extract) |
+| 3 | UCL CLI commands | `interface/cli/commands/cognitive.py` | ✅ 5 commands (state, delete, affinity, handoff, insights) + 3 rich formatters |
+| 4 | UCL UI page | `ui/app/cognitive/page.tsx` | ✅ Tab UI (Shared States + Affinity Scores) + StateCard + StateDetail + AffinityTable |
+| 5 | Tests | `tests/unit/interface/test_cognitive_*.py` | ✅ 30 tests (19 API + 11 CLI), 1558 total unit tests |
 
 ### Sprint 7.6: Integration Testing + Benchmarks
 
@@ -1455,13 +1455,14 @@ class ContextZipper:
 | 5 | Benchmark dashboard | `ui/app/benchmarks/page.tsx` | Results visualization |
 
 **Phase 7 Completion Criteria:**
-- [ ] Shared task state persists across agent handoffs (decisions, artifacts, blockers)
-- [ ] Shared memory accessible from all 6 agent engines
-- [ ] Context adapters inject/extract for each engine type
-- [ ] Insight extraction auto-runs after task execution
-- [ ] Agent affinity scoring influences routing decisions
-- [ ] Cross-engine task handoff demonstrated (Agent A → Agent B with full context)
-- [ ] Context continuity score > 85% in benchmarks
+- [x] Shared task state persists across agent handoffs (decisions, artifacts, blockers) — Sprint 7.1 + 7.4
+- [x] Shared memory accessible from all 6 agent engines — Sprint 7.2 (ContextAdapters)
+- [x] Context adapters inject/extract for each engine type — Sprint 7.2 (6 adapters)
+- [x] Insight extraction auto-runs after task execution — Sprint 7.3 (ExtractInsightsUseCase)
+- [x] Agent affinity scoring influences routing decisions — Sprint 7.4 (select_with_affinity)
+- [x] Cross-engine task handoff demonstrated (Agent A → Agent B with full context) — Sprint 7.4 (HandoffTaskUseCase)
+- [x] UCL exposed through API + CLI + UI — Sprint 7.5
+- [ ] Context continuity score > 85% in benchmarks — Sprint 7.6 (pending)
 
 ---
 
