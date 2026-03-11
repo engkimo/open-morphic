@@ -567,3 +567,97 @@ class InsightExtractRequest(BaseModel):
     task_id: str = Field(min_length=1)
     engine: str = Field(min_length=1)
     output: str = Field(min_length=1)
+
+
+# ---------- Benchmarks (Sprint 7.6) ----------
+
+
+class AdapterScoreResponse(BaseModel):
+    engine: str
+    decisions_injected: int
+    decisions_found: int
+    artifacts_injected: int
+    artifacts_found: int
+    blockers_injected: int
+    blockers_found: int
+    context_length: int
+    score: float
+
+
+class ContinuityResultResponse(BaseModel):
+    overall_score: float
+    adapter_scores: list[AdapterScoreResponse]
+
+
+class DedupScoreResponse(BaseModel):
+    scenario: str
+    engine_a: str
+    engine_b: str
+    raw_count_a: int
+    raw_count_b: int
+    total_raw: int
+    deduped_count: int
+    dedup_rate: float
+
+
+class DedupResultResponse(BaseModel):
+    overall_accuracy: float
+    scores: list[DedupScoreResponse]
+
+
+class BenchmarkResultResponse(BaseModel):
+    overall_score: float
+    context_continuity: ContinuityResultResponse | None = None
+    dedup_accuracy: DedupResultResponse | None = None
+    errors: list[str] = Field(default_factory=list)
+    timestamp: str
+
+    @classmethod
+    def from_result(cls, r: object) -> BenchmarkResultResponse:
+        from benchmarks.runner import BenchmarkSuiteResult
+
+        assert isinstance(r, BenchmarkSuiteResult)
+        cc = None
+        if r.context_continuity:
+            cc = ContinuityResultResponse(
+                overall_score=round(r.context_continuity.overall_score, 4),
+                adapter_scores=[
+                    AdapterScoreResponse(
+                        engine=s.engine,
+                        decisions_injected=s.decisions_injected,
+                        decisions_found=s.decisions_found,
+                        artifacts_injected=s.artifacts_injected,
+                        artifacts_found=s.artifacts_found,
+                        blockers_injected=s.blockers_injected,
+                        blockers_found=s.blockers_found,
+                        context_length=s.context_length,
+                        score=round(s.score, 4),
+                    )
+                    for s in r.context_continuity.adapter_scores
+                ],
+            )
+        dd = None
+        if r.dedup_accuracy:
+            dd = DedupResultResponse(
+                overall_accuracy=round(r.dedup_accuracy.overall_accuracy, 4),
+                scores=[
+                    DedupScoreResponse(
+                        scenario=s.scenario,
+                        engine_a=s.engine_a,
+                        engine_b=s.engine_b,
+                        raw_count_a=s.raw_count_a,
+                        raw_count_b=s.raw_count_b,
+                        total_raw=s.total_raw,
+                        deduped_count=s.deduped_count,
+                        dedup_rate=round(s.dedup_rate, 4),
+                    )
+                    for s in r.dedup_accuracy.scores
+                ],
+            )
+        return cls(
+            overall_score=round(r.overall_score, 4),
+            context_continuity=cc,
+            dedup_accuracy=dd,
+            errors=list(r.errors),
+            timestamp=r.timestamp,
+        )

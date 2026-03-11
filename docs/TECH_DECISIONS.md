@@ -2706,3 +2706,66 @@ UI:    /cognitive                    — tab view: Shared States | Affinity Scor
 | Separate schemas file for cognitive | Inconsistent with existing pattern; all schemas in one file |
 | GraphQL for UCL queries | Over-engineering; REST is sufficient and consistent with existing API |
 | Dedicated handoff UI page | Handoff is typically programmatic (agent-to-agent); API-only is appropriate for now |
+
+---
+
+## TD-062: Integration Testing + Benchmarks (Sprint 7.6)
+
+**Date**: 2026-03-11
+**Status**: Accepted
+
+### Decision
+
+Sprint 7.6 implements two benchmark suites, 13 cross-engine integration tests, and a full benchmark interface (API + CLI + UI) to validate Phase 7 UCL completion criteria.
+
+### Key Design Choices
+
+| Choice | Rationale |
+|---|---|
+| `benchmarks/` top-level package | Benchmarks are project-wide concerns, not tied to a single layer |
+| AdapterScore as frozen dataclass (not Pydantic) | Pure domain-free benchmark utilities; score is a computed property |
+| Continuity benchmark: inject→count (not inject→extract roundtrip) | Counting string fragments in injected context is deterministic; extract roundtrip depends on adapter regex which varies |
+| Dedup benchmark: async (uses InsightExtractor) | InsightExtractor is async; dedup measures real pipeline behavior |
+| 3 dedup scenarios: overlapping_facts, unique_outputs, case_variation | Covers the main dedup cases: exact overlap, no overlap, near-duplicate |
+| A2A protocol skipped | UCL already provides cross-engine communication via ContextAdapters + HandoffTaskUseCase; separate A2A protocol would duplicate functionality |
+| BenchmarkResultResponse.from_result() classmethod | Consistent with existing schema patterns (from_state, from_affinity, from_insight) |
+| Integration tests use _FakeEngine(AgentEnginePort) | Controllable output without real LLM calls; each engine returns deterministic text |
+
+### Benchmark Results
+
+```
+Context Continuity:  97.2% overall (target >85%)
+  - All 6 adapters scored 83-100%
+  - Reference state: 5 decisions, 4 artifacts, 3 blockers
+  - Ollama adapter: lowest score due to ultra-compact format
+
+Memory Dedup:        57.1% overall (target >50%)
+  - overlapping_facts:  High dedup (same facts from different engines)
+  - unique_outputs:     Low dedup (genuinely different content)
+  - case_variation:     Medium dedup (near-duplicates caught)
+```
+
+### Architecture
+
+```
+benchmarks/
+  context_continuity.py   AdapterScore + ContinuityResult + run_benchmark()
+  dedup_accuracy.py       DedupScore + DedupResult + async run_benchmark()
+  runner.py               BenchmarkSuiteResult + async run_all()
+
+interface/api/routes/benchmarks.py   POST /api/benchmarks/{run|continuity|dedup}
+interface/cli/commands/benchmark.py  morphic benchmark {run|continuity|dedup}
+ui/app/benchmarks/page.tsx           Dashboard with ScoreBar + tables
+
+tests/integration/test_ucl_cross_engine.py   13 tests (6 classes)
+tests/unit/interface/test_benchmark_api.py   7 tests
+tests/unit/interface/test_benchmark_cli.py   4 tests
+```
+
+### Rejected Alternatives
+
+| Alternative | Rejection Reason |
+|---|---|
+| Roundtrip-based continuity scoring (inject→extract→compare) | Ollama's ultra-compact format loses detail in extract; count-based scoring is more robust |
+| Separate A2A protocol implementation | UCL ContextAdapters + HandoffTask already cover agent-to-agent communication needs |
+| Benchmark results persistence (DB) | Not needed yet; benchmarks run on-demand and return results directly |

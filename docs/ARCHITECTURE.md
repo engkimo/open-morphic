@@ -13,6 +13,7 @@
 > **Phase 7 UCL: Sprint 7.3 COMPLETE** (2026-03-11) — Insight Extraction Pipeline (MemoryClassifier + ConflictResolver + InsightExtractor + ExtractInsightsUseCase + ExecuteTask integration + container wiring) — 1438 unit tests + 37 integration
 > **Phase 7 UCL: Sprint 7.4 COMPLETE** (2026-03-11) — Affinity-Aware Routing + Task Handoff (AgentAffinityRepository port + TopicExtractor + select_with_affinity() + InMemory/JSONL affinity stores + RouteToEngine with affinity/adapter/action recording + HandoffTaskUseCase + container wiring) — 1528 unit tests + 37 integration
 > **Phase 7 UCL: Sprint 7.5 COMPLETE** (2026-03-11) — UCL API + CLI + UI (cognitive API routes + CLI commands + Next.js cognitive page + 30 new tests) — 1558 unit tests + 37 integration
+> **Phase 7 UCL: Sprint 7.6 COMPLETE** (2026-03-11) — Integration Testing + Benchmarks (13 cross-engine integration tests + context continuity 97.2% + dedup accuracy 57.1% + benchmark API/CLI/UI + 11 new unit tests) — 1569 unit tests + 50 integration — **PHASE 7 COMPLETE**
 
 ---
 
@@ -370,7 +371,8 @@ morphic-agent/
 │   │       ├── engines.py           # GET /api/engines, GET /api/engines/{type}, POST /api/engines/run (Sprint 4.3)
 │   │       ├── marketplace.py       # GET /search, POST /install, GET /installed, POST /suggest, DELETE /{name} (Sprint 5.3)
 │   │       ├── evolution.py        # GET /stats, GET /failures, GET /preferences, POST /update, POST /evolve (Sprint 6.1)
-│   │       └── cognitive.py       # GET/DELETE /state, GET /affinity, POST /handoff, POST /insights/extract (Sprint 7.5)
+│   │       ├── cognitive.py       # GET/DELETE /state, GET /affinity, POST /handoff, POST /insights/extract (Sprint 7.5)
+│   │       └── benchmarks.py     # POST /api/benchmarks/{run|continuity|dedup} (Sprint 7.6)
 │   └── cli/                         # Sprint 2.9-2.11: typer + rich
 │       ├── main.py                  # typer app, _get_container() lazy singleton, _run() async bridge
 │       ├── formatters.py            # Rich tables, trees, status styles, safety badge (all output isolated here)
@@ -383,7 +385,8 @@ morphic-agent/
 │           ├── engine.py            # morphic engine {list|run} (Sprint 4.3)
 │           ├── marketplace.py       # morphic marketplace {search|install|list|suggest|uninstall} (Sprint 5.3)
 │           ├── evolution.py        # morphic evolution {stats|failures|update|report} (Sprint 6.1)
-│           └── cognitive.py       # morphic cognitive {state|delete|affinity|handoff|insights} (Sprint 7.5)
+│           ├── cognitive.py       # morphic cognitive {state|delete|affinity|handoff|insights} (Sprint 7.5)
+│           └── benchmark.py      # morphic benchmark {run|continuity|dedup} (Sprint 7.6)
 │
 ├── shared/
 │   └── config.py                    # pydantic-settings (all env vars + marketplace + evolution settings)
@@ -391,9 +394,9 @@ morphic-agent/
 ├── ui/                              # Sprint 1.6 + 2-F + 5.6: Next.js 15 (bun, Tailwind CSS 4, @xyflow/react)
 │   ├── lib/
 │   │   ├── theme.ts                 # morphicAgentTheme design tokens
-│   │   └── api.ts                   # Typed fetch wrappers + WebSocket + Plan/Marketplace/Model/Evolution/Cognitive API
+│   │   └── api.ts                   # Typed fetch wrappers + WebSocket + Plan/Marketplace/Model/Evolution/Cognitive/Benchmark API
 │   ├── app/
-│   │   ├── layout.tsx               # Dark theme root layout (Geist font, nav: Marketplace/Models/Evolution/Cognitive)
+│   │   ├── layout.tsx               # Dark theme root layout (Geist font, nav: Marketplace/Models/Evolution/Cognitive/Benchmarks)
 │   │   ├── globals.css              # CSS variables matching design spec
 │   │   ├── page.tsx                 # Dashboard (Execute/Plan toggle + GoalInput + TaskList)
 │   │   ├── tasks/[id]/page.tsx      # Task detail + TaskGraph with live WebSocket
@@ -409,12 +412,14 @@ morphic-agent/
 │   │   │   └── page.tsx             # Pull/delete/switch models + running status
 │   │   ├── evolution/               # Sprint 6.5: Evolution dashboard
 │   │   │   └── page.tsx             # Stats, failure patterns, preferences, evolution trigger
-│   │   └── cognitive/               # Sprint 7.5: UCL cognitive dashboard
-│   │       ├── page.tsx             # Shared states + affinity scores (tab UI)
-│   │       └── components/
-│   │           ├── StateCard.tsx    # State card (task_id, last_agent, counts)
-│   │           ├── StateDetail.tsx  # Full state detail (decisions, artifacts, blockers, history)
-│   │           └── AffinityTable.tsx # Affinity scores table (engine, topic, score)
+│   │   ├── cognitive/               # Sprint 7.5: UCL cognitive dashboard
+│   │   │   ├── page.tsx             # Shared states + affinity scores (tab UI)
+│   │   │   └── components/
+│   │   │       ├── StateCard.tsx    # State card (task_id, last_agent, counts)
+│   │   │       ├── StateDetail.tsx  # Full state detail (decisions, artifacts, blockers, history)
+│   │   │       └── AffinityTable.tsx # Affinity scores table (engine, topic, score)
+│   │   └── benchmarks/              # Sprint 7.6: Benchmark dashboard
+│   │       └── page.tsx             # Run benchmarks, view continuity + dedup results
 │   └── components/
 │       ├── GoalInput.tsx            # Textarea + Execute button (Enter to submit)
 │       ├── TaskList.tsx             # Task cards with status icons + FREE badge
@@ -492,13 +497,22 @@ morphic-agent/
 │           ├── test_evolution_api.py    # Evolution API endpoints (stats, failures, update, evolve, Sprint 6.1)
 │           ├── test_evolution_cli.py    # Evolution CLI commands (stats, failures, update, report, Sprint 6.1)
 │           ├── test_cognitive_api.py   # 19 tests (state CRUD, affinity, handoff, insights, Sprint 7.5)
-│           └── test_cognitive_cli.py   # 11 tests (state, affinity, insights CLI commands, Sprint 7.5)
+│           ├── test_cognitive_cli.py   # 11 tests (state, affinity, insights CLI commands, Sprint 7.5)
+│           ├── test_benchmark_api.py  # 7 tests (run/continuity/dedup endpoints, field validation, Sprint 7.6)
+│           └── test_benchmark_cli.py  # 4 tests (run/continuity/dedup/help CLI commands, Sprint 7.6)
 │   └── integration/
 │       ├── test_live_smoke.py           # 10 tests (real Ollama + real filesystem)
 │       ├── test_cloud_llm.py            # 11 tests (Anthropic + OpenAI + Gemini + cost + routing)
 │       ├── test_e2e_pipeline.py         # 5 tests (Goal → Decompose → DAG → Result)
 │       ├── test_memory_hierarchy_full.py # 16 tests (L1-L4 full lifecycle, compression interplay, edge cases, cross-component, Sprint 3.10)
-│       └── test_agent_engines.py        # 37 tests (6 engines live + routing + fallback + availability, Sprint 4.4-4.5)
+│       ├── test_agent_engines.py        # 37 tests (6 engines live + routing + fallback + availability, Sprint 4.4-4.5)
+│       └── test_ucl_cross_engine.py    # 13 tests (handoff pipeline + adapter fidelity + insight roundtrip + affinity + conflict + benchmarks, Sprint 7.6)
+│
+├── benchmarks/                      # Sprint 7.6: Context continuity + dedup accuracy benchmarks
+│   ├── __init__.py
+│   ├── context_continuity.py       # AdapterScore, ContinuityResult, run_benchmark() — target >85%
+│   ├── dedup_accuracy.py           # DedupScore, DedupResult, run_benchmark() — target >50%
+│   └── runner.py                   # BenchmarkSuiteResult, run_all() — unified benchmark runner
 │
 ├── migrations/                      # Alembic async migrations (001 initial + 002 embedding)
 ├── docker-compose.yml               # PostgreSQL+pgvector, Redis, Neo4j
@@ -956,6 +970,42 @@ Sprint 7.5 — UCL API + CLI + UI:
   ✓ Tests:                19 API tests (state CRUD, affinity filter, handoff valid/invalid, insights)
                           11 CLI tests (state list/show, delete, affinity filter, insights invalid)
                           Patch target: interface.cli.commands.cognitive._get_container
+```
+
+### Phase 7 Verification — Sprint 7.6 (2026-03-11)
+
+```
+✓ Unit tests:       1569 passed (6.02s), 0 failures
+✓ Integration tests: 13 new (50 total), 0 failures
+✓ New unit tests:   11 (7 API + 4 CLI)
+✓ Lint:             ruff check 0 errors, ruff format clean
+
+Sprint 7.6 — Integration Testing + Benchmarks:
+  ✓ Cross-engine integration tests:
+      TestFullHandoffPipeline       3 tests (state preservation, insight extraction, chained A→B→C)
+      TestContextAdapterFidelity    3 tests (nonempty context, extract insights, roundtrip key info)
+      TestInsightExtractionRoundTrip 2 tests (stored in memory, updates task state)
+      TestAffinityLearning          2 tests (updates after execution, builds with multiple runs)
+      TestConflictResolution        1 test (conflicting insights resolved by confidence)
+      TestContextContinuityBenchmark 2 tests (continuity >85%, dedup >50%)
+  ✓ Context continuity benchmark:   97.2% overall (target >85%)
+      AdapterScore dataclass (engine, decisions/artifacts/blockers injected/found, context_length)
+      ContinuityResult (adapter_scores, overall_score property)
+      _build_reference_state() — 5 decisions, 4 artifacts, 3 blockers, 3 agent actions
+  ✓ Memory dedup benchmark:         57.1% overall (target >50%)
+      DedupScore (scenario, engine_a/b, raw counts, deduped_count, dedup_rate)
+      DedupResult (scores, overall_accuracy property)
+      3 scenarios: overlapping_facts, unique_outputs, case_variation
+  ✓ Benchmark runner:               BenchmarkSuiteResult, async run_all()
+  ✓ Benchmark API:                  POST /api/benchmarks/{run|continuity|dedup}
+      BenchmarkResultResponse schema (overall_score, context_continuity, dedup_accuracy, errors, timestamp)
+  ✓ Benchmark CLI:                  morphic benchmark {run|continuity|dedup}
+      Rich table output with color-coded scores
+  ✓ Benchmark UI:                   /benchmarks page (ScoreBar, adapter table, dedup table)
+  ✓ API client:                     runBenchmarks(), runContinuityBenchmark(), runDedupBenchmark()
+  ✓ Item 4 (A2A protocol):          Skipped — UCL already provides cross-engine communication
+
+PHASE 7 COMPLETE — All 6 sprints done, all completion criteria met.
 ```
 
 ---

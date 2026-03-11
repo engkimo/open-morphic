@@ -49,6 +49,9 @@ export default function RootLayout({
               <Link href="/cognitive" className="hover:text-accent">
                 Cognitive
               </Link>
+              <Link href="/benchmarks" className="hover:text-accent">
+                Benchmarks
+              </Link>
             </nav>
           </div>
           <span className="text-sm text-text-muted">v0.5.0-alpha</span>

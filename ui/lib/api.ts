@@ -395,6 +395,67 @@ export function getAffinityScores(params?: {
   );
 }
 
+// ── Benchmarks API ──
+
+export interface AdapterScoreResponse {
+  engine: string;
+  decisions_injected: number;
+  decisions_found: number;
+  artifacts_injected: number;
+  artifacts_found: number;
+  blockers_injected: number;
+  blockers_found: number;
+  context_length: number;
+  score: number;
+}
+
+export interface ContinuityResultResponse {
+  overall_score: number;
+  adapter_scores: AdapterScoreResponse[];
+}
+
+export interface DedupScoreResponse {
+  scenario: string;
+  engine_a: string;
+  engine_b: string;
+  raw_count_a: number;
+  raw_count_b: number;
+  total_raw: number;
+  deduped_count: number;
+  dedup_rate: number;
+}
+
+export interface DedupResultResponse {
+  overall_accuracy: number;
+  scores: DedupScoreResponse[];
+}
+
+export interface BenchmarkResultResponse {
+  overall_score: number;
+  context_continuity: ContinuityResultResponse | null;
+  dedup_accuracy: DedupResultResponse | null;
+  errors: string[];
+  timestamp: string;
+}
+
+export function runBenchmarks() {
+  return request<BenchmarkResultResponse>("/api/benchmarks/run", {
+    method: "POST",
+  });
+}
+
+export function runContinuityBenchmark() {
+  return request<BenchmarkResultResponse>("/api/benchmarks/continuity", {
+    method: "POST",
+  });
+}
+
+export function runDedupBenchmark() {
+  return request<BenchmarkResultResponse>("/api/benchmarks/dedup", {
+    method: "POST",
+  });
+}
+
 // ── WebSocket ──
 
 export function connectTaskWs(
