@@ -7,10 +7,13 @@ import pytest
 from application.use_cases.discover_tools import DiscoverToolsUseCase, ToolSuggestions
 from application.use_cases.execute_task import ExecuteTaskUseCase, TaskNotFoundError
 from application.use_cases.extract_insights import ExtractInsightsUseCase
+from domain.entities.execution_record import ExecutionRecord
 from domain.entities.task import SubTask, TaskEntity
 from domain.entities.tool_candidate import ToolCandidate
+from domain.ports.execution_record_repository import ExecutionRecordRepository
 from domain.ports.task_engine import TaskEngine
 from domain.ports.task_repository import TaskRepository
+from domain.value_objects.model_tier import TaskType
 from domain.value_objects.status import SubTaskStatus, TaskStatus
 
 
@@ -352,3 +355,127 @@ class TestExecuteTaskWithToolSuggestion:
         await uc_with_discover.execute(task.id)
 
         discover_uc.suggest_for_failure.assert_not_called()
+
+
+class TestExecuteTaskAutoRecording:
+    """Self-evolution loop: auto-record ExecutionRecords after each task."""
+
+    @pytest.fixture
+    def record_repo(self) -> AsyncMock:
+        return AsyncMock(spec=ExecutionRecordRepository)
+
+    @pytest.fixture
+    def uc_with_recording(
+        self, engine: AsyncMock, repo: AsyncMock, record_repo: AsyncMock
+    ) -> ExecuteTaskUseCase:
+        return ExecuteTaskUseCase(
+            engine, repo, execution_record_repo=record_repo, default_model="test-model"
+        )
+
+    async def test_auto_records_execution_on_success(
+        self,
+        uc_with_recording: ExecuteTaskUseCase,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        record_repo: AsyncMock,
+    ) -> None:
+        task = _make_task(SubTaskStatus.SUCCESS, SubTaskStatus.SUCCESS)
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        await uc_with_recording.execute(task.id)
+
+        record_repo.save.assert_called_once()
+        record: ExecutionRecord = record_repo.save.call_args[0][0]
+        assert record.task_id == task.id
+        assert record.success is True
+        assert record.model_used == "test-model"
+        assert record.cost_usd == pytest.approx(0.02)
+        assert record.error_message is None
+
+    async def test_auto_records_execution_on_failure(
+        self,
+        uc_with_recording: ExecuteTaskUseCase,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        record_repo: AsyncMock,
+    ) -> None:
+        task = _make_task(SubTaskStatus.FAILED)
+        task.subtasks[0].error = "connection refused"
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        await uc_with_recording.execute(task.id)
+
+        record: ExecutionRecord = record_repo.save.call_args[0][0]
+        assert record.success is False
+        assert record.error_message == "connection refused"
+
+    async def test_auto_records_execution_on_fallback(
+        self,
+        uc_with_recording: ExecuteTaskUseCase,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        record_repo: AsyncMock,
+    ) -> None:
+        task = _make_task(SubTaskStatus.SUCCESS, SubTaskStatus.FAILED)
+        task.subtasks[1].error = "partial failure"
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        await uc_with_recording.execute(task.id)
+
+        record: ExecutionRecord = record_repo.save.call_args[0][0]
+        assert record.success is False  # only full success counts
+        assert record.error_message == "partial failure"
+
+    async def test_recording_failure_does_not_block(
+        self,
+        uc_with_recording: ExecuteTaskUseCase,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        record_repo: AsyncMock,
+    ) -> None:
+        task = _make_task(SubTaskStatus.SUCCESS)
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+        record_repo.save.side_effect = RuntimeError("DB down")
+
+        result = await uc_with_recording.execute(task.id)
+
+        assert result.status == TaskStatus.SUCCESS
+
+    async def test_no_recording_when_repo_is_none(
+        self, engine: AsyncMock, repo: AsyncMock
+    ) -> None:
+        uc = ExecuteTaskUseCase(engine, repo, execution_record_repo=None)
+        task = _make_task(SubTaskStatus.SUCCESS)
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        result = await uc.execute(task.id)
+
+        assert result.status == TaskStatus.SUCCESS
+
+    async def test_duration_is_positive(
+        self,
+        uc_with_recording: ExecuteTaskUseCase,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        record_repo: AsyncMock,
+    ) -> None:
+        task = _make_task(SubTaskStatus.SUCCESS)
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        await uc_with_recording.execute(task.id)
+
+        record: ExecutionRecord = record_repo.save.call_args[0][0]
+        assert record.duration_seconds >= 0.0
+
+    async def test_task_type_inference(self) -> None:
+        infer = ExecuteTaskUseCase._infer_task_type
+        assert infer("Build a React frontend") == TaskType.CODE_GENERATION
+        assert infer("Train a neural network") == TaskType.COMPLEX_REASONING
+        assert infer("Deploy with Docker") == TaskType.FILE_OPERATION
+        assert infer("Do something random") == TaskType.SIMPLE_QA

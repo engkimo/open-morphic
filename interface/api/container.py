@@ -201,16 +201,18 @@ class AppContainer:
             insight_extractor=self.extract_insights,
         )
 
-        # Re-wire execute_task with insight extraction + auto-discovery
+        # Evolution (Phase 6) — create repo before execute_task so it can record
+        self.execution_record_repo: ExecutionRecordRepository = self._create_execution_record_repo()
+
+        # Re-wire execute_task with insight extraction + auto-discovery + recording
         self.execute_task = ExecuteTaskUseCase(
             engine=self.task_engine,
             repo=self.task_repo,
             extract_insights=self.extract_insights,
             discover_tools=self.discover_tools,
+            execution_record_repo=self.execution_record_repo,
+            default_model=self.settings.ollama_default_model,
         )
-
-        # Evolution (Phase 6)
-        self.execution_record_repo: ExecutionRecordRepository = self._create_execution_record_repo()
         from infrastructure.evolution.strategy_store import StrategyStore
 
         self.strategy_store = StrategyStore(

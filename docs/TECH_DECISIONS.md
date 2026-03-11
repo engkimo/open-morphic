@@ -2803,3 +2803,48 @@ Two gaps closed to complete Phase 5:
 - `application/use_cases/execute_task.py` — +discover_tools param, +_safe_suggest_tools()
 - `interface/api/container.py` — +discover_tools= wiring (1 line)
 - `tests/unit/application/test_execute_task.py` — +8 tests (TestExecuteTaskWithToolSuggestion)
+
+---
+
+## TD-064: Sprint 8.1 — Close the Self-Evolution Loop
+
+**Date**: 2026-03-12
+**Status**: Accepted
+**Sprint**: 8.1
+
+### Decision
+
+`ExecuteTaskUseCase` now auto-records an `ExecutionRecord` after every task execution. This closes the broken loop where Phase 6's `AnalyzeExecutionUseCase`, `UpdateStrategyUseCase`, and `SystemicEvolutionUseCase` had zero data to learn from.
+
+### Problem
+
+- `ExecuteTaskUseCase` ran tasks but never created `ExecutionRecord` entries
+- Phase 6 evolution pipeline was fully built but starved of input data
+- `RouteToEngineUseCase` already recorded affinity scores after engine execution — that pattern worked, but task-level recording was missing
+
+### Key Design Choices
+
+| Choice | Rationale |
+|---|---|
+| Optional `execution_record_repo` parameter (None default) | Backward-compatible; existing tests and callers unaffected |
+| Optional `default_model` parameter | Captures which model ran; defaults to `ollama/qwen3:8b` |
+| `time.monotonic()` for duration | Monotonic clock avoids wall-clock drift issues |
+| Fire-and-forget `_safe_record_execution()` | Mirrors `_safe_extract_insights()` pattern: wrapped in try/except, never blocks task execution |
+| `_infer_task_type()` via TopicExtractor | Reuses existing `TopicExtractor.extract()` + static dict mapping (10 topics → TaskType). Default: `SIMPLE_QA` |
+| Container ordering fix | Moved `execution_record_repo` creation before `execute_task` in `AppContainer.__init__()` |
+
+### Topic → TaskType Mapping
+
+| Topic | TaskType |
+|---|---|
+| frontend, backend, database, testing, refactoring | CODE_GENERATION |
+| devops, documentation | FILE_OPERATION |
+| ml, security | COMPLEX_REASONING |
+| data | LONG_CONTEXT |
+| general (default) | SIMPLE_QA |
+
+### Files Modified
+
+- `application/use_cases/execute_task.py` — +`execution_record_repo`/`default_model` params, +`_safe_record_execution()`, +`_infer_task_type()`, +`_TOPIC_TO_TASK_TYPE` mapping
+- `interface/api/container.py` — reordered `execution_record_repo` creation, +2 params to ExecuteTaskUseCase
+- `tests/unit/application/test_execute_task.py` — +7 tests (TestExecuteTaskAutoRecording)

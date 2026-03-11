@@ -1468,6 +1468,23 @@ class ContextZipper:
 
 ---
 
+## Post-Phase 7: Self-Evolution Loop Closure
+
+### Sprint 8.1: Close the Self-Evolution Loop ✅ COMPLETE (2026-03-12)
+
+> ExecuteTaskUseCase runs tasks but never recorded ExecutionRecords. Phase 6's evolution engine was fully built but received zero data. This sprint closes the loop.
+
+| # | Item | File | Notes |
+|---|---|---|---|
+| 1 | Auto-recording in ExecuteTaskUseCase | `application/use_cases/execute_task.py` | ✅ `execution_record_repo` + `default_model` params, `time.monotonic()` duration, `_safe_record_execution()` fire-and-forget |
+| 2 | Task type inference | `application/use_cases/execute_task.py` | ✅ `_infer_task_type()` — TopicExtractor → TaskType mapping (10 topics) |
+| 3 | Container wiring | `interface/api/container.py` | ✅ Moved `execution_record_repo` creation before `execute_task`, passed repo + default_model |
+| 4 | Tests | `tests/unit/application/test_execute_task.py` | ✅ 7 tests (success/failure/fallback recording, recording failure doesn't block, None backward compat, duration positive, task_type inference) |
+
+**Result:** 1599 unit tests + 50 integration, 0 failures, lint clean.
+
+---
+
 ## Risk Management
 
 | Risk | Impact | Probability | Mitigation |
