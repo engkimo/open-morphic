@@ -4,9 +4,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from application.use_cases.discover_tools import DiscoverToolsUseCase, ToolSuggestions
 from application.use_cases.execute_task import ExecuteTaskUseCase, TaskNotFoundError
 from application.use_cases.extract_insights import ExtractInsightsUseCase
 from domain.entities.task import SubTask, TaskEntity
+from domain.entities.tool_candidate import ToolCandidate
 from domain.ports.task_engine import TaskEngine
 from domain.ports.task_repository import TaskRepository
 from domain.value_objects.status import SubTaskStatus, TaskStatus
@@ -201,3 +203,152 @@ class TestExecuteTaskWithInsights:
             call_kwargs.kwargs.get("output") or call_kwargs[1].get("output") or call_kwargs[0][2]
         )
         assert "connection timeout" in output
+
+
+class TestExecuteTaskWithToolSuggestion:
+    """Sprint 5.7b: auto-discovery triggered on task failure."""
+
+    @pytest.fixture
+    def discover_uc(self) -> AsyncMock:
+        mock = AsyncMock(spec=DiscoverToolsUseCase)
+        mock.suggest_for_failure = AsyncMock(
+            return_value=ToolSuggestions(
+                suggestions=[ToolCandidate(name="mcp-db-tool", safety_score=0.9)],
+                queries_used=["database"],
+            )
+        )
+        return mock
+
+    @pytest.fixture
+    def uc_with_discover(
+        self, engine: AsyncMock, repo: AsyncMock, discover_uc: AsyncMock
+    ) -> ExecuteTaskUseCase:
+        return ExecuteTaskUseCase(engine, repo, discover_tools=discover_uc)
+
+    async def test_suggests_tools_on_failure(
+        self,
+        uc_with_discover: ExecuteTaskUseCase,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        discover_uc: AsyncMock,
+    ) -> None:
+        task = _make_task(SubTaskStatus.FAILED)
+        task.subtasks[0].error = "database connection refused"
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        await uc_with_discover.execute(task.id)
+
+        discover_uc.suggest_for_failure.assert_called_once()
+
+    async def test_not_called_on_success(
+        self,
+        uc_with_discover: ExecuteTaskUseCase,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        discover_uc: AsyncMock,
+    ) -> None:
+        task = _make_task(SubTaskStatus.SUCCESS)
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        await uc_with_discover.execute(task.id)
+
+        discover_uc.suggest_for_failure.assert_not_called()
+
+    async def test_called_on_fallback(
+        self,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        discover_uc: AsyncMock,
+    ) -> None:
+        uc = ExecuteTaskUseCase(engine, repo, discover_tools=discover_uc)
+        task = _make_task(SubTaskStatus.SUCCESS, SubTaskStatus.FAILED)
+        task.subtasks[1].error = "timeout"
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        await uc.execute(task.id)
+
+        discover_uc.suggest_for_failure.assert_called_once()
+
+    async def test_failure_does_not_block(
+        self,
+        uc_with_discover: ExecuteTaskUseCase,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        discover_uc: AsyncMock,
+    ) -> None:
+        task = _make_task(SubTaskStatus.FAILED)
+        task.subtasks[0].error = "some error"
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+        discover_uc.suggest_for_failure.side_effect = RuntimeError("boom")
+
+        result = await uc_with_discover.execute(task.id)
+
+        assert result.status == TaskStatus.FAILED
+
+    async def test_not_called_when_none(self, engine: AsyncMock, repo: AsyncMock) -> None:
+        uc = ExecuteTaskUseCase(engine, repo, discover_tools=None)
+        task = _make_task(SubTaskStatus.FAILED)
+        task.subtasks[0].error = "error"
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        result = await uc.execute(task.id)
+        assert result.status == TaskStatus.FAILED
+
+    async def test_receives_combined_errors(
+        self,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        discover_uc: AsyncMock,
+    ) -> None:
+        uc = ExecuteTaskUseCase(engine, repo, discover_tools=discover_uc)
+        task = _make_task(SubTaskStatus.FAILED, SubTaskStatus.FAILED)
+        task.subtasks[0].error = "error A"
+        task.subtasks[1].error = "error B"
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        await uc.execute(task.id)
+
+        call_args = discover_uc.suggest_for_failure.call_args
+        error_msg = call_args.kwargs.get("error_message") or call_args[0][0]
+        assert "error A" in error_msg
+        assert "error B" in error_msg
+
+    async def test_passes_task_goal(
+        self,
+        uc_with_discover: ExecuteTaskUseCase,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        discover_uc: AsyncMock,
+    ) -> None:
+        task = _make_task(SubTaskStatus.FAILED)
+        task.subtasks[0].error = "some error"
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        await uc_with_discover.execute(task.id)
+
+        call_args = discover_uc.suggest_for_failure.call_args
+        desc = call_args.kwargs.get("task_description") or call_args[0][1]
+        assert desc == "Test goal"
+
+    async def test_skipped_when_no_errors(
+        self,
+        uc_with_discover: ExecuteTaskUseCase,
+        engine: AsyncMock,
+        repo: AsyncMock,
+        discover_uc: AsyncMock,
+    ) -> None:
+        task = _make_task(SubTaskStatus.FAILED)
+        # No .error set on subtask
+        repo.get_by_id.return_value = task
+        engine.execute.return_value = task
+
+        await uc_with_discover.execute(task.id)
+
+        discover_uc.suggest_for_failure.assert_not_called()

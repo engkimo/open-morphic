@@ -13,7 +13,7 @@
 > **Phase 7 UCL: Sprint 7.3 COMPLETE** (2026-03-11) — Insight Extraction Pipeline (MemoryClassifier + ConflictResolver + InsightExtractor + ExtractInsightsUseCase + ExecuteTask integration + container wiring) — 1438 unit tests + 37 integration
 > **Phase 7 UCL: Sprint 7.4 COMPLETE** (2026-03-11) — Affinity-Aware Routing + Task Handoff (AgentAffinityRepository port + TopicExtractor + select_with_affinity() + InMemory/JSONL affinity stores + RouteToEngine with affinity/adapter/action recording + HandoffTaskUseCase + container wiring) — 1528 unit tests + 37 integration
 > **Phase 7 UCL: Sprint 7.5 COMPLETE** (2026-03-11) — UCL API + CLI + UI (cognitive API routes + CLI commands + Next.js cognitive page + 30 new tests) — 1558 unit tests + 37 integration
-> **Phase 7 UCL: Sprint 7.6 COMPLETE** (2026-03-11) — Integration Testing + Benchmarks (13 cross-engine integration tests + context continuity 97.2% + dedup accuracy 57.1% + benchmark API/CLI/UI + 11 new unit tests) — 1569 unit tests + 50 integration — **PHASE 7 COMPLETE**
+> **Sprint 5.7 COMPLETE** (2026-03-12) — Model management test coverage (15 tests) + auto-discovery trigger on task failure (8 tests) — Phase 5 fully complete — 1592 unit tests + 50 integration
 
 ---
 
@@ -814,8 +814,21 @@ Sprint 5.6 — Marketplace UI (Next.js):
   ✓ Models page:         Pull/delete/switch + running status display
   ✓ Navigation:          Header links to Marketplace + Models
 
-Phase 5 COMPLETE: Safety scoring, MCP registry, tool installer, auto discoverer, Ollama manager, marketplace UI
-  Total new tests: ~90 (Sprint 5.1: 22 + 5.2: 14 + 5.3: 36 + 5.4: 21 + 5.5: 16)
+Sprint 5.7a — Model Management Test Coverage:
+  ✓ _MockContainer:    +manage_ollama mock in test_api.py and test_cli.py
+  ✓ API tests (9):     pull/delete/switch/info success+failure, running models
+  ✓ CLI tests (6):     delete/switch/info success+failure
+
+Sprint 5.7b — Auto-Discovery Trigger on Task Failure:
+  ✓ ExecuteTaskUseCase: +discover_tools optional param, +_safe_suggest_tools()
+  ✓ Fire-and-forget:   Triggered on FAILED/FALLBACK, never blocks execution
+  ✓ Container wiring:  discover_tools=self.discover_tools (1 line)
+  ✓ New tests (8):     suggests on failure, not on success, on fallback,
+                        failure doesn't block, None safe, combined errors,
+                        passes task goal, skipped when no errors
+
+Phase 5 COMPLETE: Safety scoring, MCP registry, tool installer, auto discoverer, Ollama manager, marketplace UI, model mgmt tests, auto-discovery trigger
+  Total new tests: ~113 (Sprint 5.1: 22 + 5.2: 14 + 5.3: 36 + 5.4: 21 + 5.5: 16 + 5.7: 23)
   New API endpoints: 8, New CLI commands: 8, New settings: 4
 ```
 

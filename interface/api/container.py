@@ -201,11 +201,12 @@ class AppContainer:
             insight_extractor=self.extract_insights,
         )
 
-        # Re-wire execute_task with insight extraction
+        # Re-wire execute_task with insight extraction + auto-discovery
         self.execute_task = ExecuteTaskUseCase(
             engine=self.task_engine,
             repo=self.task_repo,
             extract_insights=self.extract_insights,
+            discover_tools=self.discover_tools,
         )
 
         # Evolution (Phase 6)

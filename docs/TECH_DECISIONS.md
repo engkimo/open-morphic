@@ -2769,3 +2769,37 @@ tests/unit/interface/test_benchmark_cli.py   4 tests
 | Roundtrip-based continuity scoring (inject→extract→compare) | Ollama's ultra-compact format loses detail in extract; count-based scoring is more robust |
 | Separate A2A protocol implementation | UCL ContextAdapters + HandoffTask already cover agent-to-agent communication needs |
 | Benchmark results persistence (DB) | Not needed yet; benchmarks run on-demand and return results directly |
+
+---
+
+## TD-063: Sprint 5.7 — Model Management Test Coverage + Auto-Discovery Trigger
+
+**Date**: 2026-03-12
+**Status**: Accepted
+**Sprint**: 5.7a, 5.7b
+
+### Decision
+
+Two gaps closed to complete Phase 5:
+
+1. **Sprint 5.7a — Model management interface-layer test coverage**: `_MockContainer` in test_api.py and test_cli.py lacked `manage_ollama` wiring, so 4 API endpoints (pull/delete/switch/info) and 3 CLI commands (delete/switch/info) had zero interface-layer tests. Added `manage_ollama` mock to both containers and wrote 15 tests (9 API + 6 CLI).
+
+2. **Sprint 5.7b — Auto-discovery trigger on task failure**: `DiscoverToolsUseCase` existed but `ExecuteTaskUseCase` never called it. Added optional `discover_tools` parameter (same pattern as `extract_insights`) and `_safe_suggest_tools()` fire-and-forget method. Triggered on FAILED or FALLBACK status after insight extraction. 8 new tests.
+
+### Key Design Choices
+
+| Choice | Rationale |
+|---|---|
+| Fire-and-forget pattern | Mirrors `_safe_extract_insights()`: wrapped in try/except, never blocks task execution |
+| Optional parameter (None default) | Backward-compatible; existing tests and callers unaffected |
+| Trigger on FAILED + FALLBACK | Both indicate tool gaps; SUCCESS tasks don't need suggestions |
+| Combined error string | Concatenates all failed subtask errors to give DiscoverToolsUseCase full failure context |
+| Container wiring (1-line) | `discover_tools=self.discover_tools` added to ExecuteTaskUseCase constructor in container.py |
+
+### Files Modified
+
+- `tests/unit/interface/test_api.py` — +manage_ollama mock, +9 tests (TestModelManagementEndpoints)
+- `tests/unit/interface/test_cli.py` — +manage_ollama mock, +6 tests (TestModelManagementCommands)
+- `application/use_cases/execute_task.py` — +discover_tools param, +_safe_suggest_tools()
+- `interface/api/container.py` — +discover_tools= wiring (1 line)
+- `tests/unit/application/test_execute_task.py` — +8 tests (TestExecuteTaskWithToolSuggestion)

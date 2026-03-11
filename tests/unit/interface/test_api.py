@@ -47,6 +47,13 @@ class _MockContainer:
         self.create_task = AsyncMock()
         self.execute_task = AsyncMock()
 
+        # Model management (Sprint 5.7a)
+        self.manage_ollama = AsyncMock()
+        self.manage_ollama.pull = AsyncMock(return_value=True)
+        self.manage_ollama.delete = AsyncMock(return_value=True)
+        self.manage_ollama.switch_default = AsyncMock(return_value=True)
+        self.manage_ollama.info = AsyncMock(return_value={"parameters": "7B"})
+
 
 class _FakeSettings:
     ollama_default_model: str = "qwen3:8b"
@@ -309,3 +316,60 @@ class TestApp:
             },
         )
         assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
+# ═══════════════════════════════════════════════════════════════
+# Sprint 5.7a: Model Management Endpoints
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestModelManagementEndpoints:
+    def test_pull_model(self, client: TestClient) -> None:
+        resp = client.post("/api/models/pull", json={"name": "llama3:8b"})
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+
+    def test_pull_model_failure(self, client: TestClient, container: _MockContainer) -> None:
+        container.manage_ollama.pull = AsyncMock(return_value=False)
+        resp = client.post("/api/models/pull", json={"name": "bad-model"})
+        assert resp.status_code == 500
+
+    def test_delete_model(self, client: TestClient) -> None:
+        resp = client.delete("/api/models/test-model")
+        assert resp.status_code == 200
+        assert resp.json()["deleted"] is True
+
+    def test_delete_model_failure(self, client: TestClient, container: _MockContainer) -> None:
+        container.manage_ollama.delete = AsyncMock(return_value=False)
+        resp = client.delete("/api/models/test-model")
+        assert resp.status_code == 500
+
+    def test_switch_model(self, client: TestClient) -> None:
+        resp = client.post("/api/models/switch", json={"name": "deepseek-r1:8b"})
+        assert resp.status_code == 200
+        assert resp.json()["default"] is True
+
+    def test_switch_model_failure(self, client: TestClient, container: _MockContainer) -> None:
+        container.manage_ollama.switch_default = AsyncMock(return_value=False)
+        resp = client.post("/api/models/switch", json={"name": "bad"})
+        assert resp.status_code == 500
+
+    def test_model_info(self, client: TestClient) -> None:
+        resp = client.get("/api/models/qwen3:8b/info")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "qwen3:8b"
+        assert "parameters" in data["details"]
+
+    def test_model_info_not_found(self, client: TestClient, container: _MockContainer) -> None:
+        container.manage_ollama.info = AsyncMock(return_value={})
+        resp = client.get("/api/models/nonexistent/info")
+        assert resp.status_code == 404
+
+    def test_running_models(self, client: TestClient, container: _MockContainer) -> None:
+        container.ollama.get_running_models = AsyncMock(
+            return_value=[{"name": "qwen3:8b", "size": 4_000_000}]
+        )
+        resp = client.get("/api/models/running")
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1

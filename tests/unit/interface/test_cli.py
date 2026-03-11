@@ -57,6 +57,12 @@ class _MockContainer:
         self.create_task = AsyncMock()
         self.execute_task = AsyncMock()
 
+        # Model management (Sprint 5.7a)
+        self.manage_ollama = AsyncMock()
+        self.manage_ollama.delete = AsyncMock(return_value=True)
+        self.manage_ollama.switch_default = AsyncMock(return_value=True)
+        self.manage_ollama.info = AsyncMock(return_value={"parameters": "7B"})
+
         # Planning
         self.task_engine = AsyncMock()
         from domain.entities.task import SubTask
@@ -319,3 +325,41 @@ class TestPlanCommands:
         result = runner.invoke(app, ["plan", "show", "nonexistent"])
         assert result.exit_code == 1
         assert "not found" in result.output
+
+
+# ═══════════════════════════════════════════════════════════════
+# Sprint 5.7a: Model Management Commands
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestModelManagementCommands:
+    def test_delete_success(self) -> None:
+        result = runner.invoke(app, ["model", "delete", "qwen3:8b"])
+        assert result.exit_code == 0
+        assert "Deleted" in result.output
+
+    def test_delete_failure(self, container: _MockContainer) -> None:
+        container.manage_ollama.delete = AsyncMock(return_value=False)
+        result = runner.invoke(app, ["model", "delete", "bad"])
+        assert result.exit_code == 1
+
+    def test_switch_success(self) -> None:
+        result = runner.invoke(app, ["model", "switch", "deepseek-r1:8b"])
+        assert result.exit_code == 0
+        assert "Default model" in result.output
+
+    def test_switch_failure(self, container: _MockContainer) -> None:
+        container.manage_ollama.switch_default = AsyncMock(return_value=False)
+        result = runner.invoke(app, ["model", "switch", "bad"])
+        assert result.exit_code == 1
+
+    def test_info_with_details(self) -> None:
+        result = runner.invoke(app, ["model", "info", "qwen3:8b"])
+        assert result.exit_code == 0
+        assert "parameters" in result.output
+
+    def test_info_empty(self, container: _MockContainer) -> None:
+        container.manage_ollama.info = AsyncMock(return_value={})
+        result = runner.invoke(app, ["model", "info", "nonexistent"])
+        assert result.exit_code == 0
+        assert "No details" in result.output

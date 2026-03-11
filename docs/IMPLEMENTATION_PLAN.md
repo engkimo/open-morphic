@@ -1330,13 +1330,15 @@ class ContextZipper:
 | 5.3 | Tool Installer | `infrastructure/marketplace/tool_installer.py` |
 | 5.4 | Ollama Model Manager | `infrastructure/marketplace/ollama_installer.py` |
 | 5.5 | Tool Safety Scorer | `infrastructure/marketplace/safety_scorer.py` |
-| 5.6 | Marketplace UI | `ui/app/marketplace/page.tsx` |
+| 5.6 | Marketplace UI | `ui/app/marketplace/page.tsx` | ✅ |
+| 5.7a | Model Management Test Coverage | `tests/unit/interface/test_api.py`, `tests/unit/interface/test_cli.py` | ✅ 15 tests (9 API + 6 CLI) |
+| 5.7b | Auto-Discovery Trigger on Task Failure | `application/use_cases/execute_task.py`, `tests/unit/application/test_execute_task.py` | ✅ 8 tests |
 
-**Phase 5 Completion Criteria:**
-- [ ] Auto-search and suggest tools on task failure
-- [ ] 1-click install from MCP Registry
-- [ ] Ollama model UI management (pull/delete/switch)
-- [ ] Tool safety score displayed
+**Phase 5 Completion Criteria:** ✅ ALL MET
+- [x] Auto-search and suggest tools on task failure — Sprint 5.7b (`_safe_suggest_tools` in ExecuteTaskUseCase)
+- [x] 1-click install from MCP Registry — Sprint 5.3 (InstallToolUseCase + API + CLI)
+- [x] Ollama model UI management (pull/delete/switch) — Sprint 5.5 + 5.6 + 5.7a (ManageOllamaUseCase + 15 interface tests)
+- [x] Tool safety score displayed — Sprint 5.1 + 5.6 (ToolSafetyScorer + SafetyBadge)
 
 ---
 
