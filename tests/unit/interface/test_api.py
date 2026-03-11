@@ -51,6 +51,8 @@ class _MockContainer:
 class _FakeSettings:
     ollama_default_model: str = "qwen3:8b"
     default_monthly_budget_usd: float = 50.0
+    affinity_min_samples: int = 3
+    affinity_boost_threshold: float = 0.6
     celery_enabled: bool = False
 
 
