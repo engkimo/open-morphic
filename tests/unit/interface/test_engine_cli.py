@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 from application.use_cases.route_to_engine import RouteToEngineUseCase
 from domain.ports.agent_engine import AgentEngineCapabilities, AgentEnginePort, AgentEngineResult
 from domain.value_objects.agent_engine import AgentEngineType
-from interface.cli import main as cli_main
+from interface.cli import _utils as cli_utils
 from interface.cli.main import app
 
 runner = CliRunner()
@@ -59,7 +59,7 @@ class _MockContainer:
 @pytest.fixture(autouse=True)
 def _inject_container(monkeypatch: pytest.MonkeyPatch) -> _MockContainer:
     container = _MockContainer()
-    monkeypatch.setattr(cli_main, "_container_instance", container)
+    monkeypatch.setattr(cli_utils, "_container_instance", container)
     return container
 
 
