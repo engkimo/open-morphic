@@ -37,6 +37,8 @@ class SubTaskResponse(BaseModel):
     dependencies: list[str]
     result: str | None = None
     error: str | None = None
+    code: str | None = None
+    execution_output: str | None = None
     model_used: str | None = None
     cost_usd: float = 0.0
 
@@ -49,6 +51,8 @@ class SubTaskResponse(BaseModel):
             dependencies=st.dependencies,
             result=st.result,
             error=st.error,
+            code=st.code,
+            execution_output=st.execution_output,
             model_used=st.model_used,
             cost_usd=st.cost_usd,
         )

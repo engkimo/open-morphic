@@ -132,6 +132,7 @@ class Settings(BaseSettings):
     morphic_agent_env: Environment = Environment.DEVELOPMENT
     auto_tool_install: bool = False
     planning_mode: PlanningMode = PlanningMode.INTERACTIVE
+    planning_auto_approve_simple: bool = True
 
     @property
     def marketplace_safety_threshold_tier(self):  # type: ignore[no-untyped-def]

@@ -24,6 +24,7 @@ from infrastructure.persistence.in_memory import (
     InMemoryTaskRepository,
 )
 from interface.api.main import create_app
+from shared.config import PlanningMode
 
 
 class _FakeSettings:
@@ -32,6 +33,8 @@ class _FakeSettings:
     affinity_min_samples: int = 3
     affinity_boost_threshold: float = 0.6
     celery_enabled: bool = False
+    planning_mode: PlanningMode = PlanningMode.DISABLED
+    planning_auto_approve_simple: bool = True
 
 
 class _E2EContainer:

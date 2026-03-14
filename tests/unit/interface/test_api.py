@@ -61,6 +61,8 @@ class _FakeSettings:
     affinity_min_samples: int = 3
     affinity_boost_threshold: float = 0.6
     celery_enabled: bool = False
+    planning_mode: str = "disabled"
+    planning_auto_approve_simple: bool = True
 
 
 @pytest.fixture()

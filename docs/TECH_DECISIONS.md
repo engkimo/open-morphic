@@ -2926,3 +2926,219 @@ Add automated production verification infrastructure:
 
 - `scripts/smoke_test.sh` — 21 curl-based checks, executable
 - `tests/e2e/test_api_smoke.py` — 29 pytest tests, auto-skip capable
+
+---
+
+## TD-067: Smart Decomposition — Task Complexity Classifier (Phase 9 / Sprint 9.1)
+
+**Date**: 2026-03-14
+**Status**: Planned
+**Sprint**: 9.1
+
+### Problem
+
+`IntentAnalyzer` always decomposes goals into 2-5 subtasks via LLM, regardless of task complexity. This causes:
+
+1. **Over-decomposition**: "FizzBuzzを" → 5 subtasks splitting algorithm logic (divisible by 3, divisible by 5, etc.) instead of 1 "write and run the code" subtask
+2. **Wasted tokens**: Simple tasks consume 2-5x more LLM calls than necessary for decomposition + execution
+3. **Misaligned subtask descriptions**: Subtasks describe algorithm steps ("output Fizz") rather than actionable work ("write Python code and execute")
+
+The root cause is the prompt instruction `"2-5 subtasks for most goals"` which forces decomposition even when none is needed.
+
+### Decision
+
+1. Add `TaskComplexityClassifier` as a pure domain service (`domain/services/task_complexity.py`)
+2. Classify goals into `simple` / `medium` / `complex` using keyword heuristics + structural analysis
+3. Simple tasks skip LLM decomposition entirely — goal is wrapped as a single action-oriented subtask
+4. Medium/complex tasks use an improved prompt that produces meaningful, action-oriented subtask descriptions
+
+### Classification Heuristics
+
+| Complexity | Criteria | Decomposition |
+|---|---|---|
+| **simple** | Single concept, no "and"/"then" conjunctions, common patterns (FizzBuzz, sort, fibonacci, hello world) | 1 subtask, no LLM call for decomposition |
+| **medium** | 2-3 concepts or mild conjunction ("X with Y") | 2-3 subtasks via LLM |
+| **complex** | Multiple concepts, explicit multi-step ("build X, then Y, then Z"), large scope keywords (API, system, architecture) | 3-5 subtasks via LLM |
+
+### Rationale
+
+| Choice | Rationale |
+|---|---|
+| Domain service (not infrastructure) | Complexity classification is pure business logic — no I/O, no LLM dependency |
+| Keyword heuristics (not LLM) | Avoids extra LLM call for classification. LLM decomposition cost for simple tasks is the problem we're solving |
+| Action-oriented subtask descriptions | "Write and execute Python FizzBuzz code" is directly executable. "Output Fizz when divisible by 3" requires interpretation |
+| Backward compatible | `decompose()` signature unchanged. Callers unaffected |
+
+### Files Planned
+
+- `domain/services/task_complexity.py` — TaskComplexityClassifier (pure function)
+- `infrastructure/task_graph/intent_analyzer.py` — Complexity-aware decomposition + improved prompts
+- `tests/unit/domain/test_task_complexity.py` — Classifier unit tests
+- `tests/unit/infrastructure/test_intent_analyzer.py` — Updated decomposition tests
+
+---
+
+## TD-068: LAEE Code Execution in Task Engine (Phase 9 / Sprint 9.2)
+
+**Date**: 2026-03-14
+**Status**: Planned
+**Sprint**: 9.2
+
+### Problem
+
+`LangGraphTaskEngine._execute_batch()` sends subtask descriptions to LLM and stores the text response as `subtask.result`. Code is never executed. The LAEE infrastructure (40+ tools including `shell_exec`, `shell_background`, `shell_stream`) exists but is completely disconnected from the task execution pipeline.
+
+Example: User asks "FizzBuzzを" → LLM responds with `{"result": "Fizz", "status": "success"}` text — no actual Python code runs, no real output.
+
+### Decision
+
+1. Add `CodeExecutor` class in `infrastructure/task_graph/code_executor.py`
+2. After LLM response, `CodeExecutor.extract_code()` detects fenced code blocks (```python, ```bash, etc.)
+3. If code is detected, execute via LAEE `shell_exec` with configurable timeout (default 30s)
+4. Add `code` and `execution_output` optional fields to `SubTask` entity (backward compatible)
+5. Modify `execute_one()` execution prompt to instruct LLM to produce runnable code blocks
+6. Non-coding tasks (Q&A, summaries) pass through without code execution
+
+### Execution Flow
+
+```
+execute_one(subtask):
+  1. LLM.complete(subtask.description) → response
+  2. CodeExecutor.extract(response.content) → code_blocks[]
+  3. if code_blocks:
+       for block in code_blocks:
+         result = shell_exec(block.code, timeout=30s)
+       subtask.code = block.code
+       subtask.execution_output = result.stdout
+  4. subtask.result = response.content (always preserved)
+```
+
+### Safety
+
+| Concern | Mitigation |
+|---|---|
+| Infinite loops | 30s execution timeout (configurable via `LAEE_CODE_TIMEOUT`) |
+| Dangerous commands (rm -rf, sudo) | LAEE ApprovalEngine checks RiskLevel before execution |
+| Resource exhaustion | Single-process execution, no fork bombs |
+| File system writes | Respects LAEE approval mode (confirm-destructive by default) |
+
+### Rationale
+
+| Choice | Rationale |
+|---|---|
+| Reuse LAEE `shell_exec` | No new execution infrastructure needed. Audit log, approval mode, undo stack all inherited |
+| Optional fields on SubTask | Backward compatible — existing tasks/tests unaffected |
+| Extract code from markdown | LLMs naturally produce fenced code blocks. Standard format across all models |
+| Preserve `result` alongside `code`/`output` | Text explanation is still valuable. Code + output are supplementary |
+
+### Files Planned
+
+- `infrastructure/task_graph/code_executor.py` — CodeExecutor: extract + execute
+- `domain/entities/task.py` — +`code`, +`execution_output` fields
+- `infrastructure/task_graph/engine.py` — Wire CodeExecutor into `execute_one()`
+- `interface/api/schemas.py` — +`code`, +`execution_output` on SubTaskResponse
+- `tests/unit/infrastructure/test_code_executor.py` — Extraction + mock execution tests
+
+---
+
+## TD-069: UI Result Formatting — Structured Subtask Display (Phase 9 / Sprint 9.3)
+
+**Date**: 2026-03-14
+**Status**: Planned
+**Sprint**: 9.3
+
+### Problem
+
+`TaskDetail.tsx` renders `st.result` as raw text via `<div className="text-xs text-text-muted">{st.result}</div>`. When LLM returns JSON or code, users see unformatted strings. `TaskGraph.tsx` nodes show `d.result.slice(0, 60)` — truncated raw data.
+
+### Decision
+
+1. Create `CodeBlock.tsx` component with syntax highlighting (highlight.js or shiki)
+2. Create `ExecutionResult.tsx` component showing code + output + status in structured layout
+3. Refactor `TaskDetail.tsx` to detect and render `code`/`execution_output` fields from Sprint 9.2
+4. Add `resultParser.ts` utility to detect JSON, code blocks, and plain text in legacy `result` strings
+5. Improve `TaskGraph.tsx` node labels to show clean descriptions instead of truncated raw data
+
+### Rendering Logic
+
+```
+if subtask.code:
+  render <CodeBlock code={code} language={lang} />
+  if subtask.execution_output:
+    render <ExecutionResult output={execution_output} />
+elif subtask.result is JSON:
+  render pretty-printed JSON
+else:
+  render plain text
+```
+
+### Rationale
+
+| Choice | Rationale |
+|---|---|
+| highlight.js over shiki | Runtime highlighting, no build-time dependency. Smaller bundle for this use case |
+| Separate CodeBlock component | Reusable across TaskDetail, TaskGraph tooltips, future views |
+| resultParser for legacy data | Existing tasks stored before Sprint 9.2 lack `code`/`execution_output` fields. Parser handles both formats |
+
+### Files Planned
+
+- `ui/components/CodeBlock.tsx` — Syntax-highlighted code display
+- `ui/components/ExecutionResult.tsx` — Code + output + status layout
+- `ui/components/TaskDetail.tsx` — Refactored to use new components
+- `ui/components/TaskGraph.tsx` — Improved node rendering
+- `ui/lib/resultParser.ts` — Detect and categorize result content
+
+---
+
+## TD-070: Interactive Planning as Default Task Flow (Phase 9 / Sprint 9.4)
+
+**Date**: 2026-03-14
+**Status**: Planned
+**Sprint**: 9.4
+
+### Problem
+
+`POST /api/tasks` immediately creates a TaskEntity and dispatches execution to background. The `InteractivePlanUseCase` exists with full plan creation, approval, and rejection logic, but is never used in the default task creation flow. Users get no opportunity to review, modify, or reject plans before execution begins.
+
+This contradicts the project's stated Devin-style Interactive Planning philosophy:
+> "実行前に計画+コード引用で提示" / "コスト見積もり付きで人間確認"
+
+### Decision
+
+1. Add `PLANNING_MODE` setting with three values: `interactive` (default), `auto`, `disabled`
+2. `interactive`: `POST /api/tasks` creates a plan, returns for review. `POST /api/plans/{id}/approve` triggers execution
+3. `auto`: Create plan → auto-approve simple tasks (complexity=simple from TD-067) → manual review for medium/complex
+4. `disabled`: Current behavior preserved (immediate create + execute)
+5. Plan review UI page with approve/reject buttons, cost estimate, subtask preview
+
+### API Flow Changes
+
+```
+Current:
+  POST /api/tasks {goal} → 201 TaskResponse (execution already dispatched)
+
+Interactive (new default):
+  POST /api/tasks {goal} → 201 PlanResponse (plan created, awaiting approval)
+  POST /api/plans/{id}/approve → 201 TaskResponse (execution dispatched)
+
+Auto:
+  POST /api/tasks {goal}
+    → if simple: auto-approve → 201 TaskResponse
+    → if medium/complex: 201 PlanResponse (awaiting approval)
+```
+
+### Rationale
+
+| Choice | Rationale |
+|---|---|
+| 3-mode setting | Backward compatible. Users can opt into old behavior with `disabled` |
+| Auto-approve for simple tasks | 1-subtask coding tasks don't need review. Reduces friction |
+| Reuse existing InteractivePlanUseCase | No new use case needed — existing plan create/approve/reject works |
+| `interactive` as new default | Aligns with stated philosophy. Old users can set `disabled` |
+
+### Files Planned
+
+- `interface/api/routes/tasks.py` — Plan-first flow based on PLANNING_MODE
+- `shared/config.py` — +`PLANNING_AUTO_APPROVE_SIMPLE` setting
+- `ui/app/tasks/` — Plan review page with approve/reject
+- `tests/unit/interface/test_tasks_planning.py` — Plan-first flow tests

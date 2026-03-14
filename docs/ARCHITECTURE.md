@@ -16,6 +16,14 @@
 > **Sprint 5.7 COMPLETE** (2026-03-12) — Model management test coverage (15 tests) + auto-discovery trigger on task failure (8 tests) — Phase 5 fully complete — 1592 unit tests + 50 integration
 > **Sprint 8.1 COMPLETE** (2026-03-12) — Self-Evolution Loop Closure: ExecuteTaskUseCase now auto-records ExecutionRecords after every task execution, feeding Phase 6's AnalyzeExecution/UpdateStrategy/SystemicEvolution pipeline — 1599 unit tests + 50 integration
 > **Sprint 8.2 COMPLETE** (2026-03-14) — Production Verification: Fix settings-driven default Ollama model in LiteLLMGateway (TD-065), add E2E smoke test suite (29 pytest + 21 shell checks covering all 42 API endpoints) (TD-066) — 1599 unit + 29 E2E + 50 integration, 0 failures
+>
+> ---
+>
+> **Phase 9 — Intelligence Layer ("Knowledge → Action")**: PLANNED
+> Sprint 9.1: Smart Decomposition — Task complexity classifier + adaptive decomposition granularity (TD-067)
+> Sprint 9.2: LAEE Code Execution — Detect code in LLM output → execute via shell_exec → return structured results (TD-068)
+> Sprint 9.3: UI Result Formatting — Syntax-highlighted code blocks + structured execution output display (TD-069)
+> Sprint 9.4: Interactive Planning Default — Plan-first task flow with auto-approve for simple tasks (TD-070)
 
 ---
 

@@ -1,4 +1,9 @@
-"""IntentAnalyzer — LLM-powered goal decomposition into subtasks."""
+"""IntentAnalyzer — LLM-powered goal decomposition into subtasks.
+
+Sprint 9.1: Complexity-aware decomposition.
+  - SIMPLE tasks → 1 subtask, no LLM call (goal used directly)
+  - MEDIUM/COMPLEX → LLM with complexity-appropriate guidance
+"""
 
 from __future__ import annotations
 
@@ -7,24 +12,33 @@ import re
 
 from domain.entities.task import SubTask
 from domain.ports.llm_gateway import LLMGateway
+from domain.services.task_complexity import TaskComplexityClassifier
+from domain.value_objects.task_complexity import TaskComplexity
 from infrastructure.context_engineering.kv_cache_optimizer import KVCacheOptimizer
 
-# Task-specific instruction appended after the stable prefix
+# Stable system prompt prefix (Manus principle 1: KV-cache friendly)
 _DECOMPOSE_INSTRUCTION = """\
 You are a task decomposition expert. Break down the given goal into \
 concrete, actionable subtasks.
 
 Return ONLY a JSON array. Each element:
-{"description": "...", "deps": []}
+{{"description": "...", "deps": []}}
 
 Rules:
 - deps: list of 0-based indices of subtasks this depends on
-- Keep subtasks atomic — one clear action each
-- 2-5 subtasks for most goals
+- Each subtask must be action-oriented: start with a verb \
+(e.g. "Write...", "Create...", "Configure...", "Test...")
+- Subtask descriptions should be executable actions, not abstract concepts
+- {complexity_guidance}
 - No markdown, no explanation — ONLY the JSON array"""
 
 # Keep for backward compatibility
 DECOMPOSE_SYSTEM_PROMPT = _DECOMPOSE_INSTRUCTION
+
+_COMPLEXITY_GUIDANCE = {
+    TaskComplexity.MEDIUM: "Return exactly 2-3 subtasks. Keep it focused",
+    TaskComplexity.COMPLEX: "Return 3-5 subtasks. Cover all major concerns",
+}
 
 
 class IntentAnalyzer:
@@ -37,9 +51,27 @@ class IntentAnalyzer:
         self._kv_cache = kv_cache or KVCacheOptimizer()
 
     async def decompose(self, goal: str) -> list[SubTask]:
-        """Use LLM to decompose a goal into ordered subtasks."""
+        """Decompose a goal into subtasks, adapting to complexity.
+
+        SIMPLE → 1 subtask (no LLM call).
+        MEDIUM/COMPLEX → LLM decomposition with guidance.
+        """
+        complexity = TaskComplexityClassifier.classify(goal)
+
+        if complexity == TaskComplexity.SIMPLE:
+            return self._create_single_subtask(goal)
+
+        return await self._llm_decompose(goal, complexity)
+
+    async def _llm_decompose(
+        self, goal: str, complexity: TaskComplexity
+    ) -> list[SubTask]:
+        """Use LLM to decompose a goal with complexity-specific guidance."""
+        guidance = _COMPLEXITY_GUIDANCE[complexity]
+        instruction = _DECOMPOSE_INSTRUCTION.format(complexity_guidance=guidance)
+
         system_content = self._kv_cache.build_system_prompt(
-            {"role": "decomposer", "instruction": _DECOMPOSE_INSTRUCTION}
+            {"role": "decomposer", "instruction": instruction}
         )
         messages = [
             {"role": "system", "content": system_content},
@@ -47,6 +79,11 @@ class IntentAnalyzer:
         ]
         response = await self._llm.complete(messages, temperature=0.3, max_tokens=1024)
         return self._parse_response(response.content)
+
+    @staticmethod
+    def _create_single_subtask(goal: str) -> list[SubTask]:
+        """Wrap goal as a single actionable subtask (no LLM call)."""
+        return [SubTask(description=goal)]
 
     @staticmethod
     def _extract_json(content: str) -> str:

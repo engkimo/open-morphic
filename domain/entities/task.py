@@ -21,6 +21,8 @@ class SubTask(BaseModel):
     dependencies: list[str] = Field(default_factory=list)
     result: str | None = None
     error: str | None = None
+    code: str | None = None
+    execution_output: str | None = None
     model_used: str | None = None
     cost_usd: float = Field(default=0.0, ge=0.0)
 

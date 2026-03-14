@@ -38,7 +38,7 @@ function SubTaskNode({ data }: NodeProps) {
     status: string;
     model_used: string | null;
     cost_usd: number;
-    result: string | null;
+    hasCode: boolean;
   };
   const borderColor = STATUS_COLORS[d.status] || "#2D2D42";
   const icon = STATUS_ICONS[d.status] || "?";
@@ -66,9 +66,9 @@ function SubTaskNode({ data }: NodeProps) {
       {d.model_used && (
         <div className="mt-1 text-[10px] text-text-muted">{d.model_used}</div>
       )}
-      {d.result && (
-        <div className="mt-1 truncate text-[10px] text-text-muted">
-          {d.result.slice(0, 60)}
+      {d.hasCode && (
+        <div className="mt-1 text-[10px] text-emerald-400 font-mono">
+          {"</>"}  Code
         </div>
       )}
       <Handle type="source" position={Position.Right} />
@@ -114,7 +114,7 @@ export default function TaskGraph({ task }: TaskGraphProps) {
           status: st.status,
           model_used: st.model_used,
           cost_usd: st.cost_usd,
-          result: st.result,
+          hasCode: st.code != null,
         },
       });
 

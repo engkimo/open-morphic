@@ -14,6 +14,7 @@ from infrastructure.context_engineering.kv_cache_optimizer import KVCacheOptimiz
 from infrastructure.context_engineering.observation_diversifier import (
     ObservationDiversifier,
 )
+from infrastructure.task_graph.code_executor import extract_and_execute
 from infrastructure.task_graph.intent_analyzer import IntentAnalyzer
 from infrastructure.task_graph.state import AgentState
 
@@ -114,6 +115,15 @@ class LangGraphTaskEngine(TaskEngine):
                 subtask.result = response.content
                 subtask.model_used = response.model
                 subtask.cost_usd = response.cost_usd
+
+                # Sprint 9.2: Extract and execute code blocks from LLM output
+                exec_result = await extract_and_execute(response.content)
+                if exec_result is not None:
+                    subtask.code = exec_result.code
+                    subtask.execution_output = (
+                        exec_result.output if exec_result.success else exec_result.error
+                    )
+
                 return {
                     "subtask_id": subtask_id,
                     "status": "success",

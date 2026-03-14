@@ -1508,6 +1508,141 @@ class ContextZipper:
 
 ---
 
+## Phase 9: Intelligence Layer — "Knowledge → Action" (PLANNED)
+
+> Phase 1-8 built the **infrastructure** (DAG, LLM routing, LAEE, UCL, Self-Evolution).
+> Phase 9 bridges the gap between infrastructure and **intelligent behavior**.
+>
+> **Core problem observed**: A FizzBuzz task is decomposed into 5 logical algorithm steps
+> instead of 1 "write and run the code" action. The LLM generates text descriptions but
+> never executes code. Results are shown as raw JSON in the UI. Plans are not reviewed
+> before execution. Infrastructure exists but intelligence is absent.
+>
+> Phase 9 closes these gaps with 4 sprints.
+
+### Dependency Graph
+
+```
+Sprint 9.1 (Smart Decomposition)     ← standalone, highest priority
+    ↓
+Sprint 9.2 (LAEE Code Execution)     ← benefits from 9.1 but parallelizable
+    ↓
+Sprint 9.3 (UI Result Formatting)    ← depends on 9.2 (code/output fields)
+    ↓
+Sprint 9.4 (Interactive Planning)    ← standalone, can start anytime
+```
+
+### Sprint 9.1: Smart Decomposition (Intent Analyzer v2) — TD-067
+
+> **Problem**: IntentAnalyzer always decomposes into 2-5 subtasks regardless of task
+> complexity. Simple tasks like "FizzBuzz" get split into algorithm logic steps instead
+> of a single actionable coding task.
+>
+> **Solution**: Add task complexity assessment to IntentAnalyzer. Simple tasks → 1 subtask.
+> Complex tasks → meaningful decomposition. Subtask descriptions become action-oriented
+> ("Write and execute Python code for X") instead of declarative ("Output Fizz when
+> divisible by 3").
+
+| # | Item | File | Notes |
+|---|---|---|---|
+| 1 | Task complexity classifier | `domain/services/task_complexity.py` | Pure domain service: classify goal → simple / medium / complex |
+| 2 | Improved decomposition prompt | `infrastructure/task_graph/intent_analyzer.py` | Complexity-aware prompt: simple → 1 subtask, complex → 2-5. Action-oriented descriptions |
+| 3 | Single-subtask path | `infrastructure/task_graph/intent_analyzer.py` | Skip LLM decomposition for simple tasks — wrap goal directly as single subtask |
+| 4 | Unit tests | `tests/unit/domain/test_task_complexity.py` | Complexity classifier coverage |
+| 5 | Unit tests | `tests/unit/infrastructure/test_intent_analyzer.py` | Decomposition prompt + single-task path |
+
+**Completion Criteria**:
+- [ ] "FizzBuzzを" → 1 subtask: "FizzBuzzのPythonコードを書いて実行する"
+- [ ] "REST API with auth + DB + tests" → 3 subtasks (meaningful decomposition)
+- [ ] Existing tests pass (backward compatible)
+
+### Sprint 9.2: LAEE Code Execution Integration — TD-068
+
+> **Problem**: `_execute_batch()` in `engine.py` sends subtask description to LLM and
+> stores the text response. Code is never actually executed. LAEE's 40+ tools exist
+> but are not wired to task execution.
+>
+> **Solution**: After LLM generates a response, detect executable code blocks. If found,
+> run via LAEE `shell_exec`. Store both code and execution output. Add `code` and
+> `execution_output` fields to SubTask.
+
+| # | Item | File | Notes |
+|---|---|---|---|
+| 1 | Code block extractor | `infrastructure/task_graph/code_executor.py` | Extract code from LLM markdown responses (```python, ```bash, etc.) |
+| 2 | Safe code execution | `infrastructure/task_graph/code_executor.py` | Execute via LAEE shell_exec with timeout, capture stdout/stderr |
+| 3 | SubTask schema extension | `domain/entities/task.py` | +`code: str \| None`, +`execution_output: str \| None` (backward compatible) |
+| 4 | Engine integration | `infrastructure/task_graph/engine.py` | `execute_one()`: LLM response → extract code → execute → structured result |
+| 5 | API schema update | `interface/api/schemas.py` | +`code`, +`execution_output` on SubTaskResponse |
+| 6 | Execution prompt | `infrastructure/task_graph/engine.py` | System prompt instructs LLM to produce runnable code blocks |
+| 7 | Unit tests | `tests/unit/infrastructure/test_code_executor.py` | Code extraction + mock execution |
+| 8 | E2E verification | `tests/e2e/test_api_smoke.py` | Verify code field populated for coding tasks |
+
+**Completion Criteria**:
+- [ ] "FizzBuzzを" → subtask.code contains Python code, subtask.execution_output contains "1\n2\nFizz\n4\nBuzz\n..."
+- [ ] Non-coding tasks (summaries, Q&A) still work without code execution
+- [ ] Execution timeout prevents infinite loops (default 30s)
+- [ ] LAEE approval mode respected (confirm-destructive blocks dangerous code)
+
+### Sprint 9.3: UI Result Formatting — TD-069
+
+> **Problem**: TaskDetail.tsx renders `st.result` as raw text. When LLM returns JSON
+> or code, it displays unformatted. TaskGraph nodes show truncated raw strings.
+>
+> **Solution**: Parse subtask results and render structured views: syntax-highlighted
+> code blocks, formatted execution output, clean error display.
+
+| # | Item | File | Notes |
+|---|---|---|---|
+| 1 | Code block component | `ui/components/CodeBlock.tsx` | Syntax highlighting (highlight.js or shiki), copy button, language label |
+| 2 | Execution result component | `ui/components/ExecutionResult.tsx` | Code + output + status in structured layout |
+| 3 | TaskDetail refactor | `ui/components/TaskDetail.tsx` | Detect code/execution_output fields, render CodeBlock + ExecutionResult |
+| 4 | TaskGraph node improvement | `ui/components/TaskGraph.tsx` | Show meaningful label (not truncated JSON), status icon + model badge |
+| 5 | Result parser utility | `ui/lib/resultParser.ts` | Parse subtask result: detect JSON, code blocks, plain text |
+
+**Completion Criteria**:
+- [ ] Code results display with syntax highlighting
+- [ ] Execution output shows in terminal-style block (dark bg, monospace)
+- [ ] JSON results are pretty-printed, not raw strings
+- [ ] Non-code results display cleanly as plain text
+- [ ] Graph nodes show clean descriptions (no raw JSON)
+
+### Sprint 9.4: Interactive Planning as Default — TD-070
+
+> **Problem**: `POST /api/tasks` immediately creates and executes a task. The
+> InteractivePlanUseCase exists but is never used in the default flow. Users get
+> no chance to review or modify the plan before execution.
+>
+> **Solution**: Make plan-first the default mode. `POST /api/tasks` returns a plan
+> for review. Approve triggers execution. Simple tasks can auto-approve based on
+> complexity assessment from Sprint 9.1.
+
+| # | Item | File | Notes |
+|---|---|---|---|
+| 1 | Plan-first API flow | `interface/api/routes/tasks.py` | `POST /api/tasks` → create plan, return for review. `POST /api/tasks/{id}/approve` → execute |
+| 2 | Auto-approve setting | `shared/config.py` | `PLANNING_AUTO_APPROVE_SIMPLE=true` — skip review for simple tasks |
+| 3 | Plan review UI | `ui/app/tasks/` | Plan display with approve/reject buttons, cost estimate, model allocation |
+| 4 | Backward compat mode | `shared/config.py` | `PLANNING_MODE=interactive \| auto \| disabled` — `disabled` keeps current behavior |
+| 5 | Unit tests | `tests/unit/interface/test_tasks_planning.py` | Plan-first flow, auto-approve, backward compat |
+
+**Completion Criteria**:
+- [ ] Default flow: create task → show plan → user approves → execute
+- [ ] Simple tasks auto-approve (1 subtask, low risk)
+- [ ] `PLANNING_MODE=disabled` preserves current behavior (no breaking change)
+- [ ] Plan shows cost estimate, model allocation, risk assessment
+- [ ] UI shows plan review screen with approve/reject/edit
+
+### Phase 9 Success Metrics
+
+| Metric | Target |
+|---|---|
+| Simple task decomposition accuracy | 1 subtask for simple tasks, 2-5 for complex |
+| Code execution success rate | > 80% for standard coding tasks |
+| UI readability (no raw JSON) | 0 raw JSON in task detail view |
+| Plan approval UX | < 2 clicks from goal input to execution start |
+| Backward compatibility | All existing 1,678 tests pass |
+
+---
+
 ## Risk Management
 
 | Risk | Impact | Probability | Mitigation |
@@ -1556,6 +1691,10 @@ Sprint 1.1 (Infra)
 | 7 | Cross-engine context continuity | > 85% |
 | 7 | Memory deduplication accuracy | > 90% |
 | 7 | Task handoff success rate | > 90% |
+| 9 | Simple task → 1 subtask rate | > 90% |
+| 9 | Code execution success rate | > 80% |
+| 9 | Raw JSON in UI | 0 instances |
+| 9 | Plan-to-execution clicks | < 2 |
 
 ---
 

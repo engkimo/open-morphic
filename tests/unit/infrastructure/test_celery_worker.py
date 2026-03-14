@@ -65,7 +65,9 @@ class TestCeleryDispatch:
         from interface.api.main import create_app
         from shared.config import Settings
 
-        settings = Settings(celery_enabled=True, use_postgres=False)
+        settings = Settings(
+            celery_enabled=True, use_postgres=False, planning_mode="disabled"
+        )
         container = AppContainer(settings=settings)
         container.create_task = AsyncMock()
         from domain.entities.task import TaskEntity

@@ -23,6 +23,8 @@ export interface SubTaskResponse {
   dependencies: string[];
   result: string | null;
   error: string | null;
+  code: string | null;
+  execution_output: string | null;
   model_used: string | null;
   cost_usd: number;
 }
