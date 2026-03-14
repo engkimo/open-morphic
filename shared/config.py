@@ -38,8 +38,8 @@ class Settings(BaseSettings):
 
     # ── Ollama ──
     ollama_base_url: str = "http://127.0.0.1:11434"
-    ollama_default_model: str = "qwen3-coder:30b"
-    ollama_coding_model: str = "qwen3-coder:30b"
+    ollama_default_model: str = "qwen3:8b"
+    ollama_coding_model: str = "qwen3:8b"
     local_first: bool = True
 
     # ── Agent CLI ──

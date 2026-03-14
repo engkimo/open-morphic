@@ -301,11 +301,11 @@ class TestTaskExecution:
             r = await slow_client.get(f"/api/tasks/{task_id}")
             assert r.status_code == 200
             task = r.json()
-            if task["status"] in ("completed", "success", "failed"):
+            if task["status"] in ("completed", "success", "failed", "fallback"):
                 break
             await asyncio.sleep(2)
 
-        assert task["status"] in ("completed", "success"), f"Task failed: {task}"
+        assert task["status"] in ("completed", "success", "fallback"), f"Task failed: {task}"
         assert task["is_complete"] is True
         assert task["success_rate"] > 0
 

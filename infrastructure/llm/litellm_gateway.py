@@ -23,8 +23,8 @@ class LiteLLMGateway(LLMGateway):
 
     MODEL_TIERS: dict[ModelTier, list[str]] = {
         ModelTier.FREE: [
-            "ollama/qwen3-coder:30b",
             "ollama/qwen3:8b",
+            "ollama/qwen3-coder:30b",
             "ollama/deepseek-r1:8b",
             "ollama/llama3.2:3b",
         ],
@@ -101,6 +101,12 @@ class LiteLLMGateway(LLMGateway):
         """Execute LLM completion via LiteLLM."""
         resolved = model or self._default_free_model
 
+        # When using default model (no explicit model), validate and fallback
+        if model is None and not await self.is_available(resolved):
+            fallback = await self._find_available_fallback(resolved)
+            if fallback:
+                resolved = fallback
+
         kwargs: dict = {
             "model": resolved,
             "messages": messages,
@@ -136,6 +142,18 @@ class LiteLLMGateway(LLMGateway):
 
         await self._cost_tracker.record(llm_resp)
         return llm_resp
+
+    async def _find_available_fallback(self, failed_model: str) -> str | None:
+        """Find first available model from FREE tier as fallback."""
+        for m in self.MODEL_TIERS[ModelTier.FREE]:
+            if m != failed_model and await self.is_available(m):
+                return m
+        # Try other tiers
+        for tier in (ModelTier.LOW, ModelTier.MEDIUM):
+            for m in self.MODEL_TIERS[tier]:
+                if await self.is_available(m):
+                    return m
+        return None
 
     async def is_available(self, model: str) -> bool:
         """Check if a specific model is usable."""
