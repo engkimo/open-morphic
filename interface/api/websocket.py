@@ -10,14 +10,17 @@ from fastapi import WebSocket, WebSocketDisconnect
 from interface.api.schemas import TaskResponse
 
 
+MAX_POLL_ITERATIONS = 300  # 5 minutes at 1s interval
+
+
 async def task_ws(websocket: WebSocket, task_id: str) -> None:
-    """Poll task state every 1s and send JSON snapshots until complete."""
+    """Poll task state and send JSON snapshots until complete or timeout."""
     await websocket.accept()
     container = websocket.app.state.container
 
     try:
         last_snapshot: str | None = None
-        while True:
+        for _ in range(MAX_POLL_ITERATIONS):
             task = await container.task_repo.get_by_id(task_id)
             if task is None:
                 await websocket.send_json({"error": f"Task {task_id} not found"})
@@ -25,14 +28,12 @@ async def task_ws(websocket: WebSocket, task_id: str) -> None:
 
             data = json.loads(TaskResponse.from_task(task).model_dump_json())
 
-            # Include background planner recommendations if available
             if hasattr(container, "background_planner"):
                 recs = container.background_planner.get_recommendations(task_id)
                 if recs:
                     data["recommendations"] = recs
 
             snapshot = json.dumps(data, sort_keys=True)
-            # Only send if state changed
             if snapshot != last_snapshot:
                 await websocket.send_text(snapshot)
                 last_snapshot = snapshot
