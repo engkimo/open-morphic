@@ -12,15 +12,15 @@ benchmark_app = typer.Typer(no_args_is_help=True)
 
 
 def _get_container() -> Any:
-    from interface.cli.main import _get_container
+    from interface.cli._utils import _get_container as _gc
 
-    return _get_container()
+    return _gc()
 
 
 def _run(coro: Any) -> Any:
-    from interface.cli.main import _run
+    from interface.cli._utils import _run as _r
 
-    return _run(coro)
+    return _r(coro)
 
 
 @benchmark_app.command("run")

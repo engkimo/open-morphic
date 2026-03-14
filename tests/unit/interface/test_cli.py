@@ -23,7 +23,7 @@ from infrastructure.persistence.in_memory import (
     InMemoryPlanRepository,
     InMemoryTaskRepository,
 )
-from interface.cli import main as cli_main
+from interface.cli import _utils as cli_utils
 from interface.cli.main import app
 
 runner = CliRunner()
@@ -98,7 +98,7 @@ def _make_task(
 def _inject_container(monkeypatch: pytest.MonkeyPatch) -> _MockContainer:
     """Inject mock container into CLI for every test."""
     container = _MockContainer()
-    monkeypatch.setattr(cli_main, "_container_instance", container)
+    monkeypatch.setattr(cli_utils, "_container_instance", container)
     return container
 
 

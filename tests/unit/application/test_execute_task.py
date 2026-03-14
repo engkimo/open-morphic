@@ -445,9 +445,7 @@ class TestExecuteTaskAutoRecording:
 
         assert result.status == TaskStatus.SUCCESS
 
-    async def test_no_recording_when_repo_is_none(
-        self, engine: AsyncMock, repo: AsyncMock
-    ) -> None:
+    async def test_no_recording_when_repo_is_none(self, engine: AsyncMock, repo: AsyncMock) -> None:
         uc = ExecuteTaskUseCase(engine, repo, execution_record_repo=None)
         task = _make_task(SubTaskStatus.SUCCESS)
         repo.get_by_id.return_value = task

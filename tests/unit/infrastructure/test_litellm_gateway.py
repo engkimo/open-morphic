@@ -10,8 +10,8 @@ from infrastructure.llm.litellm_gateway import LiteLLMGateway
 from infrastructure.llm.ollama_manager import OllamaManager
 from shared.config import Settings
 
-# Default model returned when Ollama is running and has qwen3-coder:30b
-DEFAULT_OLLAMA = "ollama/qwen3-coder:30b"
+# Default model returned — driven by settings.ollama_default_model
+DEFAULT_OLLAMA = "ollama/qwen3:8b"
 ALL_OLLAMA_MODELS = ["qwen3-coder:30b", "qwen3:8b", "deepseek-r1:8b", "llama3.2:3b"]
 
 
@@ -35,6 +35,7 @@ def settings() -> Settings:
         anthropic_api_key="",
         openai_api_key="",
         google_gemini_api_key="",
+        ollama_default_model="qwen3:8b",
     )
 
 

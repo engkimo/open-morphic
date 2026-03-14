@@ -12,7 +12,8 @@ from domain.entities.tool_candidate import ToolCandidate
 from domain.ports.tool_installer import InstallResult
 from domain.ports.tool_registry import ToolSearchResult
 from domain.value_objects.tool_safety import SafetyTier
-from interface.cli.main import _set_container, app
+from interface.cli._utils import _set_container
+from interface.cli.main import app
 
 runner = CliRunner()
 

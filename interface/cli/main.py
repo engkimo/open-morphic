@@ -5,12 +5,11 @@ Entry point: `morphic` command (registered in pyproject.toml [project.scripts]).
 
 from __future__ import annotations
 
-import asyncio
 import importlib.metadata
-from typing import Any
 
 import typer
 
+from interface.cli._utils import _get_container, _run, _set_container  # noqa: F401
 from interface.cli.formatters import console
 
 app = typer.Typer(
@@ -18,39 +17,6 @@ app = typer.Typer(
     help="Morphic-Agent — Self-Evolving AI Agent Framework",
     no_args_is_help=True,
 )
-
-# Lazy singleton — created once on first access
-_container_instance: Any = None
-
-
-def _get_container() -> Any:
-    """Lazy-init the AppContainer singleton. Swappable for testing."""
-    global _container_instance  # noqa: PLW0603
-    if _container_instance is None:
-        from interface.api.container import AppContainer
-
-        _container_instance = AppContainer()
-    return _container_instance
-
-
-def _set_container(container: Any) -> None:
-    """Override the container (for testing)."""
-    global _container_instance  # noqa: PLW0603
-    _container_instance = container
-
-
-def _run(coro: Any) -> Any:
-    """Thin wrapper to run an async coroutine from sync typer commands.
-
-    Falls back to loop.run_until_complete() when called inside an existing
-    event loop (e.g. pytest-asyncio tests).
-    """
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-    # Already inside a loop — run directly on it
-    return loop.run_until_complete(coro)
 
 
 def _version_callback(value: bool) -> None:

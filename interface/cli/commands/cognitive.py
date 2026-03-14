@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typer
 
+from interface.cli._utils import _get_container, _run
 from interface.cli.formatters import (
     console,
     print_affinity_table,
@@ -11,7 +12,6 @@ from interface.cli.formatters import (
     print_shared_state,
     print_state_list_table,
 )
-from interface.cli.main import _get_container, _run
 
 cognitive_app = typer.Typer()
 

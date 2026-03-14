@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import typer
 
+from interface.cli._utils import _get_container, _run
 from interface.cli.formatters import console, print_cost_summary, print_error
-from interface.cli.main import _get_container, _run
 
 cost_app = typer.Typer()
 

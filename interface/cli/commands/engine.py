@@ -6,8 +6,8 @@ import typer
 
 from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.model_tier import TaskType
+from interface.cli._utils import _get_container, _run
 from interface.cli.formatters import console, print_engine_result, print_engine_table, print_error
-from interface.cli.main import _get_container, _run
 
 engine_app = typer.Typer()
 

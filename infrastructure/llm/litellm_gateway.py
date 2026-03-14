@@ -62,10 +62,15 @@ class LiteLLMGateway(LLMGateway):
         self._cost_tracker = cost_tracker
         self._settings = settings
 
+    @property
+    def _default_free_model(self) -> str:
+        """Settings-driven default Ollama model (respects OLLAMA_DEFAULT_MODEL)."""
+        return f"ollama/{self._settings.ollama_default_model}"
+
     async def route(self, task_type: TaskType, budget_remaining: float) -> str:
         """Select optimal model: LOCAL_FIRST → task type → budget."""
         if budget_remaining <= 0:
-            return self.MODEL_TIERS[ModelTier.FREE][0]
+            return self._default_free_model
 
         tiers = self.TASK_MODEL_MAP.get(task_type, (ModelTier.FREE, ModelTier.MEDIUM))
 
@@ -75,7 +80,7 @@ class LiteLLMGateway(LLMGateway):
             and await self._ollama.is_running()
             and ModelTier.FREE in tiers
         ):
-            return self.MODEL_TIERS[ModelTier.FREE][0]
+            return self._default_free_model
 
         # Cascade through tiers, return first available
         for tier in tiers:
@@ -84,7 +89,7 @@ class LiteLLMGateway(LLMGateway):
                     return model
 
         # Ultimate fallback
-        return self.MODEL_TIERS[ModelTier.FREE][0]
+        return self._default_free_model
 
     async def complete(
         self,
@@ -94,7 +99,7 @@ class LiteLLMGateway(LLMGateway):
         max_tokens: int = 4096,
     ) -> LLMResponse:
         """Execute LLM completion via LiteLLM."""
-        resolved = model or self.MODEL_TIERS[ModelTier.FREE][0]
+        resolved = model or self._default_free_model
 
         kwargs: dict = {
             "model": resolved,
