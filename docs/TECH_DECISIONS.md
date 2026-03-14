@@ -2848,3 +2848,81 @@ Two gaps closed to complete Phase 5:
 - `application/use_cases/execute_task.py` — +`execution_record_repo`/`default_model` params, +`_safe_record_execution()`, +`_infer_task_type()`, +`_TOPIC_TO_TASK_TYPE` mapping
 - `interface/api/container.py` — reordered `execution_record_repo` creation, +2 params to ExecuteTaskUseCase
 - `tests/unit/application/test_execute_task.py` — +7 tests (TestExecuteTaskAutoRecording)
+
+---
+
+## TD-065: Settings-Driven Default Ollama Model (Sprint 8.2)
+
+**Date**: 2026-03-14
+**Status**: Accepted
+**Sprint**: 8.2
+
+### Problem
+
+`LiteLLMGateway` hardcoded `MODEL_TIERS[ModelTier.FREE][0]` (`ollama/qwen3-coder:30b`) as the default model in 4 places: `route()` budget-exhausted path, `route()` LOCAL_FIRST shortcut, `route()` ultimate fallback, and `complete()` when no model is specified. The `.env` setting `OLLAMA_DEFAULT_MODEL=qwen3:8b` was completely ignored, causing 500 errors when only `qwen3:8b` was installed.
+
+### Decision
+
+Add `_default_free_model` property to `LiteLLMGateway` that reads from `Settings.ollama_default_model`. Replace all 4 hardcoded `MODEL_TIERS[ModelTier.FREE][0]` references with `self._default_free_model`.
+
+### Rationale
+
+| Choice | Rationale |
+|---|---|
+| Property `_default_free_model` | Single source of truth, DRY |
+| Reads from `Settings.ollama_default_model` | Respects `.env` override, matches user's actual installed model |
+| `MODEL_TIERS[FREE]` list unchanged | Tier list still used for `is_available()` cascade and `list_models()`. Only fallback paths changed |
+| Test fixture explicit `ollama_default_model=` | Tests no longer depend on `.env` contents — deterministic |
+
+### Files Modified
+
+- `infrastructure/llm/litellm_gateway.py` — +`_default_free_model` property, 4 fallback references updated
+- `tests/unit/infrastructure/test_litellm_gateway.py` — `DEFAULT_OLLAMA` → `"ollama/qwen3:8b"`, explicit `ollama_default_model` in settings fixture
+
+---
+
+## TD-066: E2E Smoke Test Suite + Shell Script (Sprint 8.2)
+
+**Date**: 2026-03-14
+**Status**: Accepted
+**Sprint**: 8.2
+
+### Decision
+
+Add automated production verification infrastructure:
+
+1. **`scripts/smoke_test.sh`** — bash/curl-based smoke test (21 checks across 9 phases, ~10 seconds)
+2. **`tests/e2e/test_api_smoke.py`** — pytest/httpx-based E2E test suite (29 tests, auto-skips when API is down)
+
+### Scope
+
+| Category | # Checks | Coverage |
+|---|---|---|
+| Health | 1 | `/api/health` |
+| Task CRUD | 2 | List, 404 on missing |
+| Models | 3 | Status, list, running |
+| Cost | 2 | Summary, logs |
+| Engines | 2 | List (6 engines), Ollama status |
+| Marketplace | 3 | Search, installed, suggest |
+| Evolution | 3 | Stats, failures, preferences |
+| UCL (Cognitive) | 4 | States, affinity, insights, state after insight |
+| Benchmarks | 3 | Continuity, dedup, run all |
+| Plans | 2 | List, 404 on missing |
+| Memory | 2 | Search, export |
+| Task Execution (Ollama) | 2 | Full pipeline (create→execute→poll→verify), plan→approve |
+| Error Handling | 1 | 404 on nonexistent task |
+| **Total** | **29 pytest + 21 shell** | All 42 API endpoints covered |
+
+### Key Design Choices
+
+| Choice | Rationale |
+|---|---|
+| `pytestmark = skipif(not _api_reachable())` | E2E tests auto-skip when server is down — safe to include in default test path |
+| Separate `slow_client` fixture (120s timeout) | Ollama inference can take >60s; regular tests use 30s |
+| Shell script returns `exit $FAIL` | CI/CD-friendly — non-zero exit on any failure |
+| Shell script uses color output + summary | Developer-friendly — quick visual pass/fail |
+
+### Files Created
+
+- `scripts/smoke_test.sh` — 21 curl-based checks, executable
+- `tests/e2e/test_api_smoke.py` — 29 pytest tests, auto-skip capable

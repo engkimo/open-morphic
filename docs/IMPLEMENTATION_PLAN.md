@@ -1485,6 +1485,29 @@ class ContextZipper:
 
 ---
 
+### Sprint 8.2: Production Verification + E2E Smoke Tests ✅ COMPLETE (2026-03-14)
+
+> First production-level operational verification. Fixed a critical bug where `LiteLLMGateway` ignored `.env` `OLLAMA_DEFAULT_MODEL` setting, causing 500 errors. Added automated verification infrastructure covering all 42 API endpoints.
+
+| # | Item | File | Notes |
+|---|---|---|---|
+| 1 | Fix settings-driven default model | `infrastructure/llm/litellm_gateway.py` | ✅ `_default_free_model` property — replaces 4 hardcoded `MODEL_TIERS[FREE][0]` references with `settings.ollama_default_model` |
+| 2 | Update gateway tests | `tests/unit/infrastructure/test_litellm_gateway.py` | ✅ `DEFAULT_OLLAMA` → `"ollama/qwen3:8b"`, explicit `ollama_default_model` in fixture |
+| 3 | Smoke test script | `scripts/smoke_test.sh` | ✅ 21 curl-based checks (health, tasks, models, cost, engines, marketplace, evolution, UCL, benchmarks, error handling), ~10s |
+| 4 | E2E test suite | `tests/e2e/test_api_smoke.py` | ✅ 29 pytest/httpx tests — auto-skips when API is down. Includes Ollama-powered task execution (120s timeout) + plan→approve flow |
+
+**Production verification results:**
+- Full stack: PostgreSQL+pgvector + Redis + Neo4j + Ollama (qwen3:8b) + FastAPI (PG mode) + Next.js 16
+- Task execution: `"フィボナッチ数列を計算する関数を書いて"` → 4 subtasks, success rate 100%, cost $0.00
+- Smoke test: 21/21 passed
+- E2E tests: 29/29 passed
+- Unit tests: 1599/1599 passed
+- Lint: clean
+
+**Result:** 1599 unit + 29 E2E + 50 integration tests, 0 failures, lint clean.
+
+---
+
 ## Risk Management
 
 | Risk | Impact | Probability | Mitigation |

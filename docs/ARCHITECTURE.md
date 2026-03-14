@@ -15,6 +15,7 @@
 > **Phase 7 UCL: Sprint 7.5 COMPLETE** (2026-03-11) — UCL API + CLI + UI (cognitive API routes + CLI commands + Next.js cognitive page + 30 new tests) — 1558 unit tests + 37 integration
 > **Sprint 5.7 COMPLETE** (2026-03-12) — Model management test coverage (15 tests) + auto-discovery trigger on task failure (8 tests) — Phase 5 fully complete — 1592 unit tests + 50 integration
 > **Sprint 8.1 COMPLETE** (2026-03-12) — Self-Evolution Loop Closure: ExecuteTaskUseCase now auto-records ExecutionRecords after every task execution, feeding Phase 6's AnalyzeExecution/UpdateStrategy/SystemicEvolution pipeline — 1599 unit tests + 50 integration
+> **Sprint 8.2 COMPLETE** (2026-03-14) — Production Verification: Fix settings-driven default Ollama model in LiteLLMGateway (TD-065), add E2E smoke test suite (29 pytest + 21 shell checks covering all 42 API endpoints) (TD-066) — 1599 unit + 29 E2E + 50 integration, 0 failures
 
 ---
 
