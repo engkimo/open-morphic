@@ -8,6 +8,8 @@ Sprint 9.4: Plan-first flow as default.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
 from domain.services.task_complexity import TaskComplexityClassifier
@@ -19,6 +21,8 @@ from interface.api.schemas import (
     TaskResponse,
 )
 from shared.config import PlanningMode
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -35,23 +39,28 @@ async def create_task(
 ) -> TaskResponse | ExecutionPlanResponse:
     c = _container(request)
     mode = c.settings.planning_mode
+    logger.info("POST /api/tasks — goal=%r mode=%s", body.goal[:60], mode)
 
     # DISABLED mode — legacy: create & execute immediately
     if mode == PlanningMode.DISABLED:
+        logger.info("DISABLED mode — creating and executing immediately")
         return await _create_and_execute(c, body.goal, background_tasks)
 
     # INTERACTIVE / AUTO mode — plan-first flow
     plan = await c.interactive_plan.create_plan(body.goal)
+    logger.info("Plan created — id=%s steps=%d", plan.id[:8], len(plan.steps))
 
     # AUTO mode: auto-approve simple tasks
     if mode == PlanningMode.AUTO and c.settings.planning_auto_approve_simple:
         complexity = TaskComplexityClassifier.classify(body.goal)
         if complexity == TaskComplexity.SIMPLE:
+            logger.info("AUTO mode — SIMPLE task auto-approved")
             task = await c.interactive_plan.approve_plan(plan.id)
             background_tasks.add_task(c.execute_task.execute, task.id)
             return TaskResponse.from_task(task)
 
     # Return plan for review (INTERACTIVE, or non-simple AUTO)
+    logger.info("Returning plan for review — plan_id=%s", plan.id[:8])
     return ExecutionPlanResponse.from_plan(plan)
 
 

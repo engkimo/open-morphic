@@ -8,6 +8,7 @@ Sprint 9.1: Complexity-aware decomposition.
 from __future__ import annotations
 
 import json
+import logging
 import re
 
 from domain.entities.task import SubTask
@@ -15,6 +16,8 @@ from domain.ports.llm_gateway import LLMGateway
 from domain.services.task_complexity import TaskComplexityClassifier
 from domain.value_objects.task_complexity import TaskComplexity
 from infrastructure.context_engineering.kv_cache_optimizer import KVCacheOptimizer
+
+logger = logging.getLogger(__name__)
 
 # Stable system prompt prefix (Manus principle 1: KV-cache friendly)
 _DECOMPOSE_INSTRUCTION = """\
@@ -57,8 +60,10 @@ class IntentAnalyzer:
         MEDIUM/COMPLEX → LLM decomposition with guidance.
         """
         complexity = TaskComplexityClassifier.classify(goal)
+        logger.info("Goal complexity: %s — %r", complexity.value, goal[:60])
 
         if complexity == TaskComplexity.SIMPLE:
+            logger.debug("SIMPLE goal — skipping LLM, wrapping as single subtask")
             return self._create_single_subtask(goal)
 
         return await self._llm_decompose(goal, complexity)
@@ -77,8 +82,11 @@ class IntentAnalyzer:
             {"role": "system", "content": system_content},
             {"role": "user", "content": goal},
         ]
+        logger.debug("LLM decomposition prompt — guidance=%r", guidance)
         response = await self._llm.complete(messages, temperature=0.3, max_tokens=1024)
-        return self._parse_response(response.content)
+        subtasks = self._parse_response(response.content)
+        logger.info("LLM decomposed into %d subtask(s)", len(subtasks))
+        return subtasks
 
     @staticmethod
     def _create_single_subtask(goal: str) -> list[SubTask]:

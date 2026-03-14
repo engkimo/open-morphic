@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Request
 
 from interface.api.schemas import (
@@ -10,6 +12,8 @@ from interface.api.schemas import (
     PlanListResponse,
     TaskResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/plans", tags=["plans"])
 
@@ -20,8 +24,13 @@ def _container(request: Request):  # noqa: ANN202
 
 @router.post("", status_code=201, response_model=ExecutionPlanResponse)
 async def create_plan(body: CreatePlanRequest, request: Request) -> ExecutionPlanResponse:
+    logger.info("POST /api/plans — goal=%r model=%s", body.goal[:60], body.model)
     c = _container(request)
     plan = await c.interactive_plan.create_plan(body.goal, model=body.model)
+    logger.info(
+        "Plan created — id=%s steps=%d cost=$%.4f",
+        plan.id[:8], len(plan.steps), plan.total_estimated_cost_usd,
+    )
     return ExecutionPlanResponse.from_plan(plan)
 
 
@@ -46,6 +55,7 @@ async def get_plan(plan_id: str, request: Request) -> ExecutionPlanResponse:
 async def approve_plan(plan_id: str, request: Request) -> TaskResponse:
     from application.use_cases.interactive_plan import PlanAlreadyDecidedError, PlanNotFoundError
 
+    logger.info("POST /api/plans/%s/approve", plan_id[:8])
     c = _container(request)
     try:
         task = await c.interactive_plan.approve_plan(plan_id)
@@ -66,6 +76,7 @@ async def approve_plan(plan_id: str, request: Request) -> TaskResponse:
 async def reject_plan(plan_id: str, request: Request) -> ExecutionPlanResponse:
     from application.use_cases.interactive_plan import PlanAlreadyDecidedError, PlanNotFoundError
 
+    logger.info("POST /api/plans/%s/reject", plan_id[:8])
     c = _container(request)
     try:
         plan = await c.interactive_plan.reject_plan(plan_id)

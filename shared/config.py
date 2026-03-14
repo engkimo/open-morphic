@@ -133,6 +133,7 @@ class Settings(BaseSettings):
     auto_tool_install: bool = False
     planning_mode: PlanningMode = PlanningMode.INTERACTIVE
     planning_auto_approve_simple: bool = True
+    log_level: str = "INFO"
 
     @property
     def marketplace_safety_threshold_tier(self):  # type: ignore[no-untyped-def]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from langgraph.graph import END, StateGraph
 
@@ -17,6 +18,8 @@ from infrastructure.context_engineering.observation_diversifier import (
 from infrastructure.task_graph.code_executor import extract_and_execute
 from infrastructure.task_graph.intent_analyzer import IntentAnalyzer
 from infrastructure.task_graph.state import AgentState
+
+logger = logging.getLogger(__name__)
 
 
 class LangGraphTaskEngine(TaskEngine):
@@ -50,10 +53,14 @@ class LangGraphTaskEngine(TaskEngine):
 
     async def decompose(self, goal: str) -> list[SubTask]:
         """Delegate to IntentAnalyzer for LLM-powered decomposition."""
-        return await self._analyzer.decompose(goal)
+        logger.info("Decomposing goal: %s", goal[:80])
+        subtasks = await self._analyzer.decompose(goal)
+        logger.info("Decomposed into %d subtask(s)", len(subtasks))
+        return subtasks
 
     async def execute(self, task: TaskEntity) -> TaskEntity:
         """Run all subtasks through the LangGraph DAG."""
+        logger.info("Executing task %s — %d subtask(s)", task.id[:8], len(task.subtasks))
         self._task = task
         self._retry_counts = {}
 
@@ -104,6 +111,7 @@ class LangGraphTaskEngine(TaskEngine):
         async def execute_one(subtask_id: str) -> dict:
             subtask = subtask_map[subtask_id]
             subtask.status = SubTaskStatus.RUNNING
+            logger.info("Running subtask %s: %s", subtask_id, subtask.description[:60])
             system_content = self._kv_cache.build_system_prompt({"goal": self._task.goal})
             messages = [
                 {"role": "system", "content": system_content},
@@ -123,7 +131,16 @@ class LangGraphTaskEngine(TaskEngine):
                     subtask.execution_output = (
                         exec_result.output if exec_result.success else exec_result.error
                     )
+                    logger.info(
+                        "Code execution — lang=%s success=%s output_len=%d",
+                        exec_result.language, exec_result.success,
+                        len(exec_result.output) if exec_result.output else 0,
+                    )
 
+                logger.info(
+                    "Subtask %s completed — model=%s cost=$%.6f",
+                    subtask_id, response.model, response.cost_usd,
+                )
                 return {
                     "subtask_id": subtask_id,
                     "status": "success",
@@ -134,9 +151,14 @@ class LangGraphTaskEngine(TaskEngine):
                 count = self._retry_counts.get(subtask_id, 0) + 1
                 self._retry_counts[subtask_id] = count
                 if count < self.MAX_RETRIES:
+                    logger.warning(
+                        "Subtask %s failed (retry %d/%d): %s",
+                        subtask_id, count, self.MAX_RETRIES, e,
+                    )
                     subtask.status = SubTaskStatus.PENDING
                     subtask.error = None
                 else:
+                    logger.error("Subtask %s failed permanently: %s", subtask_id, e)
                     subtask.status = SubTaskStatus.FAILED
                     subtask.error = str(e)
                 return {
@@ -179,6 +201,12 @@ class LangGraphTaskEngine(TaskEngine):
     def _finalize(self, state: AgentState) -> dict:
         """Set final execution status."""
         assert self._task is not None
-        if self._task.success_rate == 1.0:
+        rate = self._task.success_rate
+        status = "done" if rate == 1.0 else "failed"
+        logger.info(
+            "Task %s finalized — status=%s success_rate=%.0f%% total_cost=$%.6f",
+            self._task.id[:8], status, rate * 100, state["cost_so_far"],
+        )
+        if rate == 1.0:
             return {"status": "done"}
         return {"status": "failed"}

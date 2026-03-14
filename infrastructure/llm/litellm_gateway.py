@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import litellm
 
 from domain.ports.llm_gateway import LLMGateway, LLMResponse
@@ -9,6 +11,8 @@ from domain.value_objects.model_tier import ModelTier, TaskType
 from infrastructure.llm.cost_tracker import CostTracker
 from infrastructure.llm.ollama_manager import OllamaManager
 from shared.config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 class LiteLLMGateway(LLMGateway):
@@ -70,6 +74,7 @@ class LiteLLMGateway(LLMGateway):
     async def route(self, task_type: TaskType, budget_remaining: float) -> str:
         """Select optimal model: LOCAL_FIRST → task type → budget."""
         if budget_remaining <= 0:
+            logger.info("Budget exhausted — forcing free model")
             return self._default_free_model
 
         tiers = self.TASK_MODEL_MAP.get(task_type, (ModelTier.FREE, ModelTier.MEDIUM))
@@ -105,6 +110,7 @@ class LiteLLMGateway(LLMGateway):
         if model is None and not await self.is_available(resolved):
             fallback = await self._find_available_fallback(resolved)
             if fallback:
+                logger.warning("Model %s unavailable, falling back to %s", resolved, fallback)
                 resolved = fallback
 
         kwargs: dict = {
@@ -124,6 +130,10 @@ class LiteLLMGateway(LLMGateway):
             # thinking output from Ollama, causing empty content responses.
             kwargs.setdefault("extra_body", {})["think"] = False
 
+        logger.info(
+            "LLM call — model=%s temp=%.1f max_tokens=%d",
+            resolved, temperature, max_tokens,
+        )
         response = await litellm.acompletion(**kwargs)
 
         usage = response.usage
@@ -140,6 +150,11 @@ class LiteLLMGateway(LLMGateway):
             cached=False,
         )
 
+        logger.info(
+            "LLM response — model=%s prompt_tok=%d completion_tok=%d cost=$%.6f",
+            resolved, llm_resp.prompt_tokens, llm_resp.completion_tokens, llm_resp.cost_usd,
+        )
+        logger.debug("LLM content (first 200 chars): %s", llm_resp.content[:200])
         await self._cost_tracker.record(llm_resp)
         return llm_resp
 

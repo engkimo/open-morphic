@@ -1,15 +1,23 @@
 /** API client — fetch wrappers + WebSocket for Morphic-Agent backend */
 
+import { logger } from "./logger";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = init?.method || "GET";
+  logger.info(`API ${method} ${path}`);
+  const start = performance.now();
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
+  const elapsed = Math.round(performance.now() - start);
   if (!res.ok) {
+    logger.error(`API ${method} ${path} — ${res.status} ${res.statusText} (${elapsed}ms)`);
     throw new Error(`API error: ${res.status} ${res.statusText}`);
   }
+  logger.info(`API ${method} ${path} — ${res.status} (${elapsed}ms)`);
   if (res.status === 204) return undefined as T;
   return res.json();
 }
@@ -466,8 +474,18 @@ export function connectTaskWs(
   onClose?: () => void,
 ): WebSocket {
   const wsBase = API_BASE.replace(/^http/, "ws");
+  logger.info(`WebSocket connecting — task=${taskId}`);
   const ws = new WebSocket(`${wsBase}/ws/tasks/${taskId}`);
-  ws.onmessage = (e) => onMessage(JSON.parse(e.data));
-  ws.onclose = () => onClose?.();
+  ws.onopen = () => logger.info(`WebSocket connected — task=${taskId}`);
+  ws.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    logger.debug(`WebSocket message — task=${taskId} status=${data.status}`);
+    onMessage(data);
+  };
+  ws.onclose = () => {
+    logger.info(`WebSocket closed — task=${taskId}`);
+    onClose?.();
+  };
+  ws.onerror = (e) => logger.error(`WebSocket error — task=${taskId}`, e);
   return ws;
 }

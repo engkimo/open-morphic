@@ -11,6 +11,10 @@ import typer
 
 from interface.cli._utils import _get_container, _run, _set_container  # noqa: F401
 from interface.cli.formatters import console
+from shared.config import settings
+from shared.logging import setup_logging
+
+setup_logging(settings.log_level)
 
 app = typer.Typer(
     name="morphic",

@@ -8,10 +8,13 @@ Sprint 9.2: LAEE Code Execution Integration.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 
 from infrastructure.local_execution.tools.shell_tools import shell_exec
+
+logger = logging.getLogger(__name__)
 
 # Languages that map to direct shell execution
 _LANGUAGE_COMMANDS: dict[str, list[str]] = {
@@ -61,6 +64,7 @@ def extract_code_blocks(content: str) -> list[CodeBlock]:
         code = code.strip()
         if code:
             blocks.append(CodeBlock(language=lang, code=code))
+    logger.debug("Extracted %d code block(s) from LLM output", len(blocks))
     return blocks
 
 
@@ -120,8 +124,13 @@ async def execute_code_block(
     escaped_code = block.code.replace("'", "'\"'\"'")
     cmd = f"{cmd_parts[0]} {cmd_parts[1]} '{escaped_code}'"
 
+    logger.info(
+        "Executing %s code block (%d chars), timeout=%ds",
+        block.language, len(block.code), timeout,
+    )
     try:
         output = await shell_exec({"cmd": cmd, "timeout": timeout, "cwd": cwd})
+        logger.info("Code execution succeeded — output %d chars", len(output))
         return ExecutionResult(
             code=block.code,
             language=block.language,
@@ -129,6 +138,7 @@ async def execute_code_block(
             success=True,
         )
     except TimeoutError:
+        logger.warning("Code execution timed out after %ds", timeout)
         return ExecutionResult(
             code=block.code,
             language=block.language,
@@ -137,6 +147,7 @@ async def execute_code_block(
             error=f"Execution timed out after {timeout}s",
         )
     except RuntimeError as e:
+        logger.warning("Code execution failed: %s", e)
         return ExecutionResult(
             code=block.code,
             language=block.language,
