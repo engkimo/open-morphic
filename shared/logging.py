@@ -31,5 +31,8 @@ def setup_logging(level: str = "INFO") -> None:
     root.setLevel(numeric_level)
 
     # Quiet noisy third-party loggers
-    for noisy in ("httpx", "httpcore", "litellm", "urllib3", "asyncio"):
+    for noisy in (
+        "httpx", "httpcore", "litellm", "urllib3", "asyncio",
+        "sqlalchemy.engine.Engine",
+    ):
         logging.getLogger(noisy).setLevel(logging.WARNING)

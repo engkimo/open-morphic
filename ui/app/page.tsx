@@ -14,6 +14,7 @@ import {
   getModelStatus,
   connectTaskWs,
   type TaskResponse,
+  type ExecutionPlanResponse,
   type CostSummary,
   type ModelStatus as ModelStatusType,
 } from "@/lib/api";
@@ -54,7 +55,15 @@ export default function Dashboard() {
         const plan = await createPlan(goal);
         router.push(`/plans/${plan.id}`);
       } else {
-        const task = await createTask(goal);
+        const result = await createTask(goal) as TaskResponse | ExecutionPlanResponse;
+
+        // Plan-first flow: API may return a plan instead of a task
+        if ("steps" in result) {
+          router.push(`/plans/${result.id}`);
+          return;
+        }
+
+        const task = result as TaskResponse;
         setTasks((prev) => [task, ...prev]);
 
         // Subscribe to real-time updates

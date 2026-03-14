@@ -48,14 +48,14 @@ export default function TaskList({ tasks }: TaskListProps) {
           </div>
           <div className="flex items-center gap-4 text-xs text-text-muted">
             <span>
-              {task.subtasks.length} subtask{task.subtasks.length !== 1 && "s"}
+              {(task.subtasks ?? []).length} subtask{(task.subtasks ?? []).length !== 1 && "s"}
             </span>
-            {task.total_cost_usd === 0 ? (
+            {(task.total_cost_usd ?? 0) === 0 ? (
               <span className="rounded bg-local-free/20 px-2 py-0.5 text-local-free">
                 FREE
               </span>
             ) : (
-              <span>${task.total_cost_usd.toFixed(4)}</span>
+              <span>${(task.total_cost_usd ?? 0).toFixed(4)}</span>
             )}
           </div>
         </Link>
