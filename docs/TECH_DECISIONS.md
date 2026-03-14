@@ -2929,7 +2929,7 @@ Add automated production verification infrastructure:
 
 ---
 
-## TD-067: Smart Decomposition — Task Complexity Classifier (Phase 9 / Sprint 9.1)
+## TD-067: Smart Decomposition — Task Complexity Classifier (Phase 9 / Sprint 9.1) ✅
 
 **Date**: 2026-03-14
 **Status**: Planned
@@ -2978,7 +2978,7 @@ The root cause is the prompt instruction `"2-5 subtasks for most goals"` which f
 
 ---
 
-## TD-068: LAEE Code Execution in Task Engine (Phase 9 / Sprint 9.2)
+## TD-068: LAEE Code Execution in Task Engine (Phase 9 / Sprint 9.2) ✅
 
 **Date**: 2026-03-14
 **Status**: Planned
@@ -3041,7 +3041,7 @@ execute_one(subtask):
 
 ---
 
-## TD-069: UI Result Formatting — Structured Subtask Display (Phase 9 / Sprint 9.3)
+## TD-069: UI Result Formatting — Structured Subtask Display (Phase 9 / Sprint 9.3) ✅
 
 **Date**: 2026-03-14
 **Status**: Planned
@@ -3090,10 +3090,10 @@ else:
 
 ---
 
-## TD-070: Interactive Planning as Default Task Flow (Phase 9 / Sprint 9.4)
+## TD-070: Interactive Planning as Default Task Flow (Phase 9 / Sprint 9.4) ✅
 
 **Date**: 2026-03-14
-**Status**: Planned
+**Status**: Accepted
 **Sprint**: 9.4
 
 ### Problem
@@ -3142,3 +3142,62 @@ Auto:
 - `shared/config.py` — +`PLANNING_AUTO_APPROVE_SIMPLE` setting
 - `ui/app/tasks/` — Plan review page with approve/reject
 - `tests/unit/interface/test_tasks_planning.py` — Plan-first flow tests
+
+---
+
+## TD-071: Full-Stack Structured Logging (Phase 9 / Sprint 9.5) ✅
+
+**Date**: 2026-03-14
+**Status**: Accepted
+**Sprint**: 9.5
+
+### Problem
+
+Debugging and tracing requests across the Morphic-Agent stack is difficult. Backend modules use ad-hoc `print()` or no logging at all. Frontend has zero logging — API calls, WebSocket connections, and errors are invisible. There is no centralized logging configuration; each module would need to independently configure handlers and formats.
+
+### Decision
+
+1. **Backend**: Centralized logging config in `shared/logging.py` with structured format `HH:MM:SS | LEVEL | module | message`
+2. **Backend**: Add `logging.getLogger(__name__)` to all key modules: LLM gateway, task engine, intent analyzer, code executor, API routes (tasks, plans), CLI entry point
+3. **Frontend**: Client-side logger (`ui/lib/logger.ts`) with `[Morphic]` prefix, level filtering via `NEXT_PUBLIC_LOG_LEVEL` env var
+4. **Frontend**: API call tracing in `ui/lib/api.ts` — request method/path, response status, timing (ms), WebSocket lifecycle
+5. **Config**: `log_level` setting in `shared/config.py` (default: `INFO`), applied at startup via `setup_logging()`
+6. **Noise reduction**: Third-party loggers (httpx, httpcore, litellm, urllib3, asyncio) suppressed to WARNING level
+
+### Logging Coverage
+
+| Module | What is logged |
+|---|---|
+| `litellm_gateway.py` | LLM call (model, temp, max_tokens), response (tokens, cost), fallback warnings |
+| `engine.py` | Decomposition start, subtask execution, code execution results, retries, failures, finalization |
+| `intent_analyzer.py` | Complexity classification, LLM decomposition call, subtask count |
+| `code_executor.py` | Block extraction count, execution start/success/timeout/failure |
+| `routes/tasks.py` | Request lifecycle, planning mode decision, auto-approve |
+| `routes/plans.py` | Create (goal, model), approve, reject |
+| `cli/main.py` | Logging init at startup |
+| `ui/lib/api.ts` | API method/path, status/timing, WebSocket connect/message/close/error |
+
+### Files Changed
+
+- `shared/logging.py` — **NEW**: centralized logging configuration
+- `shared/config.py` — +`log_level: str = "INFO"`
+- `infrastructure/llm/litellm_gateway.py` — +structured logging
+- `infrastructure/task_graph/engine.py` — +structured logging
+- `infrastructure/task_graph/intent_analyzer.py` — +structured logging
+- `infrastructure/task_graph/code_executor.py` — +structured logging
+- `interface/api/main.py` — +`setup_logging()` in lifespan
+- `interface/api/routes/tasks.py` — +request lifecycle logging
+- `interface/api/routes/plans.py` — +operation logging
+- `interface/cli/main.py` — +`setup_logging()` at startup
+- `ui/lib/logger.ts` — **NEW**: client-side logger with level filtering
+- `ui/lib/api.ts` — +API call tracing with timing
+
+### Rationale
+
+| Choice | Rationale |
+|---|---|
+| `logging.getLogger(__name__)` per module | Standard Python pattern; hierarchical control via root logger |
+| Centralized `setup_logging()` | Single call at startup, no per-module config duplication |
+| Suppress third-party loggers | litellm/httpx flood logs at INFO level |
+| Frontend `console.*` wrapper | No build-time dependency; level filtering via env var |
+| Timing in API calls | Identify slow endpoints and LLM latency at a glance |
