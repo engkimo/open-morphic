@@ -34,7 +34,7 @@ Load `.specify/memory/constitution.md`. Each feature must satisfy:
 7. **Cost Discipline** — cost budget declared; downgrade ladder exists.
 8. **UCL** — cross-engine handoff preserves decisions/artifacts/blockers.
 9. **Append-Only Context** — no in-place edits of past tool results.
-10. **Evolve** — wins/losses feed `evolution/` logs.
+10. **Evolve** — wins/losses feed `.morphic/evolution/` logs.
 
 ## Procedure
 

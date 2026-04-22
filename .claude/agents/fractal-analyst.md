@@ -61,4 +61,4 @@ You diagnose Morphic-Agent's recursive fractal engine. Any node in the execution
 
 - **Never** re-run the task. This is forensic analysis.
 - Cite file:line for any bypass classifier prompt issues.
-- If a misclassification pattern repeats, recommend an entry in `evolution/` for prompt tuning.
+- If a misclassification pattern repeats, recommend an entry in `.morphic/evolution/` for prompt tuning.

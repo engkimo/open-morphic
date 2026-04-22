@@ -48,7 +48,7 @@
 - Git history: no force-push to `main`, no destructive resets without explicit user approval.
 
 ### 10. Evolve, Don't Patch
-- Failures feed `evolution/`. Repeated failures indicate prompts / models / tools that need changing, not a single bug fix.
+- Failures feed `.morphic/evolution/`. Repeated failures indicate prompts / models / tools that need changing, not a single bug fix.
 - Never specialize for a specific test case. Fix as a generic framework improvement.
 
 ## Amendments

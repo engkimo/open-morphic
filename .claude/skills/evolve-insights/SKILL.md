@@ -34,11 +34,11 @@ You harvest learnings from a completed session and route them to the evolution e
    - **SURPRISE**: unexpected behavior (good or bad).
 4. For each WIN:
    - Distill to a portable rule (model/prompt/route hint).
-   - Store in `evolution/wins.jsonl` as an append-only record.
+   - Store in `.morphic/evolution/wins.jsonl` as an append-only record.
 5. For each LOSS:
    - Identify the proximate cause (prompt, model, tool, classifier).
    - Draft a counter-measure (prompt patch, routing weight shift, new tool).
-   - Store in `evolution/losses.jsonl`.
+   - Store in `.morphic/evolution/losses.jsonl`.
 6. Output a session postmortem.
 7. If ≥3 losses of the same kind, propose a harness change and stop — user decides whether to apply.
 
