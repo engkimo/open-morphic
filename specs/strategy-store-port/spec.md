@@ -114,10 +114,7 @@ Level-2 learning behavior is added on top of it.
   semantics, matching today's behavior).
 - FR-7: The abstraction shall expose the ability to **replace the full set
   of persisted recovery rules** with a supplied list (overwrite semantics,
-  matching today's behavior). [NEEDS CLARIFICATION: the current use case
-  only calls `append_recovery_rule` in-flow, but the concrete component
-  also offers a bulk save; confirm whether the domain abstraction should
-  include the bulk-save capability for recovery rules or only append.]
+  matching today's behavior).
 - FR-8: The abstraction shall expose the ability to **append a single
   recovery rule** without rewriting the full set.
 - FR-9: The default runtime wiring shall continue to use the existing
@@ -172,32 +169,30 @@ Level-2 learning behavior is added on top of it.
 | Operator-visible migration steps required to upgrade | 0 |
 | LLM cost introduced by this change | $0 |
 
-## Open Questions
+## Resolved Questions (2026-04-22)
 
-- [ ] **Bulk save of recovery rules (see FR-7):** Should the domain
-  abstraction include the bulk-overwrite operation for recovery rules, or
-  restrict the contract to `load` + `append` for that type? The current
-  use case does not call bulk-save for rules, but external callers /
-  future maintenance tasks might.
-- [ ] **Error handling contract:** The current file-backed implementation
-  silently skips malformed JSONL lines with a warning log. Should that
-  lenient behavior be part of the abstraction's documented contract, or
-  left as an implementation detail of the file-backed realization?
-  [NEEDS CLARIFICATION]
-- [ ] **Concurrency contract:** Is the abstraction expected to be safe
-  against concurrent writers (multiple processes appending recovery rules
-  at once), or is single-writer still assumed as it is today?
-  [NEEDS CLARIFICATION]
-- [ ] **Ordering guarantees on load:** Should `load_*` methods promise a
-  specific ordering (e.g. insertion order, or by sample_count)? Today the
-  order is "as written to disk". Formalizing this in the contract would
-  help integrators who later back the abstraction with a database.
-  [NEEDS CLARIFICATION]
-- [ ] **Naming / location of the abstraction:** Confirm it should live
-  alongside the other domain ports and follow the repository-style
-  naming used by siblings such as `execution_record_repository` and
-  `fractal_learning_repository`, vs. a "store" naming that matches the
-  current concrete component. [NEEDS CLARIFICATION]
+- [x] **Bulk save of recovery rules (FR-7):** RESOLVED — include bulk
+  overwrite in the abstraction's contract. Preserving the existing concrete
+  surface keeps callers unchanged and avoids a follow-up workflow to add
+  it back when a future integrator needs it.
+- [x] **Error handling contract:** RESOLVED — treated as an implementation
+  detail. The abstraction's documented contract is "returns a list; partial
+  data is acceptable when persistence medium reports recoverable I/O
+  errors." Specific behaviors (skip vs. raise, log level) are decided by
+  each realization.
+- [x] **Concurrency contract:** RESOLVED — single-writer assumption is
+  preserved. The only caller is the Level-2 learning use case, which runs
+  serially. Adding multi-writer guarantees now would be over-engineering.
+- [x] **Ordering guarantees on load:** RESOLVED — unspecified in the
+  contract. Callers that require a specific order shall sort after
+  loading. This preserves implementation freedom for a future
+  database-backed realization.
+- [x] **Naming of the abstraction:** RESOLVED — follow the repository
+  naming convention used by sibling ports (`execution_record_repository`,
+  `fractal_learning_repository`). The new port shall be named after that
+  pattern. The concrete file-backed class keeps its current name so that
+  existing integrators and import sites in `infrastructure/` are not
+  disturbed beyond the ABC inheritance line.
 
 ## Constitution Compliance
 
