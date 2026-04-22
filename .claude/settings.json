@@ -1,0 +1,46 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run *)",
+      "Bash(uv sync)",
+      "Bash(uv lock)",
+      "Bash(uv add *)",
+      "Bash(uv remove *)",
+      "Bash(pytest *)",
+      "Bash(ruff *)",
+      "Bash(mypy *)",
+      "Bash(alembic *)",
+      "Bash(morphic *)",
+      "Bash(docker compose *)",
+      "Bash(docker ps)",
+      "Bash(docker logs *)",
+      "Bash(ollama *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git branch)",
+      "Bash(git branch -l)",
+      "Bash(git branch --show-current)",
+      "Bash(wc *)",
+      "Bash(tree *)",
+      "Read",
+      "Grep",
+      "Glob"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(rm -rf /)",
+      "Bash(sudo *)",
+      "Bash(git push --force*)",
+      "Bash(git reset --hard*)",
+      "Bash(git checkout --*)",
+      "Bash(git clean -fd*)"
+    ]
+  },
+  "env": {
+    "MORPHIC_ENV": "development",
+    "LOCAL_FIRST": "true",
+    "LAEE_APPROVAL_MODE": "confirm-destructive"
+  }
+}
