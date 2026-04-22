@@ -1,6 +1,17 @@
-# Morphic-Agent
+<div align="center">
+  <img src="./open-morphic.png" alt="Morphic-Agent" width="240"/>
 
-**Self-Evolving AI Agent Framework** — Mission Control for Intelligence
+  # Morphic-Agent
+
+  **Self-Evolving AI Agent Framework** — Mission Control for Intelligence
+
+  [![Documentation](https://img.shields.io/badge/docs-latest-blue)](./docs)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+  [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/downloads/)
+  [![GitHub Stars](https://img.shields.io/github/stars/engkimo/open-morphic?style=social)](https://github.com/engkimo/open-morphic/stargazers)
+  [![GitHub last commit](https://img.shields.io/github/last-commit/engkimo/open-morphic)](https://github.com/engkimo/open-morphic/commits/main)
+  [![GitHub contributors](https://img.shields.io/github/contributors/engkimo/open-morphic)](https://github.com/engkimo/open-morphic/graphs/contributors)
+</div>
 
 Morphic-Agent orchestrates multiple AI engines (Claude Code, Gemini CLI, OpenHands, Codex CLI, Ollama) as a meta-orchestrator, combining them with a Unified Cognitive Layer for shared memory, task handoff, and self-evolution.
 
