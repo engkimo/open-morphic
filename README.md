@@ -1,7 +1,9 @@
+# Open-Morphic
+
 <div align="center">
   <img src="./open-morphic.png" alt="Morphic-Agent" width="500"/>
 
-  # Open-Morphic
+  
 
   **Self-Evolving AI Agent Framework** — Mission Control for Intelligence
 
