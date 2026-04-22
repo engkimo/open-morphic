@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Morphic-Agent Context Bridge",
+  "description": "Export Morphic-Agent context to any AI platform — Claude Code, ChatGPT, Cursor, Gemini",
+  "version": "0.5.0",
+  "permissions": [
+    "clipboardWrite",
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://localhost:8001/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    },
+    "default_title": "Morphic-Agent Context Bridge"
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+M",
+        "mac": "MacCtrl+Shift+M"
+      },
+      "description": "Open Morphic-Agent Context Bridge"
+    }
+  }
+}

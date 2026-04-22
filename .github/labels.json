@@ -1,7 +1,0 @@
-[
-  { "name": "type:bug", "color": "d73a4a", "description": "Bug or regression" },
-  { "name": "type:enhancement", "color": "a2eeef", "description": "Feature or improvement" },
-  { "name": "type:docs", "color": "0075ca", "description": "Documentation" },
-  { "name": "priority:high", "color": "b60205", "description": "High priority" },
-  { "name": "good first issue", "color": "7057ff", "description": "Good for newcomers" }
-]

@@ -1,19 +1,41 @@
-# weaviate-docker-compose.yml
-version: '3.4'
 services:
-  weaviate:
-    image: semitechnologies/weaviate:1.23.9
+  postgres:
+    image: pgvector/pgvector:pg16
     ports:
-      - "8080:8080"
-    environment:
-      QUERY_DEFAULTS_LIMIT: 25
-      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
-      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
-      DEFAULT_VECTORIZER_MODULE: 'text2vec-openai'
-      ENABLE_MODULES: 'text2vec-openai'
-      OPENAI_APIKEY: ${OPENAI_API_KEY}
+      - "5432:5432"
     volumes:
-      - weaviate_data:/var/lib/weaviate
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init_pg.sql:/docker-entrypoint-initdb.d/init_pg.sql:ro
+    environment:
+      POSTGRES_DB: morphic_agent
+      POSTGRES_USER: morphic
+      POSTGRES_PASSWORD: morphic_dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U morphic -d morphic_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5-community
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/morphic_dev
+    volumes:
+      - neo4jdata:/data
 
 volumes:
-  weaviate_data:
+  pgdata:
+  neo4jdata:

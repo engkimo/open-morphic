@@ -1,0 +1,304 @@
+"""Tests for cognitive / UCL CLI commands."""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
+
+from typer.testing import CliRunner
+
+from domain.entities.cognitive import (
+    AgentAction,
+    AgentAffinityScore,
+    Decision,
+    SharedTaskState,
+)
+from domain.entities.memory import MemoryEntry
+from domain.value_objects.agent_engine import AgentEngineType
+from domain.value_objects.status import MemoryType
+from infrastructure.cognitive.affinity_store import InMemoryAgentAffinityRepository
+from infrastructure.persistence.in_memory import InMemoryMemoryRepository
+from infrastructure.persistence.shared_task_state_repo import (
+    InMemorySharedTaskStateRepository,
+)
+from interface.cli.main import app
+
+runner = CliRunner()
+
+# Patch target: cognitive module has its own bound reference via `from main import _get_container`
+_PATCH_TARGET = "interface.cli.commands.cognitive._get_container"
+
+
+def _make_container():  # type: ignore[no-untyped-def]
+    container = MagicMock()
+    container.shared_task_state_repo = InMemorySharedTaskStateRepository()
+    container.affinity_repo = InMemoryAgentAffinityRepository()
+    container.memory_repo = InMemoryMemoryRepository()
+    container.extract_insights = MagicMock()
+    container.handoff_task = MagicMock()
+    return container
+
+
+def _make_state(task_id: str = "task-1") -> SharedTaskState:
+    state = SharedTaskState(task_id=task_id)
+    state.add_decision(
+        Decision(
+            description="Use Ollama",
+            rationale="Free",
+            agent_engine=AgentEngineType.OLLAMA,
+            confidence=0.9,
+        )
+    )
+    state.add_action(
+        AgentAction(
+            agent_engine=AgentEngineType.OLLAMA,
+            action_type="execute",
+            summary="Ran task",
+        )
+    )
+    return state
+
+
+class TestCognitiveStateCLI:
+    def setup_method(self) -> None:
+        self.container = _make_container()
+
+    def test_state_list_empty(self) -> None:
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "state"])
+        assert result.exit_code == 0
+        assert "No active" in result.output
+
+    def test_state_list_with_data(self) -> None:
+        state = _make_state()
+        self.container.shared_task_state_repo._store[state.task_id] = state
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "state"])
+        assert result.exit_code == 0
+        assert "task-1" in result.output
+
+    def test_state_show(self) -> None:
+        state = _make_state("task-show")
+        self.container.shared_task_state_repo._store[state.task_id] = state
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "state", "task-show"])
+        assert result.exit_code == 0
+        assert "task-show" in result.output
+        assert "Use Ollama" in result.output
+
+    def test_state_show_not_found(self) -> None:
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "state", "nonexistent"])
+        assert result.exit_code == 1
+
+    def test_delete(self) -> None:
+        state = _make_state("task-del")
+        self.container.shared_task_state_repo._store[state.task_id] = state
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "delete", "task-del"])
+        assert result.exit_code == 0
+        assert "Deleted" in result.output
+
+    def test_delete_not_found(self) -> None:
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "delete", "nonexistent"])
+        assert result.exit_code == 1
+
+
+class TestCognitiveAffinityCLI:
+    def setup_method(self) -> None:
+        self.container = _make_container()
+
+    def test_affinity_empty(self) -> None:
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "affinity"])
+        assert result.exit_code == 0
+        assert "No affinity" in result.output
+
+    def test_affinity_with_data(self) -> None:
+        score = AgentAffinityScore(
+            engine=AgentEngineType.CLAUDE_CODE,
+            topic="backend",
+            familiarity=0.8,
+            recency=0.7,
+            success_rate=0.9,
+            cost_efficiency=0.4,
+            sample_count=5,
+        )
+        self.container.affinity_repo._store[(AgentEngineType.CLAUDE_CODE, "backend")] = score
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "affinity"])
+        assert result.exit_code == 0
+        assert "claude_code" in result.output
+        assert "backend" in result.output
+
+    def test_affinity_filter_topic(self) -> None:
+        score = AgentAffinityScore(
+            engine=AgentEngineType.OLLAMA,
+            topic="frontend",
+            familiarity=0.5,
+            sample_count=3,
+        )
+        self.container.affinity_repo._store[(AgentEngineType.OLLAMA, "frontend")] = score
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "affinity", "--topic", "frontend"])
+        assert result.exit_code == 0
+        assert "frontend" in result.output
+
+    def test_affinity_invalid_engine(self) -> None:
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "affinity", "--engine", "invalid"])
+        assert result.exit_code == 1
+
+
+class TestCognitiveInsightsCLI:
+    def setup_method(self) -> None:
+        self.container = _make_container()
+
+    def test_insights_invalid_engine(self) -> None:
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(
+                app,
+                [
+                    "cognitive",
+                    "insights",
+                    "--task-id",
+                    "t-1",
+                    "--engine",
+                    "invalid",
+                    "--output",
+                    "some text",
+                ],
+            )
+        assert result.exit_code == 1
+
+
+# ── Conflict detection CLI ──
+
+
+def _seed_conflicting_memories(repo: InMemoryMemoryRepository) -> None:
+    """Add memories from different engines with contradictory content."""
+    repo._store["m1"] = MemoryEntry(
+        id="m1",
+        content="The API endpoint uses REST for data retrieval",
+        memory_type=MemoryType.L2_SEMANTIC,
+        importance_score=0.9,
+        metadata={"source_engine": "claude_code"},
+    )
+    repo._store["m2"] = MemoryEntry(
+        id="m2",
+        content="The API endpoint does not use REST for data retrieval",
+        memory_type=MemoryType.L2_SEMANTIC,
+        importance_score=0.7,
+        metadata={"source_engine": "ollama"},
+    )
+
+
+def _seed_non_conflicting_memories(repo: InMemoryMemoryRepository) -> None:
+    """Add memories from the same engine (no conflict possible)."""
+    repo._store["m1"] = MemoryEntry(
+        id="m1",
+        content="Python is great for scripting",
+        memory_type=MemoryType.L2_SEMANTIC,
+        importance_score=0.8,
+        metadata={"source_engine": "ollama"},
+    )
+    repo._store["m2"] = MemoryEntry(
+        id="m2",
+        content="Rust is great for performance",
+        memory_type=MemoryType.L2_SEMANTIC,
+        importance_score=0.8,
+        metadata={"source_engine": "ollama"},
+    )
+
+
+class TestCognitiveConflictsCLI:
+    def setup_method(self) -> None:
+        self.container = _make_container()
+
+    def test_conflicts_empty_memory(self) -> None:
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "conflicts"])
+        assert result.exit_code == 0
+        assert "No memories found" in result.output
+
+    def test_conflicts_no_conflicts(self) -> None:
+        _seed_non_conflicting_memories(self.container.memory_repo)
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "conflicts"])
+        assert result.exit_code == 0
+        assert "No conflicts detected" in result.output
+
+    def test_conflicts_detected(self) -> None:
+        _seed_conflicting_memories(self.container.memory_repo)
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "conflicts"])
+        assert result.exit_code == 0
+        assert "Conflicts Detected" in result.output
+        assert "claude_code" in result.output
+        assert "ollama" in result.output
+
+    def test_conflicts_with_resolve(self) -> None:
+        _seed_conflicting_memories(self.container.memory_repo)
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "conflicts", "--resolve"])
+        assert result.exit_code == 0
+        assert "Resolved" in result.output
+        assert "survivors" in result.output
+
+    def test_conflicts_resolve_no_conflicts(self) -> None:
+        _seed_non_conflicting_memories(self.container.memory_repo)
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "conflicts", "--resolve"])
+        assert result.exit_code == 0
+        assert "No conflicts detected" in result.output
+
+    def test_conflicts_limit(self) -> None:
+        _seed_conflicting_memories(self.container.memory_repo)
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(
+                app, ["cognitive", "conflicts", "--limit", "50"]
+            )
+        assert result.exit_code == 0
+
+    def test_conflicts_with_l3_memories(self) -> None:
+        """Memories in L3_FACTS layer are also analyzed."""
+        self.container.memory_repo._store["f1"] = MemoryEntry(
+            id="f1",
+            content="Database uses PostgreSQL for storage backend",
+            memory_type=MemoryType.L3_FACTS,
+            importance_score=0.9,
+            metadata={"source_engine": "gemini_cli"},
+        )
+        self.container.memory_repo._store["f2"] = MemoryEntry(
+            id="f2",
+            content="Database does not use PostgreSQL for storage backend",
+            memory_type=MemoryType.L3_FACTS,
+            importance_score=0.6,
+            metadata={"source_engine": "codex_cli"},
+        )
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "conflicts"])
+        assert result.exit_code == 0
+        assert "Conflicts Detected" in result.output
+
+    def test_conflicts_missing_engine_metadata(self) -> None:
+        """Memories without source_engine default to ollama."""
+        self.container.memory_repo._store["m1"] = MemoryEntry(
+            id="m1",
+            content="API uses caching for performance",
+            memory_type=MemoryType.L2_SEMANTIC,
+            importance_score=0.8,
+            metadata={},
+        )
+        self.container.memory_repo._store["m2"] = MemoryEntry(
+            id="m2",
+            content="API does not use caching for performance",
+            memory_type=MemoryType.L2_SEMANTIC,
+            importance_score=0.7,
+            metadata={},
+        )
+        with patch(_PATCH_TARGET, return_value=self.container):
+            result = runner.invoke(app, ["cognitive", "conflicts"])
+        assert result.exit_code == 0
+        # Same default engine (ollama) → no conflict
+        assert "No conflicts detected" in result.output

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=350">
+  <link rel="stylesheet" href="popup.css">
+  <title>Morphic-Agent Context Bridge</title>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <div class="header-title">
+      <div class="header-logo">M</div>
+      <h1>Morphic-Agent</h1>
+    </div>
+    <div class="status-dot checking" id="statusDot" title="Checking connection..."></div>
+  </div>
+
+  <!-- Connection Banner (shown when offline) -->
+  <div class="connection-banner offline" id="connectionBanner">
+    Backend offline — start with: morphic serve start
+  </div>
+
+  <!-- Main Content -->
+  <div class="content">
+    <!-- Platform Selector -->
+    <div class="form-group">
+      <label for="platform">Target Platform</label>
+      <select id="platform">
+        <option value="claude_code">Claude Code</option>
+        <option value="chatgpt">ChatGPT</option>
+        <option value="cursor">Cursor</option>
+        <option value="gemini">Gemini</option>
+      </select>
+    </div>
+
+    <!-- Query Input -->
+    <div class="form-group">
+      <label for="query">Topic / Query (optional)</label>
+      <input type="text" id="query" placeholder="e.g. task graph architecture">
+    </div>
+
+    <!-- Export Button -->
+    <button class="btn btn-primary" id="exportBtn">
+      <span class="btn-icon">&#x2197;</span>
+      Export Context
+    </button>
+
+    <!-- Loading -->
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      Fetching context...
+    </div>
+
+    <!-- Status Message -->
+    <div class="status-msg" id="statusMsg"></div>
+
+    <!-- Result Area -->
+    <div class="result-area" id="resultArea">
+      <div class="result-header">
+        <span>Exported Context</span>
+        <div>
+          <span class="token-badge" id="tokenBadge">0 tokens</span>
+          <span class="free-badge">LOCAL</span>
+        </div>
+      </div>
+      <div class="result-preview" id="resultPreview"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="copyBtn">
+          <span class="btn-icon">&#x2398;</span>
+          Copy to Clipboard
+        </button>
+        <button class="btn btn-secondary" id="clearBtn">
+          Clear
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Panel (hidden by default) -->
+  <div class="settings-panel" id="settingsPanel">
+    <div class="form-group">
+      <label for="apiUrl">Backend API URL</label>
+      <input type="text" id="apiUrl" placeholder="http://localhost:8001">
+    </div>
+    <button class="btn btn-secondary" id="saveSettingsBtn">Save Settings</button>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <a class="footer-link" id="settingsToggle">Settings</a>
+    <span class="footer-version">v0.5.0</span>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

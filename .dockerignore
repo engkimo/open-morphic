@@ -1,0 +1,48 @@
+# Version control
+.git
+.gitignore
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.eggs
+dist
+build
+.venv
+venv
+
+# Test / lint caches
+.pytest_cache
+.ruff_cache
+.mypy_cache
+htmlcov
+.coverage
+
+# Node / frontend (handled by ui/Dockerfile separately)
+ui/node_modules
+ui/.next
+ui/.env.local
+node_modules
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Runtime data
+.morphic
+*.log
+
+# Documentation (not needed in container)
+docs/
+*.md
+!CLAUDE.md
+!pyproject.toml

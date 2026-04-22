@@ -1,6 +1,0 @@
-[
-  { "title": "M1", "state": "open", "description": "Bootstrapping & Execution Reliability (see docs/14-milestones.md)" },
-  { "title": "M2", "state": "open", "description": "Learning & Knowledge Integration Enhancements" },
-  { "title": "M3", "state": "open", "description": "Web Knowledge & Fallbacks" },
-  { "title": "M4", "state": "open", "description": "UX & Ops improvements" }
-]

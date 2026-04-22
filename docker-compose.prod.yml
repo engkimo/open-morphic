@@ -1,0 +1,127 @@
+# =============================================================================
+# Morphic-Agent — Production Docker Compose
+# =============================================================================
+# Usage:
+#   cp .env.example .env   # Fill in real values
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Services:
+#   nginx  → :80   (reverse proxy)
+#   api    → :8001 (FastAPI backend, internal)
+#   ui     → :3000 (Next.js frontend, internal)
+#   pg     → :5432 (PostgreSQL + pgvector, internal)
+#   redis  → :6379 (Redis, internal)
+#   neo4j  → :7687 (Neo4j, internal)
+# =============================================================================
+
+services:
+  # ── Reverse Proxy ─────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      ui:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── Backend API ───────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    expose:
+      - "8001"
+    env_file:
+      - .env
+    environment:
+      # Override database URLs to use container hostnames
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-morphic}:${POSTGRES_PASSWORD:-morphic_prod}@pg:5432/${POSTGRES_DB:-morphic_agent}
+      DATABASE_URL_SYNC: postgresql://${POSTGRES_USER:-morphic}:${POSTGRES_PASSWORD:-morphic_prod}@pg:5432/${POSTGRES_DB:-morphic_agent}
+      REDIS_URL: redis://redis:6379
+      NEO4J_URI: bolt://neo4j:7687
+      MORPHIC_AGENT_ENV: production
+    depends_on:
+      pg:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+
+  # ── Frontend ──────────────────────────────────────────────────────────
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    expose:
+      - "3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:8001
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── PostgreSQL + pgvector ─────────────────────────────────────────────
+  pg:
+    image: pgvector/pgvector:pg16
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-morphic_agent}
+      POSTGRES_USER: ${POSTGRES_USER:-morphic}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-morphic_prod}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-morphic} -d ${POSTGRES_DB:-morphic_agent}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Redis ─────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata_prod:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Neo4j (Knowledge Graph) ──────────────────────────────────────────
+  neo4j:
+    image: neo4j:5-community
+    volumes:
+      - neo4jdata_prod:/data
+      - neo4jlogs_prod:/logs
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-morphic_prod}
+      NEO4J_PLUGINS: '[]'
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  pgdata_prod:
+  redisdata_prod:
+  neo4jdata_prod:
+  neo4jlogs_prod:

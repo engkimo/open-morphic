@@ -1,609 +1,284 @@
-# SynthepseAI
+# Morphic-Agent
 
-## Overview
+**Self-Evolving AI Agent Framework** — Mission Control for Intelligence
 
-SynthepseAI Agent is an autonomous AI agent system with self-correction capabilities. Simply by setting a goal, the agent automatically plans and executes tasks while learning from and correcting errors to achieve the objective. It is built on incorporates a learning system utilizing GraphRAG, enabling continuous improvement based on experience. The system now implements the LLLM (Larger LLM) concept, integrating multiple technologies to create an intelligent ecosystem.
+Morphic-Agent orchestrates multiple AI engines (Claude Code, Gemini CLI, OpenHands, Codex CLI, Ollama) as a meta-orchestrator, combining them with a Unified Cognitive Layer for shared memory, task handoff, and self-evolution.
 
-### Key Features
+## Key Features
 
-- **Automated Task Planning and Execution**: Decomposes complex goals into smaller tasks and automatically generates and executes Python code for each task.
-- **Self-Correction Ability**: Detects errors during execution and attempts to automatically correct them.
-- **Learning from Experience**: Learns from past error patterns and successful code implementations to apply to new tasks.
-- **Module Reuse**: Extracts reusable modules from successful code to utilize in new tasks.
-- **Isolated Execution Environments**: Each project runs in its own virtual environment to prevent dependency conflicts.
-- **LLLM Integration**: Combines LLM with humans, tools, and multiple LLM networks to create an enhanced intelligent system.
-- **Knowledge Editing (ROME)**: Directly edits the internal knowledge of language models to update facts and information.
-- **Self-Reflective Reasoning (COAT)**: Implements Chain-of-Action-Thought for improved reasoning and self-correction.
-- **Knowledge Graph Processing (R-GCN)**: Uses Relational Graph Convolutional Networks for sophisticated knowledge representation and retrieval.
-- **Robust Mock Mode**: Provides seamless operation even without API keys, enabling development and testing without external dependencies.
-- **Multi-level API Fallback**: Implements sophisticated fallback mechanisms for web search and LLM APIs to ensure continuous operation.
-- **Automatic Knowledge Graph Generation**: Creates and manages knowledge graphs automatically, eliminating the need for manual initialization.
+- **Multi-Engine Orchestration** — 6 agent runtimes (Ollama, Claude Code, Gemini CLI, o4-mini, OpenHands, Codex CLI) with automatic task routing
+- **Fractal Task Engine** — Recursive DAG decomposition with quality gates and cost-aware planning
+- **Unified Cognitive Layer** — Shared memory across all engines (L1-L4 hierarchy), conflict detection, agent affinity scoring
+- **Self-Evolution** — Learning from execution history, error patterns, prompt template improvement
+- **LOCAL_FIRST** — Ollama ($0) preferred; cloud models used only when needed
+- **Interactive Planning** — Propose → Approve → Execute with per-node cost control
+- **MCP + A2A** — Model Context Protocol tool integration + Google A2A agent-to-agent communication
+- **Production Ready** — Docker, nginx reverse proxy, PG+pgvector+Redis+Neo4j, Chrome Extension
 
-## System Requirements
+## Architecture
 
-### Mandatory Environment
-- Python 3.9 or higher
-- SQLite 3.x
-- Docker (required when using Weaviate)
-
-### Dependencies
-```bash
-openai>=1.0.0
-weaviate-client>=3.15.0
-tenacity>=8.0.0
-python-dotenv>=1.0.0
-sqlite3
-torch>=2.0.0
-transformers>=4.30.0
-dgl>=1.0.0
-networkx>=2.8.0
+```
+POST /api/tasks
+  → IntentAnalyzer → ModelPreferenceExtractor → CollaborationMode
+    → ArtifactDependencyResolver → LangGraphTaskEngine
+      → Engine routing (Gemini CLI / Claude Code / Codex CLI / Ollama / OpenHands)
+      → ReactExecutor fallback → Direct LLM fallback
+    → Discussion Phase → Validation → InsightExtractor → Learning
 ```
 
-## Installation
+4-layer Clean Architecture: **Domain** (zero deps) → **Application** (use cases) → **Infrastructure** (drivers) → **Interface** (API + CLI)
 
-### 1. Clone the Repository
-```bash
-git clone https://github.com/yourusername/SynthepseAI.git
-cd SynthepseAI
-```
+## Prerequisites
 
-### 2. Set Up the Virtual Environment
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+| Tool | Version | Required | Install |
+|------|---------|----------|---------|
+| Python | 3.12+ | Yes | `brew install python@3.12` |
+| uv | latest | Yes | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| Node.js | 22+ | For UI | `brew install node@22` |
+| Docker | latest | Optional | `brew install --cask docker` |
+| Ollama | latest | Recommended | `curl -fsSL https://ollama.ai/install.sh \| sh` |
 
-### 3. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
+## Setup (Step by Step)
 
-### 4. Configure Environment Variables
-Create a `.env` file and include the following:
-```dotenv
-# OpenAI APIキー設定 (https://platform.openai.com/apikeys からAPIキーを取得)
-OPENAI_API_KEY=your_openai_api_key
-# 使用するOpenAIモデル（デフォルト: gpt-5）
-OPENAI_MODEL=gpt-5
-```
-
-If you don't set an API key, the system will automatically run in mock mode, which simulates API responses for development and testing purposes.
-
-### 5. Set Up Weaviate (for GraphRAG)
-```bash
-docker-compose -f docker-compose.yml up -d
-```
-
-## Usage
-
-### Basic Execution
+### Step 1: Clone and install
 
 ```bash
-# Run with a specified goal
-python main.py --goal "Create a CSV file, perform data analysis, and generate graphs for the results"
-
-# Run with a specified workspace directory
-python main.py --goal "Perform web scraping to collect data" --workspace ./custom_workspace
-
-# Run in debug mode
-python main.py --goal "Process a text file and compute statistics" --debug
+git clone https://github.com/engkimo/open-morphic.git
+cd open-morphic
+uv sync --extra dev
 ```
 
-### Example Run
+### Step 2: Environment file
 
 ```bash
-# Execute a sample task
-python example.py
-
-# Execute the enhanced persistent thinking example
-python examples/enhanced_thinking_example.py
+cp .env.example .env
 ```
 
-### Web Crawling and Knowledge Integration
-
-To use the web crawling functionality, you need to set up API keys for Tavily and/or Firecrawl in your config.json file:
-
-```json
-{
-  "tavily_api_key": "your_tavily_api_key_here",
-  "firecrawl_api_key": "your_firecrawl_api_key_here"
-}
-```
-
-The EnhancedPersistentThinkingAI will automatically use these APIs to search for information and integrate it into its knowledge base.
-
-#### Multi-level API Fallback Mechanism
-
-The system implements a sophisticated fallback mechanism for web search APIs:
-
-1. **Primary API**: Attempts to use Tavily API first with the latest SDK
-2. **Secondary API**: Falls back to legacy Tavily API if the latest SDK is unavailable
-3. **Tertiary API**: Falls back to direct Tavily API calls if the SDK has compatibility issues
-4. **Quaternary API**: Falls back to Firecrawl API if Tavily is completely unavailable
-5. **Mock Mode**: If no API keys are available, the system operates in mock mode, generating simulated search results
-
-This ensures continuous operation even when certain APIs are unavailable or experiencing issues.
-
-### Enabling the Learning Feature
+Edit `.env` and add your API keys (all optional — Ollama alone works for $0):
 
 ```bash
-# Enable learning using GraphRAG
-python main.py --goal "Extract text from image files" --weaviate-url "http://localhost:8080"
+# At minimum, set one of these for cloud model access:
+ANTHROPIC_API_KEY=sk-ant-...      # Claude (recommended)
+OPENAI_API_KEY=sk-...             # GPT-4o / o4-mini
+GOOGLE_GEMINI_API_KEY=...         # Gemini
+```
+
+Validate your config:
+
+```bash
+python scripts/validate_env.py
+```
+
+### Step 3: Start Ollama (free local LLM)
+
+```bash
+ollama serve                  # Start Ollama daemon (if not already running)
+ollama pull qwen3:8b          # Download default model (~4.7GB)
+```
+
+### Step 4: Choose database mode
+
+**Option A: In-Memory (simplest, no Docker needed)**
+
+No extra setup. This is the default when `USE_POSTGRES=false` and `USE_SQLITE=false`.
+Data is lost on restart.
+
+**Option B: SQLite (persistent, no Docker needed)**
+
+Add to `.env`:
+```bash
+USE_SQLITE=true
+```
+
+**Option C: PostgreSQL + Redis + Neo4j (full stack)**
+
+```bash
+docker compose up -d
+```
+
+Add to `.env`:
+```bash
+USE_POSTGRES=true
+```
+
+### Step 5: Start the API server
+
+```bash
+make serve
+# or: uv run uvicorn interface.api.main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+Verify: open http://localhost:8001/api/health — should return `{"status": "ok"}`
+
+### Step 6: Start the frontend (optional)
+
+```bash
+cd ui
+npm install
+npm run dev
+```
+
+Open http://localhost:3000
+
+### Step 7: Verify system health
+
+```bash
+uv run morphic doctor check
+```
+
+This checks Ollama, CLI tools, Docker, engines, API keys, and database connectivity.
+
+## Engine Setup (Optional)
+
+Morphic-Agent can route tasks to specialized AI engines. All are optional.
+
+### Ollama (default, $0)
+
+Already set up in Step 3. Verify:
+```bash
+ollama list
+```
+
+### Claude Code CLI
+
+```bash
+npm install -g @anthropic-ai/claude-code
+claude --version
+```
+
+Requires `ANTHROPIC_API_KEY` in `.env`.
+
+### Gemini CLI
+
+```bash
+npm install -g @anthropic-ai/claude-code   # already installed above
+npx @anthropic-ai/claude-code              # or install gemini separately
+gemini --version
+```
+
+Requires `GOOGLE_GEMINI_API_KEY` in `.env`.
+
+### OpenAI Codex CLI
+
+```bash
+npm install -g @openai/codex
+codex login                   # Opens browser for OpenAI authentication
+codex exec "print('hello')"  # Verify
+```
+
+Requires `OPENAI_API_KEY` in `.env`.
+
+### OpenHands (Docker sandbox)
+
+```bash
+docker run -d --name openhands \
+  -p 3000:3000 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e LLM_API_KEY=$ANTHROPIC_API_KEY \
+  -e LLM_MODEL=claude-sonnet-4-6 \
+  ghcr.io/all-hands-ai/openhands:latest
+```
+
+## Dev Commands
+
+```bash
+make test-unit        # 2,943 unit tests
+make test-integration # 148 integration tests
+make lint             # Ruff linter
+make serve            # FastAPI dev server (port 8001)
+make ui-dev           # Next.js dev server (port 3000)
+make docker-prod      # Full production stack (nginx + api + ui + pg + redis + neo4j)
+make clean            # Remove __pycache__ and .pytest_cache
+```
+
+## CLI
+
+```bash
+morphic task run "Implement feature X"    # Execute a task
+morphic plan list                         # List execution plans
+morphic engine status                     # Check engine availability
+morphic cost summary                      # View cost breakdown
+morphic doctor check                      # System health check
+morphic serve start                       # Start API server
+```
+
+17 command groups: task, plan, model, cost, mcp, engine, fallback, learning, marketplace, memory, context, evolution, cognitive, benchmark, a2a, doctor, serve
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/tasks` | Create and execute a task |
+| GET | `/api/tasks` | List all tasks |
+| GET | `/api/plans` | List execution plans |
+| GET | `/api/cost` | Cost summary |
+| GET | `/api/engines` | Engine status |
+| GET | `/api/models/status` | Ollama model status |
+| GET | `/api/settings` | Runtime configuration |
+| GET | `/api/settings/health` | System health check |
+| GET | `/api/memory/search?q=...` | Semantic memory search |
+| WS | `/ws/tasks/{id}` | Real-time task updates |
+
+## Chrome Extension (Context Bridge)
+
+Export Morphic-Agent context to any AI platform (Claude Code, ChatGPT, Cursor, Gemini) via clipboard.
+
+### Install (Developer Mode)
+
+1. Open Chrome → `chrome://extensions/`
+2. Enable **Developer mode** (top-right toggle)
+3. Click **Load unpacked** → select `ui/extension/` folder
+4. Pin the extension from the toolbar puzzle icon
+
+### Usage
+
+- Click the extension icon (or `Ctrl+Shift+M` / `MacCtrl+Shift+M`)
+- Select target platform and optional topic
+- Click **Export Context** → content is formatted for the target AI
+- Click **Copy to Clipboard** → paste into the target AI
+
+The extension connects to `http://localhost:8001` by default (configurable in Settings).
+
+## Production Deployment
+
+```bash
+# Build and start full stack
+docker compose -f docker-compose.prod.yml up -d --build
+
+# Services: nginx (:80) → api (:8001) + ui (:3000) + pg + redis + neo4j
 ```
 
 ## Project Structure
 
 ```
-SynthepseAI/
-├── main.py                    # Main entry point
-├── example.py                 # Sample execution script
-├── config.json                # Configuration file
-├── requirements.txt           # Dependency list
-├── docker-compose.yml # Weaviate configuration file
-├── core/                      # Core modules
-│   ├── auto_plan_agent.py     # Self-correcting agent
-│   ├── base_agent.py          # Base agent
-│   ├── base_flow.py           # Base flow
-│   ├── graph_rag_manager.py   # GraphRAG manager
-│   ├── llm.py                 # LLM integration
-│   ├── modular_code_manager.py # Module manager
-│   ├── planning_flow.py       # Planning flow
-│   ├── project_environment.py # Project environment
-│   ├── script_templates.py    # Script templates
-│   ├── task_database.py       # Task database
-│   ├── tool_agent.py          # Tool agent
-│   └── tools/                 # Tool modules
-│       ├── base_tool.py       # Base tool
-│       ├── file_tool.py       # File operations
-│       ├── package_manager.py # Package management
-│       ├── planning_tool.py   # Planning tool
-│       ├── python_execute.py  # Python execution
-│       ├── python_project_execute.py # Project environment execution
-│       ├── docker_execute.py  # Docker execution
-│       └── system_tool.py     # System operations
-└── workspace/                 # Working directory
-    ├── modules/               # Reusable modules
-    └── project_{plan_id}/     # Project environment
-        ├── venv/              # Virtual environment
-        ├── task_{task_id}.py  # Task script
-        ├── requirements.txt   # Dependencies
-        └── installed_packages.json # Installed packages
+morphic-agent/
+├── domain/          # Layer 1: Pure business logic (zero external deps)
+├── application/     # Layer 2: Use cases
+├── infrastructure/  # Layer 3: Drivers, DB, LLM adapters
+├── interface/       # Layer 4: FastAPI routes + CLI
+│   ├── api/         #   REST API (12 route modules)
+│   └── cli/         #   CLI (17 command groups)
+├── shared/          # Cross-cutting (config, logging)
+├── ui/              # Next.js 15 frontend (18 pages)
+│   └── extension/   #   Chrome Extension (Context Bridge)
+├── tests/           # 3,091 tests (unit + integration)
+├── scripts/         # Utility scripts
+└── migrations/      # Alembic (PostgreSQL)
 ```
 
-## Architecture and Design Philosophy
+## Tech Stack
 
-SynthepseAI Agent is composed of the following main components:
-
-### System Architecture Overview
-
-```mermaid
-flowchart TD
-    title[SynthepseAI System Architecture]
-    
-    %% Main Systems
-    UserInput[User Input]
-    ExtSvc[External Services]
-    FlowSys[Flow System]
-    AgentSys[Agent System]
-    ToolSys[Tool System]
-    
-    %% Connections
-    UserInput --> FlowSys
-    ExtSvc --> FlowSys
-    FlowSys --> AgentSys
-    AgentSys --> ToolSys
-    ToolSys --> ExtSvc
-    
-    %% Styling
-    classDef default fill:#f0f0ff,stroke:#333,stroke-width:1px
-    classDef title fill:none,stroke:none,color:#333,font-size:18px
-    
-    class title title
-```
-
-### Basic Execution Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Main
-    participant SynthepseAI
-    participant LLM
-    participant Tools
-    
-    User->>Main: Input Prompt
-    Main->>SynthepseAI: run(prompt)
-    
-    rect rgb(240, 240, 255)
-        Note over SynthepseAI,LLM: Loop [Until max steps]
-        SynthepseAI->>LLM: Execute Step
-        LLM-->>SynthepseAI: Next Action
-        
-        alt Tool Execution
-            SynthepseAI->>Tools: Tool Invocation
-            Tools-->>SynthepseAI: Result
-        end
-    end
-    
-    SynthepseAI->>SynthepseAI: Generate Response
-    SynthepseAI-->>Main: Final Result
-    Main-->>User: Output
-```
-
-### Planning Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant PlanningFlow
-    participant PlanningTool
-    participant Executor
-    participant LLM
-    
-    User->>PlanningFlow: execute(input_text)
-    PlanningFlow->>PlanningTool: Create Plan
-    PlanningTool-->>PlanningFlow: Plan Information
-    
-    rect rgb(240, 240, 255)
-        Note over PlanningFlow,LLM: Loop [For each step]
-        PlanningFlow->>PlanningFlow: Get Current Step Info
-        PlanningFlow->>Executor: Execute Step
-        Executor->>LLM: Execute Task
-        LLM-->>Executor: Result
-        Executor-->>PlanningFlow: Execution Result
-        PlanningFlow->>PlanningTool: Mark Step Complete
-    end
-    
-    PlanningFlow->>PlanningFlow: Process Plan Completion
-    PlanningFlow-->>User: Final Result
-```
-
-### Class Structure
-
-```mermaid
-classDiagram
-    class BaseFlow {
-        +agents: Dict[str, BaseAgent]
-        +primary_agent_key: str
-        +primary_agent: BaseAgent
-        +execute(input_text: str) : str
-        +get_agent(key: str) : BaseAgent
-        +add_agent(key: str, agent: BaseAgent) : void
-    }
-    
-    class PlanningFlow {
-        +llm: LLM
-        +planning_tool: PlanningTool
-        +executor_keys: List[str]
-        +active_plan_id: str
-        +current_step_index: int
-        +execute(input_text: str) : str
-        +get_executor(step_type: str) : BaseAgent
-    }
-    
-    class BaseAgent {
-        +name: str
-        +description: str
-        +system_prompt: str
-        +next_step_prompt: str
-        +llm: LLM
-        +memory: Memory
-        +state: AgentState
-        +run(request: str) : str
-        +step() : str
-    }
-    
-    class ToolCallAgent {
-        +available_tools: ToolCollection
-        +step() : str
-        +handle_tool_calls(tool_calls) : str
-    }
-    
-    class SynthepseAI {
-        +name: str = "SynthepseAI"
-        +description: str
-        +system_prompt: str
-        +next_step_prompt: str
-        +available_tools: ToolCollection
-    }
-    
-    class BaseTool {
-        +name: str
-        +description: str
-        +parameters: dict
-        +execute(**kwargs) : Any
-        +to_param() : Dict
-    }
-    
-    class PlanningTool {
-        +name: str = "planning"
-        +description: str
-        +parameters: dict
-        +plans: dict
-        +_current_plan_id: str
-        +execute(command, plan_id, ...) : ToolResult
-    }
-    
-    BaseFlow <|-- PlanningFlow
-    BaseAgent <|-- ToolCallAgent
-    ToolCallAgent <|-- SynthepseAI
-    BaseTool <|-- PlanningTool
-    
-    PlanningFlow --> BaseAgent
-    ToolCallAgent --> BaseTool
-```
-
-### Agent Execution System
-
-```mermaid
-flowchart TD
-    UserInput[User Input] --> Agent[Agent]
-    
-    Agent --> ActionDecision{Action Decision}
-    
-    ActionDecision -->|Tool Execution| ToolInvocation[Tool Invocation]
-    ActionDecision -->|Direct Response| ResponseGen[Response Generation]
-    
-    ToolInvocation --> ToolCall[Tool Call]
-    ToolCall --> ResultProc[Result Processing]
-    
-    ResultProc --> Agent
-    ResponseGen --> FinalResponse[Final Response]
-    
-    %% Styling
-    classDef default fill:#f0f0ff,stroke:#333,stroke-width:1px
-    classDef decision fill:#f5f5ff,stroke:#333,stroke-width:1px,shape:diamond
-    
-    class ActionDecision decision
-```
-
-### Planning System
-
-```mermaid
-flowchart TD
-    UserReq[User Request] --> PlanCreation[Plan Creation]
-    PlanCreation --> StepList[Step List Creation]
-    StepList --> GetCurrent[Get Current Step]
-    
-    GetCurrent --> AgentSelect[Select Appropriate Agent]
-    AgentSelect --> ExecStep[Execute Step]
-    
-    ExecStep --> Complete{Completed?}
-    Complete -->|No| GetCurrent
-    Complete -->|Yes| FinalResult[Generate Final Result]
-    
-    %% Styling
-    classDef default fill:#f0f0ff,stroke:#333,stroke-width:1px
-    classDef decision fill:#f5f5ff,stroke:#333,stroke-width:1px,shape:diamond
-    
-    class Complete decision
-```
-
-### Tool Integration System
-
-```mermaid
-flowchart TD
-    Agent[Agent] --> ToolColl[Tool Collection]
-    
-    ToolColl --> ToolSelect{Tool Selection}
-    
-    ToolSelect --> PythonExec[Python Execution]
-    ToolSelect --> WebBrowsing[Web Browsing]
-    ToolSelect --> GoogleSearch[Google Search]
-    ToolSelect --> FileOps[File Operations]
-    ToolSelect --> Planning[Planning]
-    
-    PythonExec --> Result[Result]
-    WebBrowsing --> Result
-    GoogleSearch --> Result
-    FileOps --> Result
-    Planning --> Result
-    
-    Result --> Agent
-    
-    %% Styling
-    classDef default fill:#f0f0ff,stroke:#333,stroke-width:1px
-    classDef decision fill:#f5f5ff,stroke:#333,stroke-width:1px,shape:diamond
-    
-    class ToolSelect decision
-```
-
-## Main Components
-
-### 1. Agent System
-- **BaseAgent**: The base class for all agents.
-- **ToolAgent**: An agent with tool invocation capabilities.
-- **AutoPlanAgent**: An agent capable of automatic planning, execution, and self-repair.
-
-### 2. Flow System
-- **BaseFlow**: The base class for flows.
-- **PlanningFlow**: Manages planning and execution flows.
-
-### 3. Tool System
-- **PlanningTool**: For planning and managing tasks.
-- **PythonExecuteTool**: For executing Python code.
-- **PythonProjectExecuteTool**: For executing Python code in a project environment.
-- **FileTool**: For file operations.
-- **DockerExecuteTool**: For executing Docker commands.
-- **SystemTool**: For system operations.
-
-### 4. Learning System
-- **GraphRAGManager**: For learning and retrieving error and code patterns.
-- **ModularCodeManager**: For managing reusable code modules.
-- **ROMEModelEditor**: For editing internal knowledge of language models.
-- **COATReasoner**: For implementing self-reflective reasoning chains.
-- **RGCNProcessor**: For processing knowledge graphs using relational graph networks.
-
-### 5. Database
-- **TaskDatabase**: An SQLite-based task and plan manager.
-
-### 6. Environment Management
-- **ProjectEnvironment**: Manages virtual environments on a per-project basis.
-
-### 7. LLLM Technologies
-- **EnhancedPersistentThinkingAI**: Advanced integration of ROME, COAT, and R-GCN for continuous thinking with background processing and web knowledge integration.
-- **WebCrawlingTool**: Tool for retrieving information from the web using Tavily and Firecrawl APIs.
-- **PersistentThinkingManager**: Manages continuous thought processes and knowledge updates, integrating with the knowledge database and thinking log to ensure comprehensive learning and reflection.
-- **Mock Mode Implementation**: Provides simulated responses for all AI components when API keys are unavailable, enabling development and testing without external dependencies.
-
-## Workflow
-
-1. **Goal Input**: The user inputs the goal to be achieved.
-2. **Plan Generation**: The goal is broken down into smaller tasks.
-3. **Code Generation**: Python code is automatically generated for each task.
-4. **Environment Setup**: An isolated environment is prepared for task execution.
-5. **Task Execution**: Tasks are executed sequentially with dependency management.
-6. **Error Handling**: Failed tasks are automatically corrected.
-7. **Learning**: Successful patterns are recorded for future tasks.
-8. **Result Reporting**: A summary of the execution results is generated and returned.
-
-## Learning System
-
-SynthepseAI Agent incorporates two learning mechanisms:
-
-### GraphRAG Learning System
-- **Error Pattern Learning**: Records encountered errors and successful fixes.
-- **Task Template Learning**: Accumulates successful code patterns for each task type.
-- **Contextual Retrieval**: Uses similar task resolutions to enhance prompt performance.
-
-### Module Reuse System
-- **Module Extraction**: Extracts reusable code from successful tasks.
-- **Dependency Management**: Maintains dependencies between modules.
-- **Contextual Application**: Automatically incorporates relevant modules into new tasks.
-
-## Knowledge Graph Management
-
-The system uses a knowledge graph to represent and process information. The graph is stored in the `knowledge_graph.json` file and is managed by the `RGCNProcessor` class.
-
-### Automatic Knowledge Graph Generation
-
-The system now automatically initializes and manages the knowledge graph:
-
-- **Auto-creation**: If the knowledge graph file (`knowledge_graph.json`) doesn't exist, the system automatically creates an empty graph
-- **Initialization on Startup**: The knowledge graph is initialized during system startup, eliminating the need for manual setup
-- **Compatibility Mode**: The graph processor automatically detects the available libraries (DGL, PyTorch, NetworkX) and uses the most appropriate implementation
-- **Persistent Storage**: All knowledge graph updates are automatically saved to disk for future sessions
-
-## Script Template System
-
-The SynthepseAI system uses a sophisticated template system to generate task scripts that are executed in isolated environments. Recent improvements include:
-
-### PersistentThinkingManager Integration
-
-Task scripts now include a `PersistentThinkingManager` class that manages continuous thought processes and knowledge updates. This enables:
-
-- **Knowledge Database Integration**: Scripts can read from and write to the knowledge database (`knowledge_db.json`)
-- **Thinking Log Analysis**: Scripts can analyze and learn from the thinking log (`thinking_log.jsonl`)
-- **Confidence-based Knowledge Management**: Facts are stored with confidence levels, timestamps, and source information
-- **Continuous Learning**: Each task execution contributes to the system's growing knowledge base
-
-### Template Formatting Improvements
-
-- **Robust Error Handling**: Enhanced error handling in templates with proper escaping of f-strings and error messages
-- **Dynamic Dependency Detection**: Automatic detection and inclusion of required libraries in generated scripts
-- **Placeholder Management**: Improved handling of template placeholders to prevent unknown placeholder warnings
-- **Compatibility Fixes**: Templates now work correctly across different Python versions and environments
-
-## Extending the System
-
-### Adding New Tools
-
-1. Create a new tool class in the `core/tools/` directory.
-2. Inherit from `BaseTool` and implement the necessary methods.
-3. Register the new tool with `AutoPlanAgent`.
-
-```python
-# Example of creating a new tool
-class NewTool(BaseTool):
-    def __init__(self):
-        super().__init__("new_tool", "Description of the new tool")
-        self.parameters = {...}
-    
-    def execute(self, **kwargs) -> ToolResult:
-        # Implementation...
-        return ToolResult(...)
-
-# Registering the tool
-agent.available_tools.add_tool(new_tool)
-```
-
-### Extending the Learning System
-
-1. Add new search and storage methods to `GraphRAGManager`.
-2. Extend the Weaviate schema to store new data types.
-
-## Troubleshooting
-
-### Common Issues and Solutions
-
-#### OpenAI API Connection Error
-```
-Error: OpenAI API connection failed...
-```
-*Solution*: Verify that the API key is correctly set. Also, check your network connection and the status of the OpenAI API.
-
-#### ModuleNotFoundError
-```
-ModuleNotFoundError: No module named 'some_module'
-```
-*Solution*: Manually install the required package or use the `--debug` flag for more details.
-
-#### DGL Import Error
-```
-FileNotFoundError: Cannot find DGL C++ graphbolt library
-```
-*Solution*: 互換モードを有効にするには、以下のいずれかの方法を使用してください：
-1. 環境変数を設定: `export DGL_COMPATIBILITY_MODE=1`
-2. 提供されているスクリプトを実行: `source set_env.sh`
-3. main.pyでは既に`use_compatibility_mode=True`が設定されています
-
-**Python 3.12 Compatibility**: The system now automatically detects Python 3.12 and enables compatibility mode, as DGL does not yet fully support Python 3.12. This ensures seamless operation across different Python versions without manual configuration.
-
-#### SQLite Database Error
-```
-sqlite3.OperationalError: no such table...
-```
-*Solution*: Ensure that the database file exists. If necessary, delete it and create a new database.
-
-#### Weaviate Connection Error
-```
-Error connecting to Weaviate...
-```
-*Solution*: Verify that the Weaviate container is running by executing `docker-compose -f weaviate-docker-compose.yml ps` to check its status.
+| Layer | Technology |
+|-------|-----------|
+| Agent Framework | LangGraph |
+| LLM Gateway | LiteLLM (100+ models) |
+| Local LLM | Ollama |
+| API | FastAPI + WebSocket |
+| Database | PostgreSQL + pgvector, SQLite fallback, In-Memory default |
+| Frontend | Next.js 15, React Flow |
+| Protocols | MCP, Google A2A |
+| CI/CD | GitHub Actions |
 
 ## License
 
-MIT License
-
-## Contribution Guidelines
-
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature/amazing-feature`).
-3. Commit your changes (`git commit -m 'Add amazing feature'`).
-4. Push the branch (`git push origin feature/amazing-feature`).
-5. Create a Pull Request.
-
-## Developer Information
-
-### Code Style
-- Adheres to PEP 8 coding style.
-- Docstrings are required for all classes and public methods.
-- Code formatting follows the Black style.
-
-### Testing
-```bash
-# Run tests
-python -m unittest discover tests
-```
-
-### Documentation Generation
-```bash
-# Generate API documentation
-sphinx-build -b html docs/source docs/build
-```
-
----
-
-**Note**: This system is under development and may behave unexpectedly. Please create backups of any critical data before processing.
-
-**Version**: 0.1.0
+[MIT](LICENSE)
