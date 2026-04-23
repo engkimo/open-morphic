@@ -7441,3 +7441,55 @@ the concrete impl or compose `list_models + pull_model` themselves.
 
 ### Tests
 3,142 unit pass (+11 new), touched files ruff clean. Zero regressions.
+
+
+---
+
+## TD-184: EngineCostRecorderPort — Last application→infrastructure import eliminated
+
+**Date**: 2026-04-23
+**Status**: Accepted
+**Sprint**: 84 (port-extraction follow-up #2)
+
+### Problem
+`application/use_cases/route_to_engine.py` had a TYPE_CHECKING-only import of
+`infrastructure.llm.CostTracker` for the `cost_tracker` parameter type. Same
+shape as TD-183: no runtime dep, but principle 2 violation in the type
+signature.
+
+### Decision
+Extract a **narrow** port `EngineCostRecorderPort` in `domain/ports/` with a
+single async method:
+
+```python
+async def record_engine_result(self, result: AgentEngineResult) -> None
+```
+
+Why narrow rather than mirroring `CostTracker`'s 6-method surface: the only
+caller in the application layer is `RouteToEngineUseCase._record_engine_cost`,
+which uses exactly this one method. Aggregation/query helpers (`get_daily_total`,
+`get_monthly_total`, `get_local_usage_rate`, `check_budget`, `record`) stay on
+the concrete `CostTracker`. If a future application-layer caller needs reads,
+add a separate read-side port — don't fatten this one.
+
+`CostTracker` inherits the ABC; `RouteToEngineUseCase.__init__` widened.
+
+### Net result
+**`from infrastructure` import count in `application/`: 0**
+
+Two TYPE_CHECKING imports eliminated across TD-183 + TD-184. The application
+layer is now fully decoupled from infrastructure at every type signature.
+
+### Files
+| File | Change |
+|------|--------|
+| `domain/ports/engine_cost_recorder.py` | NEW (22 lines) |
+| `domain/ports/__init__.py` | re-export |
+| `infrastructure/llm/cost_tracker.py` | inherit ABC |
+| `application/use_cases/route_to_engine.py` | widen ctor, drop TYPE_CHECKING import |
+| `tests/unit/application/_fakes/in_memory_engine_cost_recorder.py` | NEW |
+| `tests/unit/domain/test_engine_cost_recorder_port_contract.py` | NEW (3 tests) |
+| `tests/unit/infrastructure/test_cost_tracker.py` | +isinstance assertion |
+
+### Tests
+3,146 unit pass (+4 new this ADR), zero regressions.

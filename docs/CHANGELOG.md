@@ -2,6 +2,7 @@
 
 ## v0.5.2 → v0.6.0 (2026-04-22) — **Documentation & Agent Skills Rework**
 
+- **[ARCH/TD-184]** `EngineCostRecorderPort` (1 method narrow port) を追加し、`RouteToEngineUseCase` を具象 `CostTracker` から切り離し。**結果: `application/` から `from infrastructure` import が完全消滅 (0 件)**
 - **[ARCH/TD-183]** `OllamaManagerPort` 抽象ポートを `domain/ports/` に追加し、`ManageOllamaUseCase` を具象 `OllamaManager` から切り離し (TYPE_CHECKING-only でも違反扱い)。`AsyncMock(spec=OllamaManagerPort)` で既存テストを port 強制に upgrade
 - **[ARCH/TD-182]** `StrategyRepository` 抽象ポートを `domain/ports/` に追加し、`UpdateStrategyUseCase` を具象 `StrategyStore` から切り離し。Constitution principle 2 (Clean Architecture) 違反を解消。SDD pilot 1 件目 (spec → plan → tasks 完走、24 タスク TDD 実行)
 - **[STRUCTURE]** CLAUDE.md を 95KB → ~10KB に圧縮。詳細を `docs/` 配下の peer file に分割 (`VISION.md`, `CONTEXT_ENGINEERING.md`, `AGENT_CLI.md`, `SEMANTIC_MEMORY.md`, `LAEE.md`, `UCL.md`, `PHASES.md`, `TECH_STACK.md`, `UI_DESIGN.md`, `ENV_VARS.md`, `REFERENCES.md`)
