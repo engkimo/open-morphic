@@ -45,12 +45,26 @@ def gateway(ollama: AsyncMock, cost_tracker: AsyncMock, settings: Settings) -> L
 
 
 def _mock_litellm_response(
-    content: str = "Hello!", prompt_tokens: int = 10, completion_tokens: int = 5, cost: float = 0.0
+    content: str = "Hello!",
+    prompt_tokens: int = 10,
+    completion_tokens: int = 5,
+    cost: float = 0.0,
+    cached_tokens: int | None = None,
+    anthropic_cache_read: int | None = None,
 ) -> MagicMock:
-    """Create a mock LiteLLM ModelResponse."""
+    """Create a mock LiteLLM ModelResponse.
+
+    cached_tokens: simulates LiteLLM's normalized usage.prompt_tokens_details.cached_tokens
+                   (OpenAI-style). Pass None to leave the attribute as an auto-mock.
+    anthropic_cache_read: simulates usage.cache_read_input_tokens (Anthropic raw field).
+    """
     resp = MagicMock()
     resp.choices = [MagicMock(message=MagicMock(content=content))]
     resp.usage = MagicMock(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+    if cached_tokens is not None:
+        resp.usage.prompt_tokens_details = MagicMock(cached_tokens=cached_tokens)
+    if anthropic_cache_read is not None:
+        resp.usage.cache_read_input_tokens = anthropic_cache_read
     resp._hidden_params = {"response_cost": cost}
     return resp
 
@@ -269,6 +283,68 @@ class TestComplete:
                 model="claude-sonnet-4-6",
             )
             assert result.model == "claude-sonnet-4-6"
+
+
+class TestCacheTokens:
+    """TD-188 — verify the gateway extracts prompt_tokens_details.cached_tokens
+    (OpenAI-style, also normalized by LiteLLM for Anthropic) and the Anthropic
+    raw cache_read_input_tokens field, populating LLMResponse.cached_tokens."""
+
+    async def test_extracts_openai_style_cached_tokens(
+        self, gateway: LiteLLMGateway
+    ) -> None:
+        with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
+            mock_litellm.acompletion = AsyncMock(
+                return_value=_mock_litellm_response(prompt_tokens=200, cached_tokens=180)
+            )
+            result = await gateway.complete(
+                messages=[{"role": "user", "content": "test"}],
+                model="ollama/qwen3:8b",
+            )
+        assert result.cached_tokens == 180
+        assert result.cached is True
+
+    async def test_extracts_anthropic_cache_read_input_tokens(
+        self, gateway: LiteLLMGateway
+    ) -> None:
+        with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
+            mock_litellm.acompletion = AsyncMock(
+                return_value=_mock_litellm_response(
+                    prompt_tokens=300, anthropic_cache_read=250
+                )
+            )
+            result = await gateway.complete(
+                messages=[{"role": "user", "content": "test"}],
+                model="ollama/qwen3:8b",
+            )
+        assert result.cached_tokens == 250
+        assert result.cached is True
+
+    async def test_zero_when_no_cache_fields(self, gateway: LiteLLMGateway) -> None:
+        """Auto-MagicMock attributes must not poison the integer field."""
+        with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
+            mock_litellm.acompletion = AsyncMock(return_value=_mock_litellm_response())
+            result = await gateway.complete(
+                messages=[{"role": "user", "content": "test"}],
+                model="ollama/qwen3:8b",
+            )
+        assert result.cached_tokens == 0
+        assert result.cached is False
+
+    async def test_complete_with_tools_extracts_cached_tokens(
+        self, gateway: LiteLLMGateway
+    ) -> None:
+        with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
+            resp = _mock_litellm_response(prompt_tokens=400, cached_tokens=350)
+            resp.choices[0].message.tool_calls = []
+            mock_litellm.acompletion = AsyncMock(return_value=resp)
+            result = await gateway.complete_with_tools(
+                messages=[{"role": "user", "content": "test"}],
+                tools=[{"type": "function", "function": {"name": "x"}}],
+                model="ollama/qwen3:8b",
+            )
+        assert result.cached_tokens == 350
+        assert result.cached is True
 
 
 class TestIsAvailable:

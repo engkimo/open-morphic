@@ -17,6 +17,27 @@ from shared.config import Settings
 logger = logging.getLogger(__name__)
 
 
+def _extract_cached_tokens(usage: Any) -> int:
+    """Pull cache-read token count out of a LiteLLM usage object.
+
+    LiteLLM normalizes OpenAI-style cache hits onto
+    ``usage.prompt_tokens_details.cached_tokens``. Anthropic responses also
+    expose the raw ``usage.cache_read_input_tokens`` field. Returns 0 when
+    neither is a real ``int`` (guards against MagicMock auto-attributes).
+    """
+    if usage is None:
+        return 0
+    ptd = getattr(usage, "prompt_tokens_details", None)
+    if ptd is not None:
+        val = getattr(ptd, "cached_tokens", None)
+        if isinstance(val, int):
+            return val
+    val = getattr(usage, "cache_read_input_tokens", None)
+    if isinstance(val, int):
+        return val
+    return 0
+
+
 class LiteLLMGateway(LLMGateway):
     """LiteLLM-based multi-model gateway with LOCAL_FIRST routing.
 
@@ -146,6 +167,7 @@ class LiteLLMGateway(LLMGateway):
         cost = 0.0
         if hasattr(response, "_hidden_params") and response._hidden_params:
             cost = response._hidden_params.get("response_cost", 0.0) or 0.0
+        cached_tokens = _extract_cached_tokens(usage)
 
         llm_resp = LLMResponse(
             content=response.choices[0].message.content or "",
@@ -153,13 +175,15 @@ class LiteLLMGateway(LLMGateway):
             prompt_tokens=usage.prompt_tokens if usage else 0,
             completion_tokens=usage.completion_tokens if usage else 0,
             cost_usd=cost,
-            cached=False,
+            cached=cached_tokens > 0,
+            cached_tokens=cached_tokens,
         )
 
         logger.info(
-            "LLM response — model=%s prompt_tok=%d completion_tok=%d cost=$%.6f",
+            "LLM response — model=%s prompt_tok=%d cached_tok=%d completion_tok=%d cost=$%.6f",
             resolved,
             llm_resp.prompt_tokens,
+            llm_resp.cached_tokens,
             llm_resp.completion_tokens,
             llm_resp.cost_usd,
         )
@@ -215,6 +239,7 @@ class LiteLLMGateway(LLMGateway):
         cost = 0.0
         if hasattr(response, "_hidden_params") and response._hidden_params:
             cost = response._hidden_params.get("response_cost", 0.0) or 0.0
+        cached_tokens = _extract_cached_tokens(usage)
 
         # Parse tool calls from response
         tool_calls: list[ToolCallResult] = []
@@ -239,7 +264,8 @@ class LiteLLMGateway(LLMGateway):
             prompt_tokens=usage.prompt_tokens if usage else 0,
             completion_tokens=usage.completion_tokens if usage else 0,
             cost_usd=cost,
-            cached=False,
+            cached=cached_tokens > 0,
+            cached_tokens=cached_tokens,
             tool_calls=tool_calls,
         )
 

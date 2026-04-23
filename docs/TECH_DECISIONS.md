@@ -7676,3 +7676,79 @@ rg -l "from infrastructure" tests/unit/application/  # informational only
 The 5-second gate (3 production greps) remains the contract. The
 test-code import is reclassified from "audit finding" to "documented
 DI wiring pattern". Zero file moves, zero test changes.
+
+
+---
+
+## TD-188: Wire actual cache-read tokens through the cost pipeline
+
+**Date**: 2026-04-24
+**Status**: Accepted
+**Sprint**: 85 (v0.6.x — observability fixes)
+
+### Problem
+Constitution principle 7 says "cache hit rate is a success metric, not a
+nice-to-have", but the 2026-04-23 context-engineer baseline found the
+metric was structurally wired and **functionally dead**:
+
+- `LLMResponse.cached_tokens` did not exist
+- `CostRecord.cached_tokens` field existed, but the only writer
+  (`CostTracker.record`) hardcoded `cached_tokens=0`
+- `ExecutionRecord.cache_hit_rate` is hardcoded to `0.0`
+- DB column / migration shipped, but no path ever read
+  `prompt_tokens_details.cached_tokens` from a LiteLLM response
+
+Net: every stable-prefix design decision was unverifiable. Cache hit rate
+is always 0.0 in production.
+
+### Decision
+Plumb the cache-read token count from the LLM provider all the way into
+`CostRecord.cached_tokens` via `LLMResponse.cached_tokens`. Per-task
+aggregation onto `ExecutionRecord.cache_hit_rate` is deferred to a
+follow-up (needs CostRecord ↔ task linkage thinking — out of scope).
+
+### Changes
+
+1. **`domain/ports/llm_gateway.py`** — added `cached_tokens: int = 0` to
+   the `LLMResponse` dataclass. Backward-compatible (default 0).
+
+2. **`infrastructure/llm/litellm_gateway.py`** — added module-level
+   `_extract_cached_tokens(usage)` helper that reads two paths:
+   - `usage.prompt_tokens_details.cached_tokens` (OpenAI-style; LiteLLM
+     normalizes Anthropic prompt-cache hits onto this same field)
+   - `usage.cache_read_input_tokens` (Anthropic raw fallback)
+
+   `complete()` and `complete_with_tools()` both call the helper, set
+   `cached_tokens` on `LLMResponse`, and derive `cached = cached_tokens > 0`.
+   The hot-path `logger.info` line now reports `cached_tok=N` so cache
+   activity is visible in stdout without a DB query.
+
+3. **`infrastructure/llm/cost_tracker.py`** — `record()` now passes
+   `response.cached_tokens` instead of the hardcoded `0`.
+
+4. **Tests** — `TestCacheTokens` (4 tests) covers OpenAI-style path,
+   Anthropic-raw path, missing-field defaults to 0 (defensive against
+   `MagicMock` auto-attributes), and `complete_with_tools`. `TestRecord`
+   gained `test_propagates_cached_tokens` + `test_zero_cached_tokens_when_not_supplied`.
+
+### Defensive type check
+`_extract_cached_tokens` uses `isinstance(val, int)` rather than truthiness
+because `MagicMock` returns auto-mocks for unknown attributes — those are
+truthy but not int. Without this guard the test suite would record
+`cached_tokens=<MagicMock>` and the dataclass default would be silently
+overwritten in places where the test author didn't think about caching at
+all.
+
+### Out of scope (next sprint)
+- Aggregate per-task `cache_hit_rate` on `ExecutionRecord` — requires
+  linking each `CostRecord` to a `task_id` (new column + migration).
+- Cache hit rate alarm in `cost-guardian` subagent.
+- Cache hit reporting in the `cost-report` skill.
+
+### Verification
+```bash
+uv run --extra dev pytest tests/unit/ -q     # 3,152 passed
+uv run --extra dev ruff check .              # All checks passed!
+```
+
+3 production greps still empty (TD-186 baseline preserved).

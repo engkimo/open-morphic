@@ -31,7 +31,7 @@ class CostTracker(EngineCostRecorderPort):
             prompt_tokens=response.prompt_tokens,
             completion_tokens=response.completion_tokens,
             cost_usd=response.cost_usd,
-            cached_tokens=0,
+            cached_tokens=response.cached_tokens,
             is_local=response.model.startswith("ollama/"),
             timestamp=datetime.now(UTC),
         )

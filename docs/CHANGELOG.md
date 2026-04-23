@@ -1,5 +1,11 @@
 # CLAUDE.md Changelog
 
+## v0.6.0 → v0.6.1 (2026-04-24) — **Observability**
+
+- **[OBSERVABILITY/TD-188]** Cache-read tokens を LLM 応答 → CostRecord に通す配線を完成。`LLMResponse.cached_tokens` 追加、LiteLLMGateway が `usage.prompt_tokens_details.cached_tokens` (OpenAI/normalized) と `usage.cache_read_input_tokens` (Anthropic raw) の両方から抽出、CostTracker のハードコード `0` を撤廃。**結果: 安定 prefix 設計の効果が初めて DB に記録されるようになった** (cache_hit_rate 集計は次スプリント)
+
+---
+
 ## v0.5.2 → v0.6.0 (2026-04-22) — **Documentation & Agent Skills Rework**
 
 - **[CONSTITUTION/TD-187]** Test-code port-borrowing policy を明文化。`tests/unit/application/` から `infrastructure/` の `InMemory*` adapter (port 実装) を import するのは許可される DI wiring パターン (production source flow ではない)。Audit 8 件全て port-compliant adapter 借用と確認、ファイル移動 0 件

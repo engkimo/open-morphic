@@ -24,6 +24,7 @@ class LLMResponse:
     completion_tokens: int
     cost_usd: float
     cached: bool = False
+    cached_tokens: int = 0
     tool_calls: list[ToolCallResult] = field(default_factory=list)
 
 

@@ -31,6 +31,7 @@ def _make_response(
     cost: float = 0.0,
     prompt: int = 10,
     completion: int = 5,
+    cached: int = 0,
 ) -> LLMResponse:
     return LLMResponse(
         content="test",
@@ -38,6 +39,7 @@ def _make_response(
         prompt_tokens=prompt,
         completion_tokens=completion,
         cost_usd=cost,
+        cached_tokens=cached,
     )
 
 
@@ -71,6 +73,20 @@ class TestRecord:
         await tracker.record(_make_response(prompt=100, completion=50))
         assert repo.records[0].prompt_tokens == 100
         assert repo.records[0].completion_tokens == 50
+
+    async def test_propagates_cached_tokens(
+        self, tracker: CostTracker, repo: InMemoryCostRepository
+    ) -> None:
+        await tracker.record(
+            _make_response(model="claude-sonnet-4-6", prompt=200, cached=180, cost=0.001)
+        )
+        assert repo.records[0].cached_tokens == 180
+
+    async def test_zero_cached_tokens_when_not_supplied(
+        self, tracker: CostTracker, repo: InMemoryCostRepository
+    ) -> None:
+        await tracker.record(_make_response(prompt=100))
+        assert repo.records[0].cached_tokens == 0
 
 
 class TestQueries:
