@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-
 import pytest
 
 from application.use_cases.update_strategy import UpdateStrategyUseCase
 from domain.entities.execution_record import ExecutionRecord
 from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.model_tier import TaskType
-from infrastructure.evolution.strategy_store import StrategyStore
 from infrastructure.persistence.in_memory_execution_record import (
     InMemoryExecutionRecordRepository,
+)
+from tests.unit.application._fakes.in_memory_strategy_repository import (
+    InMemoryStrategyRepository,
 )
 
 
@@ -41,7 +40,7 @@ def _rec(
 class TestUpdateModelPreferences:
     def setup_method(self) -> None:
         self.repo = InMemoryExecutionRecordRepository()
-        self.store = StrategyStore(base_dir=Path(tempfile.mkdtemp()))
+        self.store = InMemoryStrategyRepository()
         self.uc = UpdateStrategyUseCase(
             execution_repo=self.repo,
             strategy_store=self.store,
@@ -95,7 +94,7 @@ class TestUpdateModelPreferences:
 class TestUpdateEnginePreferences:
     def setup_method(self) -> None:
         self.repo = InMemoryExecutionRecordRepository()
-        self.store = StrategyStore(base_dir=Path(tempfile.mkdtemp()))
+        self.store = InMemoryStrategyRepository()
         self.uc = UpdateStrategyUseCase(
             execution_repo=self.repo,
             strategy_store=self.store,
@@ -132,7 +131,7 @@ class TestUpdateEnginePreferences:
 class TestUpdateRecoveryRules:
     def setup_method(self) -> None:
         self.repo = InMemoryExecutionRecordRepository()
-        self.store = StrategyStore(base_dir=Path(tempfile.mkdtemp()))
+        self.store = InMemoryStrategyRepository()
         self.uc = UpdateStrategyUseCase(
             execution_repo=self.repo,
             strategy_store=self.store,
@@ -178,7 +177,7 @@ class TestUpdateRecoveryRules:
 class TestRunFullUpdate:
     def setup_method(self) -> None:
         self.repo = InMemoryExecutionRecordRepository()
-        self.store = StrategyStore(base_dir=Path(tempfile.mkdtemp()))
+        self.store = InMemoryStrategyRepository()
         self.uc = UpdateStrategyUseCase(
             execution_repo=self.repo,
             strategy_store=self.store,
