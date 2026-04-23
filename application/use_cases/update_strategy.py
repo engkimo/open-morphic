@@ -12,9 +12,9 @@ from dataclasses import dataclass, field
 from domain.entities.execution_record import ExecutionRecord
 from domain.entities.strategy import EnginePreference, ModelPreference, RecoveryRule
 from domain.ports.execution_record_repository import ExecutionRecordRepository
+from domain.ports.strategy_repository import StrategyRepository
 from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.model_tier import TaskType
-from infrastructure.evolution.strategy_store import StrategyStore
 
 
 @dataclass
@@ -33,7 +33,7 @@ class UpdateStrategyUseCase:
     def __init__(
         self,
         execution_repo: ExecutionRecordRepository,
-        strategy_store: StrategyStore,
+        strategy_store: StrategyRepository,
         min_samples: int = 5,
     ) -> None:
         self._execution_repo = execution_repo
