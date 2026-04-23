@@ -5,12 +5,17 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
+from domain.ports.ollama_manager import OllamaManagerPort
 from infrastructure.llm.ollama_manager import OllamaManager
 
 
 @pytest.fixture
 def manager():
     return OllamaManager(base_url="http://test:11434")
+
+
+def test_ollama_manager_is_a_port(manager: OllamaManager) -> None:
+    assert isinstance(manager, OllamaManagerPort)
 
 
 def _ok_response(json_data: dict | None = None) -> MagicMock:

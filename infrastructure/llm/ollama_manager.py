@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import httpx
 
+from domain.ports.ollama_manager import OllamaManagerPort
 
-class OllamaManager:
+
+class OllamaManager(OllamaManagerPort):
     """Manages Ollama local LLM server.
 
     Provides health checks, model listing/pulling, and RAM-based recommendations.
