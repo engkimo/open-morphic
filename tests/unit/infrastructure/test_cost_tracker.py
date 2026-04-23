@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from domain.ports.agent_engine import AgentEngineResult
+from domain.ports.engine_cost_recorder import EngineCostRecorderPort
 from domain.ports.llm_gateway import LLMResponse
 from domain.value_objects.agent_engine import AgentEngineType
 from infrastructure.llm.cost_tracker import CostTracker
@@ -19,6 +20,10 @@ def repo() -> InMemoryCostRepository:
 @pytest.fixture
 def tracker(repo: InMemoryCostRepository) -> CostTracker:
     return CostTracker(repo)
+
+
+def test_cost_tracker_is_an_engine_cost_recorder(tracker: CostTracker) -> None:
+    assert isinstance(tracker, EngineCostRecorderPort)
 
 
 def _make_response(

@@ -8,12 +8,13 @@ from datetime import UTC, datetime
 from domain.entities.cost import CostRecord
 from domain.ports.agent_engine import AgentEngineResult
 from domain.ports.cost_repository import CostRepository
+from domain.ports.engine_cost_recorder import EngineCostRecorderPort
 from domain.ports.llm_gateway import LLMResponse
 
 logger = logging.getLogger(__name__)
 
 
-class CostTracker:
+class CostTracker(EngineCostRecorderPort):
     """Track LLM and engine call costs via CostRepository port.
 
     Converts LLMResponse/AgentEngineResult → CostRecord, delegates persistence.
