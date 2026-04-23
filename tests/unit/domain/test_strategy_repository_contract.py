@@ -70,8 +70,14 @@ class TestStrategyRepositoryContract:
 
     def test_save_model_preferences_round_trip(self, repo: StrategyRepository) -> None:
         prefs = [
-            ModelPreference(task_type=TaskType.CODE, model="claude-sonnet-4-6", success_rate=0.9),
-            ModelPreference(task_type=TaskType.GENERAL, model="qwen3:8b", success_rate=0.7),
+            ModelPreference(
+                task_type=TaskType.CODE_GENERATION,
+                model="claude-sonnet-4-6",
+                success_rate=0.9,
+            ),
+            ModelPreference(
+                task_type=TaskType.SIMPLE_QA, model="qwen3:8b", success_rate=0.7
+            ),
         ]
 
         repo.save_model_preferences(prefs)
@@ -83,7 +89,7 @@ class TestStrategyRepositoryContract:
     def test_save_engine_preferences_round_trip(self, repo: StrategyRepository) -> None:
         prefs = [
             EnginePreference(
-                task_type=TaskType.CODE,
+                task_type=TaskType.CODE_GENERATION,
                 engine=AgentEngineType.CLAUDE_CODE,
                 success_rate=0.95,
             ),
@@ -96,7 +102,9 @@ class TestStrategyRepositoryContract:
         assert loaded[0].engine == AgentEngineType.CLAUDE_CODE
 
     def test_idempotent_save_model_preferences(self, repo: StrategyRepository) -> None:
-        prefs = [ModelPreference(task_type=TaskType.CODE, model="m", success_rate=0.5)]
+        prefs = [
+            ModelPreference(task_type=TaskType.CODE_GENERATION, model="m", success_rate=0.5)
+        ]
 
         repo.save_model_preferences(prefs)
         repo.save_model_preferences(prefs)
