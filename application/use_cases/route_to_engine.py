@@ -13,19 +13,16 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from domain.entities.cognitive import AgentAction
 from domain.ports.agent_engine import AgentEngineCapabilities, AgentEnginePort, AgentEngineResult
 from domain.ports.context_adapter import ContextAdapterPort
+from domain.ports.engine_cost_recorder import EngineCostRecorderPort
 from domain.services.agent_engine_router import AgentEngineRouter
 from domain.services.topic_extractor import TopicExtractor
 from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.fallback_attempt import FallbackAttempt
 from domain.value_objects.model_tier import TaskType
-
-if TYPE_CHECKING:
-    from infrastructure.llm.cost_tracker import CostTracker
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +54,7 @@ class RouteToEngineUseCase:
         task_state_repo: object | None = None,  # SharedTaskStateRepository
         affinity_min_samples: int = 3,
         affinity_boost_threshold: float = 0.6,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: EngineCostRecorderPort | None = None,
     ) -> None:
         self._drivers = drivers
         self._context_adapters = context_adapters
