@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from domain.ports.ollama_manager import OllamaManagerPort
+
 if TYPE_CHECKING:
-    from infrastructure.llm.ollama_manager import OllamaManager
     from shared.config import Settings
 
 
@@ -23,7 +24,7 @@ class OllamaStatus:
 class ManageOllamaUseCase:
     """Orchestrate Ollama model management operations."""
 
-    def __init__(self, ollama: OllamaManager, settings: Settings) -> None:
+    def __init__(self, ollama: OllamaManagerPort, settings: Settings) -> None:
         self._ollama = ollama
         self._settings = settings
 
