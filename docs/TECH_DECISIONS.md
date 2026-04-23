@@ -7325,3 +7325,70 @@ E. **Reflection blocked after timeout**: `_maybe_reflect` returns [] immediately
 ### Tests
 4 new tests in `TestExecutionTimeout`: `_is_timed_out` true/false, timeout marks
 task FAILED, disabled timeout (0). Total: 3114 pass, 0 fail.
+
+
+---
+
+## TD-182: StrategyRepository Port — Application-to-Infrastructure Decoupling
+
+**Date**: 2026-04-22
+**Status**: Accepted
+**Sprint**: 83 (post-v0.5.2 SDD pilot)
+**Spec**: [`specs/strategy-store-port/`](../specs/strategy-store-port/)
+
+### Problem
+`application/use_cases/update_strategy.py` imported the concrete
+`infrastructure.evolution.StrategyStore` directly, violating constitution
+principle 2 (Clean Architecture: application depends only on domain).
+
+Discovered during the constitution-check audit that followed the CLAUDE.md
+restructure. Single rg hit, but the rule is non-negotiable.
+
+### Decision
+Extract `StrategyRepository` ABC in `domain/ports/`, mirroring the existing
+7-method surface of `StrategyStore` 1:1 (sync; matches the file-based impl):
+
+- `load_recovery_rules / save_recovery_rules / append_recovery_rule`
+- `load_model_preferences / save_model_preferences`
+- `load_engine_preferences / save_engine_preferences`
+
+`StrategyStore` inherits the ABC; `UpdateStrategyUseCase.__init__` widens its
+`strategy_store` parameter to `StrategyRepository`. Caller kwarg name preserved
+to avoid touching DI sites in `interface/api/container.py`.
+
+### Why sync (not async)
+The concrete `StrategyStore` is sync (JSONL read/write). Forcing async at the
+port would either (a) require all callers to `await` for no I/O benefit, or
+(b) wrap sync calls in `run_in_executor` — both are noise. Future async impls
+(if any) can be introduced via a separate `AsyncStrategyRepository` ABC.
+
+### Test strategy
+Parametrised contract test (`tests/unit/domain/test_strategy_repository_contract.py`)
+runs 8 behavioural cases against both `InMemoryStrategyRepository` (test fake)
+and `StrategyStore` (file-backed) — proves Liskov substitutability.
+`UpdateStrategyUseCase` unit tests now use the in-memory fake (faster, hermetic).
+
+### SDD process
+First feature shipped via the new spec→plan→tasks workflow. spec.md (215L,
+12 FRs, 5 clarifications resolved), plan.md (316L, layer map + 5-commit series),
+tasks.md (24 atomic tasks, ~145min serial). Constitution-check: PASS.
+
+### Files
+| File | Change |
+|------|--------|
+| `domain/ports/strategy_repository.py` | NEW (39 lines) |
+| `domain/ports/__init__.py` | re-export |
+| `infrastructure/evolution/strategy_store.py` | inherit ABC |
+| `application/use_cases/update_strategy.py` | widen ctor type |
+| `tests/unit/domain/test_strategy_repository_contract.py` | NEW (16 tests) |
+| `tests/unit/application/_fakes/in_memory_strategy_repository.py` | NEW |
+| `tests/unit/application/test_update_strategy.py` | swap concrete → fake |
+| `tests/unit/infrastructure/test_strategy_store.py` | +isinstance assertion |
+
+### Tests
+3,131 unit pass, 15 integration (evolution_pipeline) pass, ruff clean on
+touched files. 0 regressions.
+
+### Out of scope
+Two `TYPE_CHECKING`-only imports remain (`manage_ollama.py`, `route_to_engine.py`).
+No runtime dep but architecturally still owed; addressed in separate sprints.

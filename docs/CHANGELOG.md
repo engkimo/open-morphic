@@ -2,6 +2,7 @@
 
 ## v0.5.2 → v0.6.0 (2026-04-22) — **Documentation & Agent Skills Rework**
 
+- **[ARCH/TD-182]** `StrategyRepository` 抽象ポートを `domain/ports/` に追加し、`UpdateStrategyUseCase` を具象 `StrategyStore` から切り離し。Constitution principle 2 (Clean Architecture) 違反を解消。SDD pilot 1 件目 (spec → plan → tasks 完走、24 タスク TDD 実行)
 - **[STRUCTURE]** CLAUDE.md を 95KB → ~10KB に圧縮。詳細を `docs/` 配下の peer file に分割 (`VISION.md`, `CONTEXT_ENGINEERING.md`, `AGENT_CLI.md`, `SEMANTIC_MEMORY.md`, `LAEE.md`, `UCL.md`, `PHASES.md`, `TECH_STACK.md`, `UI_DESIGN.md`, `ENV_VARS.md`, `REFERENCES.md`)
 - **[NEW]** `AGENTS.md` (telegraph-style root rules, OpenClaw-pattern) — Codex CLI / 他 AGENTS.md-aware エージェント向け
 - **[NEW]** `.claude/` 配下に subagents / skills / commands / rules スキャフォールド
