@@ -7392,3 +7392,52 @@ touched files. 0 regressions.
 ### Out of scope
 Two `TYPE_CHECKING`-only imports remain (`manage_ollama.py`, `route_to_engine.py`).
 No runtime dep but architecturally still owed; addressed in separate sprints.
+
+
+---
+
+## TD-183: OllamaManagerPort — Application-to-Infrastructure Decoupling
+
+**Date**: 2026-04-23
+**Status**: Accepted
+**Sprint**: 84 (port-extraction follow-up #1)
+
+### Problem
+`application/use_cases/manage_ollama.py` had a TYPE_CHECKING-only import of
+`infrastructure.llm.OllamaManager`. No runtime dep, but architecturally a
+constitution principle 2 violation — the application layer named a concrete
+infra class in its type signature.
+
+### Decision
+Extract `OllamaManagerPort` ABC in `domain/ports/` with the 6 async methods
+that `ManageOllamaUseCase` actually calls:
+
+- `is_running / list_models / pull_model / delete_model / model_info / get_running_models`
+
+Pure-function helper `OllamaManager.get_recommended_model` (RAM-based
+recommendation) excluded — callers import it directly from the impl when they
+need it.
+
+`OllamaManager` now inherits the ABC. `ManageOllamaUseCase.__init__` widened
+to accept `OllamaManagerPort`. Existing `AsyncMock`-based tests upgraded to
+`AsyncMock(spec=OllamaManagerPort)` so the port is enforced at mock setup.
+
+### Why exclude `ensure_model`
+Concrete impl exposes `ensure_model = list + pull` for caller convenience. Not
+in the UseCase surface, so kept out of the ABC. Future callers can either use
+the concrete impl or compose `list_models + pull_model` themselves.
+
+### Files
+| File | Change |
+|------|--------|
+| `domain/ports/ollama_manager.py` | NEW (32 lines) |
+| `domain/ports/__init__.py` | re-export |
+| `infrastructure/llm/ollama_manager.py` | inherit ABC |
+| `application/use_cases/manage_ollama.py` | widen ctor type, drop TYPE_CHECKING import |
+| `tests/unit/application/_fakes/in_memory_ollama_manager.py` | NEW |
+| `tests/unit/domain/test_ollama_manager_port_contract.py` | NEW (10 tests) |
+| `tests/unit/application/test_manage_ollama.py` | AsyncMock(spec=Port) |
+| `tests/unit/infrastructure/test_ollama_manager.py` | +isinstance assertion |
+
+### Tests
+3,142 unit pass (+11 new), touched files ruff clean. Zero regressions.

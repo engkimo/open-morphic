@@ -7,11 +7,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from application.use_cases.manage_ollama import ManageOllamaUseCase
+from domain.ports.ollama_manager import OllamaManagerPort
 
 
 @pytest.fixture
 def ollama() -> AsyncMock:
-    mock = AsyncMock()
+    mock = AsyncMock(spec=OllamaManagerPort)
     mock.is_running.return_value = True
     mock.list_models.return_value = ["qwen3:8b", "deepseek-r1:8b"]
     mock.get_running_models.return_value = [{"name": "qwen3:8b"}]

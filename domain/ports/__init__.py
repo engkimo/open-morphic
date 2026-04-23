@@ -25,6 +25,7 @@ from domain.ports.llm_gateway import LLMGateway
 from domain.ports.local_executor import LocalExecutorPort
 from domain.ports.mcp_client import MCPClientPort
 from domain.ports.memory_repository import MemoryRepository
+from domain.ports.ollama_manager import OllamaManagerPort
 from domain.ports.plan_evaluator import PlanEvaluatorPort
 from domain.ports.planner import PlannerPort
 from domain.ports.result_evaluator import ResultEvaluatorPort
@@ -54,6 +55,7 @@ __all__ = [
     "LocalExecutorPort",
     "MCPClientPort",
     "MemoryRepository",
+    "OllamaManagerPort",
     "PlanEvaluatorPort",
     "PlannerPort",
     "ResultEvaluatorPort",
