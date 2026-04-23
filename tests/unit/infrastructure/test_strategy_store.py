@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from domain.entities.strategy import EnginePreference, ModelPreference, RecoveryRule
+from domain.ports.strategy_repository import StrategyRepository
 from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.model_tier import TaskType
 from infrastructure.evolution.strategy_store import StrategyStore
@@ -16,6 +17,9 @@ class TestStrategyStore:
 
         self._tmpdir = tempfile.mkdtemp()
         self.store = StrategyStore(base_dir=Path(self._tmpdir))
+
+    def test_is_a_strategy_repository(self) -> None:
+        assert isinstance(self.store, StrategyRepository)
 
     def test_recovery_rules_roundtrip(self) -> None:
         rules = [
