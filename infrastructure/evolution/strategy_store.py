@@ -11,11 +11,12 @@ import logging
 from pathlib import Path
 
 from domain.entities.strategy import EnginePreference, ModelPreference, RecoveryRule
+from domain.ports.strategy_repository import StrategyRepository
 
 logger = logging.getLogger(__name__)
 
 
-class StrategyStore:
+class StrategyStore(StrategyRepository):
     """JSONL-based persistence for learned strategies.
 
     Files:
