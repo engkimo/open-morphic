@@ -29,6 +29,7 @@ from domain.ports.plan_evaluator import PlanEvaluatorPort
 from domain.ports.planner import PlannerPort
 from domain.ports.result_evaluator import ResultEvaluatorPort
 from domain.ports.shared_task_state_repository import SharedTaskStateRepository
+from domain.ports.strategy_repository import StrategyRepository
 from domain.ports.task_repository import TaskRepository
 from domain.ports.tool_installer import InstallResult, ToolInstallerPort
 from domain.ports.tool_registry import ToolRegistryPort, ToolSearchResult
@@ -57,6 +58,7 @@ __all__ = [
     "PlannerPort",
     "ResultEvaluatorPort",
     "SharedTaskStateRepository",
+    "StrategyRepository",
     "TaskRepository",
     "ToolInstallerPort",
     "ToolRegistryPort",
