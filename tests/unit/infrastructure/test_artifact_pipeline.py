@@ -10,7 +10,6 @@ Verifies that:
 from __future__ import annotations
 
 import json
-import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -20,7 +19,6 @@ from domain.entities.task import TaskEntity
 from infrastructure.local_execution.audit_log import JsonlAuditLogger
 from infrastructure.local_execution.tools import TOOL_REGISTRY, register_tool
 from interface.api.schemas import TaskResponse
-
 
 # ── AuditLog.get_produced_files ────────────────────────────
 

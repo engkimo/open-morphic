@@ -9,7 +9,7 @@ Verifies that ExecuteTaskUseCase:
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -127,7 +127,7 @@ class TestSkillAcquisition:
         uc = ExecuteTaskUseCase(
             engine=engine, repo=repo, discover_tools=discover, max_skill_retries=1,
         )
-        result = await uc.execute(failed_task.id)
+        _result = await uc.execute(failed_task.id)
 
         assert engine.execute.call_count == 1
 
@@ -150,7 +150,7 @@ class TestSkillAcquisition:
             discover_tools=discover, install_tool=installer,
             max_skill_retries=1,
         )
-        result = await uc.execute(failed_task.id)
+        _result = await uc.execute(failed_task.id)
 
         installer.install.assert_not_called()
         assert engine.execute.call_count == 1
@@ -176,7 +176,7 @@ class TestSkillAcquisition:
             discover_tools=discover, install_tool=installer,
             max_skill_retries=1,
         )
-        result = await uc.execute(failed_task.id)
+        _result = await uc.execute(failed_task.id)
 
         assert engine.execute.call_count == 1
 
@@ -197,7 +197,7 @@ class TestSkillAcquisition:
             discover_tools=discover, install_tool=installer,
             max_skill_retries=1,
         )
-        result = await uc.execute(failed_task.id)
+        _result = await uc.execute(failed_task.id)
 
         installer.install.assert_not_called()
         assert engine.execute.call_count == 1
@@ -223,7 +223,7 @@ class TestSkillAcquisition:
             discover_tools=discover, install_tool=installer,
             max_skill_retries=0,
         )
-        result = await uc.execute(failed_task.id)
+        _result = await uc.execute(failed_task.id)
 
         # Still tries to acquire, but skips the retry even if acquired
         assert engine.execute.call_count == 1
@@ -241,7 +241,7 @@ class TestSkillAcquisition:
             discover_tools=discover, install_tool=installer,
             max_skill_retries=1,
         )
-        result = await uc.execute(failed_task.id)
+        _result = await uc.execute(failed_task.id)
 
         discover.suggest_for_failure.assert_not_called()
 
@@ -261,5 +261,5 @@ class TestSkillAcquisition:
             max_skill_retries=1,
         )
         # Should not raise
-        result = await uc.execute(failed_task.id)
+        _result = await uc.execute(failed_task.id)
         assert engine.execute.call_count == 1

@@ -7493,3 +7493,37 @@ layer is now fully decoupled from infrastructure at every type signature.
 
 ### Tests
 3,146 unit pass (+4 new this ADR), zero regressions.
+
+
+---
+
+## TD-185: Pre-existing ruff debt cleanup
+
+**Date**: 2026-04-23
+**Status**: Accepted
+**Sprint**: 84 (port-extraction follow-up #3 / housekeeping)
+
+### Problem
+The full `ruff check .` reported 10 pre-existing errors that surfaced during
+the TD-182…TD-184 work. All in test files, none blocking, but the
+constitution requires the lint gate to be green for new work.
+
+### Errors fixed
+- `tests/unit/application/test_skill_acquisition.py`
+  - F401: unused `unittest.mock.patch` import → removed
+  - F841 ×7: `result = await uc.execute(...)` where `result` is never used
+    → renamed to `_result` (ruff dummy-variable convention). Two call sites
+    that *do* read `result.status` kept the original name.
+- `tests/unit/infrastructure/test_artifact_pipeline.py`
+  - F401: unused `tempfile` import → removed
+  - I001: import block ordering → `ruff check --fix` (safe fix)
+
+### Net result
+`ruff check .` exit 0, full unit suite 3,146/3,146 pass. The lint gate is
+green again — TD-186+ can land without inheriting noise.
+
+### Rationale for `_result` over deletion
+Some sites have the comment `# Should not raise` — the assignment documents
+that the call is being made *for its side effect of not raising*, not for the
+return value. `_result = ` keeps that intent visible to readers; bare
+`await uc.execute(...)` would lose it.
