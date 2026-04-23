@@ -3,7 +3,7 @@
 > *"Mission Control for Intelligence"*
 > ユーザーの意図を汲み取り、タスクをこなし、失敗を糧に自己進化する。
 >
-> **Version:** 0.5.2 | **Last updated:** 2026-04-22
+> **Version:** 0.6.0 | **Last updated:** 2026-04-23
 
 ---
 
@@ -96,7 +96,7 @@ ollama pull qwen3:8b
 # 2. プロジェクト
 uv sync
 docker compose up -d                                   # PG + Redis + Qdrant
-uv run --extra dev pytest tests/unit/ -v               # Test (3,035 tests)
+uv run --extra dev pytest tests/unit/ -v               # Test (3,146 tests)
 uv run --extra dev ruff check .                        # Lint
 uv run uvicorn interface.api.main:app --port 8001     # Server
 

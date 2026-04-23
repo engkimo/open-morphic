@@ -80,7 +80,7 @@ def create_app(container: AppContainer | None = None) -> FastAPI:
     """Build the FastAPI app. Accepts optional container for testing."""
     app = FastAPI(
         title="Morphic-Agent",
-        version="0.5.1",
+        version="0.6.0",
         lifespan=lifespan if container is None else None,
     )
 

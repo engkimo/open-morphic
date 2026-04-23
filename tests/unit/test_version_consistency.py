@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-EXPECTED_VERSION = "0.5.1"
+EXPECTED_VERSION = "0.6.0"
 
 
 def _read(path: str) -> str:
@@ -32,4 +32,4 @@ def test_extension_version_prefix():
     content = _read("ui/extension/manifest.json")
     match = re.search(r'"version":\s*"(.+?)"', content)
     assert match is not None, "version not found in manifest.json"
-    assert match.group(1).startswith("0.5.")
+    assert match.group(1).startswith("0.6.")
