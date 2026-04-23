@@ -7527,3 +7527,51 @@ Some sites have the comment `# Should not raise` — the assignment documents
 that the call is being made *for its side effect of not raising*, not for the
 return value. `_result = ` keeps that intent visible to readers; bare
 `await uc.execute(...)` would lose it.
+
+
+---
+
+## TD-186: Domain layer purity audit + numpy carve-out
+
+**Date**: 2026-04-23
+**Status**: Accepted (constitution amendment)
+**Sprint**: 84 (port-extraction follow-up #4 / governance)
+
+### Problem
+Constitution principle 2 reads "domain has zero framework deps (stdlib +
+Pydantic only)". A repo-wide audit found exactly one external import in
+`domain/`: `numpy` in `domain/services/semantic_fingerprint.py` (LSH +
+cosine similarity, no I/O, no state).
+
+Strict reading would force a port; pragmatic reading recognizes numpy as
+a pure-math primitive in the same category as `math` / `datetime`.
+
+### Decision
+Constitution amendment: explicitly allow `numpy` (and document the
+process for future additions). Pure-math libs are now an enumerated
+allow-list, not an open category.
+
+### Changes
+- `.specify/memory/constitution.md` principle 2: append "+ pure-math libs",
+  list `numpy` explicitly, add explicit ban on `from infrastructure/...` in
+  `domain/` including TYPE_CHECKING.
+- `.claude/rules/clean-architecture.md`: same wording + extended
+  verification recipe (3 greps, all expected to return empty).
+
+### Audit baseline (2026-04-23)
+| Check | Result |
+|---|---|
+| `from infrastructure` in `domain/` | 0 hits |
+| `from application` in `domain/` | 0 hits |
+| `from interface` in `domain/` | 0 hits |
+| `from infrastructure` in `application/` | 0 hits (since TD-184) |
+| External libs in `domain/` | `pydantic`, `numpy` only |
+
+The architecture is **provably** clean from the dependency-rule angle.
+Future PRs can re-run the 3 greps as a 5-second gate.
+
+### Why not port `numpy` behind an ABC
+Pure mathematical operations have no semantic boundary worth abstracting.
+A `VectorOpsPort` would be a dumb pass-through with one caller; the cost
+is real (extra layer to read), the benefit is zero (no second impl will
+ever exist that doesn't reduce to BLAS underneath).

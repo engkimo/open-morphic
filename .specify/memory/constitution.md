@@ -9,8 +9,10 @@
 `LOCAL_FIRST=true` by default. Every new LLM integration must include an Ollama path. Budget exhaustion falls back to Ollama, never to "unavailable".
 
 ### 2. Clean Architecture (4-layer)
-- `domain/` has zero framework deps (stdlib + Pydantic only).
+- `domain/` has zero framework deps (stdlib + Pydantic + pure-math libs only).
+  Allowed pure-math libs: `numpy` (vector ops, LSH, cosine similarity). Adding a new one to this list requires a constitution amendment.
 - Dependencies flow inward. Infrastructure implements `domain/ports/*` ABCs.
+- No `from infrastructure` / `from application` / `from interface` anywhere in `domain/` (TYPE_CHECKING-only included — see TD-183/TD-184).
 - Violating this is grounds for rejecting any PR, regardless of feature value.
 
 ### 3. KV-Cache is a first-class design concern

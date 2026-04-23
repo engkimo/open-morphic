@@ -17,9 +17,10 @@ Interface → Application → Domain ← Infrastructure
 
 ## Hard Rules
 
-1. **`domain/` imports nothing except Python stdlib + Pydantic + typing.**
-   - NO SQLAlchemy, FastAPI, LiteLLM, Celery, Redis, mem0, etc.
-   - If you catch yourself writing `from infrastructure...` in domain, stop. Add a port (ABC) in `domain/ports/` and implement it in `infrastructure/`.
+1. **`domain/` imports nothing except Python stdlib + Pydantic + typing + pure-math libs.**
+   - Allowed pure-math libs: `numpy` (used for LSH/cosine in `domain/services/semantic_fingerprint.py`). Adding a new one requires a constitution amendment.
+   - NO SQLAlchemy, FastAPI, LiteLLM, Celery, Redis, mem0, httpx, etc.
+   - NO `from infrastructure...` / `from application...` / `from interface...` — including under `TYPE_CHECKING`. Add a port (ABC) in `domain/ports/` and implement it in `infrastructure/` instead.
 
 2. **`application/` imports only from `domain/`.**
    - Use cases orchestrate domain entities + domain services via ports.
@@ -44,7 +45,13 @@ Interface → Application → Domain ← Infrastructure
 
 ```bash
 # Detect domain → framework leaks (should return nothing)
-rg -l "from (sqlalchemy|fastapi|litellm|redis|mem0|celery)" domain/
+rg -l "from (sqlalchemy|fastapi|litellm|redis|mem0|celery|httpx|qdrant_client)" domain/
+
+# Detect domain → outer-layer leaks (should return nothing)
+rg -l "from (infrastructure|application|interface)" domain/
+
+# Detect application → infrastructure leaks (should return nothing — TD-184 baseline)
+rg -l "from infrastructure" application/
 
 # Verify ports have impls
 ls domain/ports/ | xargs -I{} rg -l "class.*Port\b" infrastructure/
