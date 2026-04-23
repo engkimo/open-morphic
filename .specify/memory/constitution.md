@@ -13,6 +13,7 @@
   Allowed pure-math libs: `numpy` (vector ops, LSH, cosine similarity). Adding a new one to this list requires a constitution amendment.
 - Dependencies flow inward. Infrastructure implements `domain/ports/*` ABCs.
 - No `from infrastructure` / `from application` / `from interface` anywhere in `domain/` (TYPE_CHECKING-only included — see TD-183/TD-184).
+- Test code MAY import port-compliant `InMemory*` adapters from `infrastructure/` for DI wiring (see TD-187). The rule targets production source flow, not test assembly.
 - Violating this is grounds for rejecting any PR, regardless of feature value.
 
 ### 3. KV-Cache is a first-class design concern

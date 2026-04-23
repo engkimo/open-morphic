@@ -2,6 +2,7 @@
 
 ## v0.5.2 → v0.6.0 (2026-04-22) — **Documentation & Agent Skills Rework**
 
+- **[CONSTITUTION/TD-187]** Test-code port-borrowing policy を明文化。`tests/unit/application/` から `infrastructure/` の `InMemory*` adapter (port 実装) を import するのは許可される DI wiring パターン (production source flow ではない)。Audit 8 件全て port-compliant adapter 借用と確認、ファイル移動 0 件
 - **[CONSTITUTION/TD-186]** Constitution amendment: 原則 2 に numpy (純粋数学ライブラリ) を明示許可、TYPE_CHECKING 含む `from infrastructure`/`application`/`interface` を `domain/` 全面禁止に明文化。Audit 結果: 3 種の leak grep すべて 0 件
 - **[CHORE/TD-185]** Pre-existing ruff debt 解消 (`test_skill_acquisition.py` の F401/F841 ×8、`test_artifact_pipeline.py` の F401/I001)。`ruff check .` が再びクリーンに
 - **[ARCH/TD-184]** `EngineCostRecorderPort` (1 method narrow port) を追加し、`RouteToEngineUseCase` を具象 `CostTracker` から切り離し。**結果: `application/` から `from infrastructure` import が完全消滅 (0 件)**

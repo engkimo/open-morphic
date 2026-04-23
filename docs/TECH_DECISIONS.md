@@ -7575,3 +7575,104 @@ Pure mathematical operations have no semantic boundary worth abstracting.
 A `VectorOpsPort` would be a dumb pass-through with one caller; the cost
 is real (extra layer to read), the benefit is zero (no second impl will
 ever exist that doesn't reduce to BLAS underneath).
+
+
+---
+
+## TD-187: Test-code port-borrowing policy
+
+**Date**: 2026-04-23
+**Status**: Accepted (test-policy clarification)
+**Sprint**: 84 (port-extraction follow-up #5 / governance)
+
+### Problem
+TD-186 left the 3-grep dependency audit clean for production code:
+
+| Check | Result |
+|---|---|
+| `from infrastructure` in `domain/` | 0 hits |
+| `from infrastructure` in `application/` | 0 hits |
+
+But a follow-up grep on `tests/unit/application/` found **8 files** that
+still import from `infrastructure/`:
+
+```
+tests/unit/application/test_update_strategy.py        → InMemoryExecutionRecordRepository
+tests/unit/application/test_interactive_plan.py       → InMemoryPlan/TaskRepository
+tests/unit/application/test_systemic_evolution.py     → InMemoryExecutionRecordRepository
+tests/unit/application/test_a2a_use_cases.py          → InMemoryAgentRegistry, InMemoryA2ABroker
+tests/unit/application/test_background_planner.py     → InMemoryTaskRepository
+tests/unit/application/test_evolve_prompts.py         → InMemoryPromptTemplateRepo
+tests/unit/application/test_analyze_execution.py      → InMemoryExecutionRecordRepository
+```
+
+Question: are these constitution principle 2 violations that need fakes
+moved to `tests/unit/application/_fakes/`?
+
+### Decision
+**No. This is an accepted pattern.** Document the rule explicitly so the
+audit grep doesn't get re-flagged in future reviews.
+
+**Policy**: Test code MAY import port-compliant `InMemory*` adapters from
+`infrastructure/` and inject them into use cases via port-typed
+constructor parameters. The dependency rule applies to **production
+source flow** (`application/use_cases/*.py`, `domain/**/*.py`), not to
+test wiring code.
+
+### Rationale
+
+1. **The adapters are production code, not test fixtures.** Every
+   `InMemory*` adapter listed above is the **default DI backend** in
+   `interface/api/container.py` for local-dev mode (no PG / Redis
+   required). Each one inherits from a port ABC and ships in the
+   distribution.
+
+2. **The use case never sees the concrete type.** `UpdateStrategyUseCase`
+   takes `StrategyRepository` (the ABC); the test injects an InMemory
+   impl, exactly as the production DI container would inject `StrategyStore`.
+   Replacing the InMemory adapter with a hand-rolled `tests/_fakes/`
+   class would be **duplication**, not isolation.
+
+3. **The constitution targets dependency direction, not import location.**
+   Principle 2 says "Dependencies flow inward". The production import
+   graph already does. Tests are the assembly root for `application/` —
+   they wire concrete impls to abstract ports, just like
+   `interface/api/container.py` does for the running server.
+
+4. **The TD-182 SDD pilot used a `_fakes/` directory.** That's still
+   appropriate when the InMemory impl is owned by tests (e.g.
+   `InMemoryStrategyRepository` exists only because the production
+   `StrategyStore` is filesystem-backed and unsuitable for unit tests).
+   When a production InMemory adapter already exists and is port-
+   compliant, prefer reuse.
+
+### Decision matrix (when to write a `_fakes/` impl vs. borrow from `infrastructure/`)
+
+| Situation | Choice |
+|---|---|
+| Production InMemory adapter exists and is port-compliant | **Borrow** from `infrastructure/` |
+| Production adapter is filesystem/network-backed only | **Write** in `tests/unit/<layer>/_fakes/` |
+| Test needs to assert on internal state (e.g. `fake.records`) | **Write** a fake — production adapters shouldn't expose internals |
+| Multiple use cases share the same fake | Either is fine; prefer `infrastructure/` if the fake is also useful at runtime |
+
+### Constitution amendment
+Append to principle 2 (`.specify/memory/constitution.md`):
+
+> Test code MAY import port-compliant `InMemory*` adapters from
+> `infrastructure/` for DI wiring (see TD-187). The dependency rule
+> targets production source flow, not test assembly.
+
+### Updated audit recipe (`.claude/rules/clean-architecture.md`)
+
+```bash
+# Production-source check (must return empty)
+rg -l "from infrastructure" application/ --glob '!tests/**'
+
+# Test-code is exempt — InMemory port adapters may be borrowed
+rg -l "from infrastructure" tests/unit/application/  # informational only
+```
+
+### Net effect
+The 5-second gate (3 production greps) remains the contract. The
+test-code import is reclassified from "audit finding" to "documented
+DI wiring pattern". Zero file moves, zero test changes.
