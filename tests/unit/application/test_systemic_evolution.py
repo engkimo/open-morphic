@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -18,9 +16,11 @@ from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.evolution import EvolutionLevel
 from domain.value_objects.model_tier import TaskType
 from domain.value_objects.tool_safety import SafetyTier
-from infrastructure.evolution.strategy_store import StrategyStore
 from infrastructure.persistence.in_memory_execution_record import (
     InMemoryExecutionRecordRepository,
+)
+from tests.unit.application._fakes.in_memory_strategy_repository import (
+    InMemoryStrategyRepository,
 )
 
 
@@ -56,7 +56,7 @@ def _make_uc(
     discover_tools: DiscoverToolsUseCase | None = None,
 ) -> SystemicEvolutionUseCase:
     repo = repo or InMemoryExecutionRecordRepository()
-    store = StrategyStore(base_dir=Path(tempfile.mkdtemp()))
+    store = InMemoryStrategyRepository()
     analyze = AnalyzeExecutionUseCase(repo=repo)
     update_strategy = UpdateStrategyUseCase(
         execution_repo=repo,
