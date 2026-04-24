@@ -7854,3 +7854,81 @@ misclassification.
   fix and verify a real PPTX file lands on disk.
 - Bypass classifier could be told about output requirement in its prompt
   to reduce wasted LLM calls — small cost win, not a correctness fix.
+
+---
+
+## TD-190: KV-cache stable system prefix in LLMPlanner
+
+**Date**: 2026-04-24
+**Status**: Accepted
+**Sprint**: 86 (v0.6.x — observability + safety)
+**Closes**: KV-cache stability WARN from 2026-04-23 context-engineer baseline
+**Refines**: TD-188 (cache-token observability — measurement layer)
+
+### Problem
+The 2026-04-23 context-engineer baseline flagged
+`infrastructure/fractal/llm_planner.py` as the only remaining stable-prefix
+violator: `_build_messages` was concatenating per-request runtime values
+(`direction_instruction`, `nesting_level`, `candidates_per_node`,
+parent context) onto the system message after `_SYSTEM_PROMPT`.
+
+```python
+# Pre-TD-190 — broken stable-prefix
+system_content = _SYSTEM_PROMPT + "\n\n" + "\n".join(dynamic_parts)
+```
+
+KV-cache lookup is keyed on the prefix bytes. The constant `_SYSTEM_PROMPT`
+was the same, but the bytes immediately after it varied per call. The
+cache hit at "system content" boundary, but every subsequent token was a
+miss — defeating the purpose of having a stable prefix at all.
+
+This was masked because TD-188 (cache-token propagation) had not yet
+landed, so `cached_tokens` always logged 0 regardless of cache behavior.
+With TD-188 now in place, the metric would have continued to read 0
+without TD-190 — and the user would have no way to tell whether the
+problem was the cache provider, the prompt design, or the measurement.
+
+### Decision
+1. Bake the FORWARD/BACKWARD direction *definitions* into the constant
+   `_SYSTEM_PROMPT` (so every model knows what the tokens mean,
+   regardless of which one is selected per call).
+2. Move every per-request value into the user message, in a structured
+   block:
+   ```
+   Direction: FORWARD
+   Nesting level: 0 (0=top-level scenario)
+   Generate approximately 3 candidate steps.
+   ```
+3. Goal becomes the final line: `Goal: <text>`. Learning context still
+   prepends as before (it was already in the user message — TD-167's
+   correct half).
+4. The system message returned by `_build_messages` is now byte-equal to
+   `_SYSTEM_PROMPT` — no concatenation, no f-string templating.
+
+### Why not split the cache by parameter?
+We could maintain N separate stable prefixes (one per direction, etc.).
+That would also work, but it linearly multiplies the cold-start cost per
+new dimension, and the user message is the *correct* place for
+per-request data per Manus 5原則. Simpler design wins.
+
+### Files touched
+| File | Change |
+| --- | --- |
+| `infrastructure/fractal/llm_planner.py` | `_SYSTEM_PROMPT` adds direction definitions; `_build_messages` returns module-constant system + dynamic user |
+| `tests/unit/infrastructure/test_llm_planner.py` | New `TestStablePrefix` (5 tests); existing direction/context/candidates tests assert user message instead of system |
+| `tests/unit/infrastructure/test_llm_planner_learning.py` | `test_no_repo_user_message_is_just_goal` → `test_no_repo_user_message_contains_goal` |
+
+### Acceptance
+- 5 new tests assert `system == module_constant` regardless of direction,
+  nesting level, parent context, candidates_per_node.
+- The 3 already-correct evaluators
+  (`llm_plan_evaluator`, `llm_reflection_evaluator`,
+  `llm_result_evaluator`) audited and confirmed compliant — no change.
+- Full suite: 3,164 unit pass (+6 from TD-190 + previous TD-191 deltas),
+  ruff clean.
+
+### Out of scope (later)
+- Live measurement of cache_hit_rate now that TD-188 + TD-190 are both
+  in place. Requires a multi-call workload to amortize cold-start.
+- Aggregate `cache_hit_rate` per task on `ExecutionRecord` — needs the
+  CostRecord ↔ task_id link (deferred to TD-189-ish).

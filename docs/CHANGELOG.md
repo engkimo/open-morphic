@@ -1,8 +1,9 @@
 # CLAUDE.md Changelog
 
-## v0.6.0 → v0.6.1 (2026-04-24) — **Observability + Round 19 fix**
+## v0.6.0 → v0.6.1 (2026-04-24) — **Observability + Round 19 fix + KV-cache hardening**
 
-- **[SAFETY/TD-191]** Bypass classifier の前に `OutputRequirementClassifier` を移動し、bypass 発火条件に `output_requirement == TEXT` を追加。**結果: file/code/data 出力要求のあるタスク (Round 19 のスライド作成等) が SIMPLE 誤分類で短絡される経路を architectural に閉鎖。** TD-181 (hard timeout, 症状治療) → TD-191 (root cause). Round 19 の元の日本語ゴールを regression test として固定 (6 新テスト). Fail-open: classifier error 時は bypass を許可 (TEXT Q&A の latency 維持)
+- **[KV-CACHE/TD-190]** `LLMPlanner._build_messages` を再設計: direction / nesting_level / candidates_per_node / parent context を **system → user message** に移送。system prompt は byte-identical で全呼び出し共通 (Manus 5原則 stable prefix の遵守)。新 `_SYSTEM_PROMPT` に FORWARD/BACKWARD 定義を組込み、user message は `Direction: FORWARD\nNesting level: N\n...\nGoal: ...` 形式。**結果: TD-188 で計測する cache_hit_rate が伸びる前提条件が成立 (実 LLM 呼出 0)。** 6 新テスト (TestStablePrefix, byte-equality across direction/nesting/context/candidates_per_node + module-constant identity)
+- **[SAFETY/TD-191]** Bypass classifier の前に `OutputRequirementClassifier` を移動し、bypass 発火条件に `output_requirement == TEXT` を追加。**結果: file/code/data 出力要求のあるタスク (Round 19 のスライド作成等) が SIMPLE 誤分類で短絡される経路を architectural に閉鎖。** TD-181 (hard timeout, 症状治療) → TD-191 (root cause). Round 19 の元の日本語ゴールを regression test として固定 (6 新テスト). Fail-open: classifier error 時は bypass を許可 (TEXT Q&A の latency 維持). Round 20 live verify (real qwen3:8b, 6/6 PASS in 13s, $0)
 - **[OBSERVABILITY/TD-188]** Cache-read tokens を LLM 応答 → CostRecord に通す配線を完成。`LLMResponse.cached_tokens` 追加、LiteLLMGateway が `usage.prompt_tokens_details.cached_tokens` (OpenAI/normalized) と `usage.cache_read_input_tokens` (Anthropic raw) の両方から抽出、CostTracker のハードコード `0` を撤廃。**結果: 安定 prefix 設計の効果が初めて DB に記録されるようになった** (cache_hit_rate 集計は次スプリント)
 
 ---

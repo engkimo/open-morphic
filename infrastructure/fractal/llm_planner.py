@@ -20,7 +20,12 @@ from domain.value_objects.fractal_engine import NodeState
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Stable system prompt prefix (KV-cache friendly — never changes)
+# Stable system prompt prefix (KV-cache friendly — TD-190).
+#
+# This string is the byte-identical system message for every planner call,
+# regardless of direction, nesting level, parent context, candidates_per_node,
+# or learning data. All per-request values live in the user message so the
+# prefix-keyed KV cache hits on every subsequent call.
 # ---------------------------------------------------------------------------
 _SYSTEM_PROMPT = """\
 You are a fractal execution planner. Given a goal, generate an ordered \
@@ -34,6 +39,12 @@ Each element must be a JSON object with these fields:
 a natural-language condition string for conditional fallback steps.
   "input_artifacts"  (object)  — key-value pairs of expected input artifacts (can be empty {}).
   "output_artifacts" (object)  — key-value pairs of produced output artifacts (can be empty {}).
+
+Planning direction (set per request via the user message):
+- FORWARD: start from the current state and work toward the goal. \
+List steps in execution order.
+- BACKWARD: start from the goal state and work back to the initial conditions. \
+List steps in reverse order.
 
 Rules:
 - Every description MUST start with an action verb (e.g. "Fetch", "Parse", "Generate").
@@ -134,36 +145,32 @@ class LLMPlanner(PlannerPort):
         direction: str,
         learning_context: str = "",
     ) -> list[dict]:
-        """Build chat messages with a stable prefix and dynamic suffix."""
-        if direction == "backward":
-            direction_instruction = (
-                "Plan BACKWARD: start from the goal state and work back to "
-                "the initial conditions. List steps in reverse order."
-            )
-        else:
-            direction_instruction = (
-                "Plan FORWARD: start from the current state and work toward "
-                "the goal. List steps in execution order."
-            )
+        """Build chat messages with a byte-stable system prefix (TD-190).
 
-        dynamic_parts = [
-            direction_instruction,
-            f"Nesting level: {nesting_level} (0=top-level scenario).",
-            f"Generate approximately {self._candidates_per_node} candidate steps.",
-        ]
-        if context:
-            dynamic_parts.append(f"Parent context:\n{context}")
+        Per Manus 5原則 / KV-cache stability: every per-request value
+        (direction, nesting level, candidates count, parent context,
+        learning data, goal) lives in the user message. The system prompt
+        is the same string for every call regardless of caller — this is
+        what lets the KV cache hit on the prompt prefix.
+        """
+        direction_token = "BACKWARD" if direction == "backward" else "FORWARD"
 
-        system_content = _SYSTEM_PROMPT + "\n\n" + "\n".join(dynamic_parts)
-
-        # Learning data in user message (not system) to preserve KV-cache
         user_parts: list[str] = []
         if learning_context:
             user_parts.append(learning_context)
-        user_parts.append(goal)
+
+        user_parts.append(
+            f"Direction: {direction_token}\n"
+            f"Nesting level: {nesting_level} (0=top-level scenario)\n"
+            f"Generate approximately {self._candidates_per_node} candidate steps."
+        )
+        if context:
+            user_parts.append(f"Parent context:\n{context}")
+
+        user_parts.append(f"Goal: {goal}")
 
         return [
-            {"role": "system", "content": system_content},
+            {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": "\n\n".join(user_parts)},
         ]
 

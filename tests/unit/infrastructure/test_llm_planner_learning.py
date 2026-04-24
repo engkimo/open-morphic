@@ -279,12 +279,14 @@ class TestLearningContextResilience:
 
 class TestBackwardCompatibility:
     @pytest.mark.asyncio
-    async def test_no_repo_user_message_is_just_goal(
+    async def test_no_repo_user_message_contains_goal(
         self, llm: AsyncMock, planner_no_repo: LLMPlanner
     ) -> None:
+        """User message contains the goal plus per-request planning
+        parameters (TD-190 moved direction/nesting/candidates out of system)."""
         await planner_no_repo.generate_candidates("Build a REST API", "", 0)
         messages = llm.complete.call_args[0][0]
-        assert messages[1]["content"] == "Build a REST API"
+        assert "Build a REST API" in messages[1]["content"]
 
     @pytest.mark.asyncio
     async def test_with_repo_user_message_contains_goal(

@@ -210,25 +210,29 @@ class TestGenerateCandidates:
 
 
 class TestDirection:
-    """Verify direction is communicated to the LLM via prompt."""
+    """Verify direction is communicated to the LLM via the user message (TD-190)."""
 
     @pytest.mark.asyncio
-    async def test_forward_direction_in_prompt(self, llm: AsyncMock, planner: LLMPlanner) -> None:
+    async def test_forward_direction_in_user_message(
+        self, llm: AsyncMock, planner: LLMPlanner
+    ) -> None:
         llm.complete.return_value = _llm_response(_json_payload(_sample_items(1)))
 
         await planner.generate_candidates("Goal", "", 0, direction="forward")
 
-        system_msg = llm.complete.call_args[0][0][0]["content"]
-        assert "FORWARD" in system_msg
+        user_msg = llm.complete.call_args[0][0][1]["content"]
+        assert "Direction: FORWARD" in user_msg
 
     @pytest.mark.asyncio
-    async def test_backward_direction_in_prompt(self, llm: AsyncMock, planner: LLMPlanner) -> None:
+    async def test_backward_direction_in_user_message(
+        self, llm: AsyncMock, planner: LLMPlanner
+    ) -> None:
         llm.complete.return_value = _llm_response(_json_payload(_sample_items(1)))
 
         await planner.generate_candidates("Goal", "", 0, direction="backward")
 
-        system_msg = llm.complete.call_args[0][0][0]["content"]
-        assert "BACKWARD" in system_msg
+        user_msg = llm.complete.call_args[0][0][1]["content"]
+        assert "Direction: BACKWARD" in user_msg
 
 
 # ===================================================================
@@ -366,24 +370,37 @@ class TestPromptConstruction:
     """Verify prompt content passed to the LLM gateway."""
 
     @pytest.mark.asyncio
-    async def test_context_included_in_prompt(self, llm: AsyncMock, planner: LLMPlanner) -> None:
+    async def test_context_in_user_message(self, llm: AsyncMock, planner: LLMPlanner) -> None:
         llm.complete.return_value = _llm_response(_json_payload(_sample_items(1)))
 
         await planner.generate_candidates(
             "Goal", context="Parent decided to use Python", nesting_level=0
         )
 
-        system_msg = llm.complete.call_args[0][0][0]["content"]
-        assert "Parent decided to use Python" in system_msg
+        user_msg = llm.complete.call_args[0][0][1]["content"]
+        assert "Parent decided to use Python" in user_msg
 
     @pytest.mark.asyncio
-    async def test_candidates_count_in_prompt(self, llm: AsyncMock, planner: LLMPlanner) -> None:
+    async def test_candidates_count_in_user_message(
+        self, llm: AsyncMock, planner: LLMPlanner
+    ) -> None:
         llm.complete.return_value = _llm_response(_json_payload(_sample_items(1)))
 
         await planner.generate_candidates("Goal", "", 0)
 
-        system_msg = llm.complete.call_args[0][0][0]["content"]
-        assert "3" in system_msg  # candidates_per_node=3
+        user_msg = llm.complete.call_args[0][0][1]["content"]
+        assert "3" in user_msg  # candidates_per_node=3
+
+    @pytest.mark.asyncio
+    async def test_nesting_level_in_user_message(
+        self, llm: AsyncMock, planner: LLMPlanner
+    ) -> None:
+        llm.complete.return_value = _llm_response(_json_payload(_sample_items(1)))
+
+        await planner.generate_candidates("Goal", "", nesting_level=2)
+
+        user_msg = llm.complete.call_args[0][0][1]["content"]
+        assert "Nesting level: 2" in user_msg
 
     @pytest.mark.asyncio
     async def test_model_override_passed_to_gateway(self, llm: AsyncMock) -> None:
@@ -396,14 +413,95 @@ class TestPromptConstruction:
         assert kwargs["model"] == "claude-sonnet-4-6"
 
     @pytest.mark.asyncio
-    async def test_goal_as_user_message(self, llm: AsyncMock, planner: LLMPlanner) -> None:
+    async def test_goal_in_user_message(self, llm: AsyncMock, planner: LLMPlanner) -> None:
         llm.complete.return_value = _llm_response(_json_payload(_sample_items(1)))
 
         await planner.generate_candidates("Build a REST API", "", 0)
 
         messages = llm.complete.call_args[0][0]
         assert messages[1]["role"] == "user"
-        assert messages[1]["content"] == "Build a REST API"
+        assert "Build a REST API" in messages[1]["content"]
+
+
+# ===================================================================
+# TestStablePrefix — TD-190 KV-cache stable system prefix
+# ===================================================================
+
+
+class TestStablePrefix:
+    """The system prompt must be byte-identical across every call regardless
+    of direction, nesting level, parent context, candidates_per_node, or
+    learning data. Manus 5原則 KV-cache stability: prefix changes destroy
+    the cache for every subsequent token. All runtime values live in the
+    user message instead."""
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_byte_stable_across_directions(
+        self, llm: AsyncMock, planner: LLMPlanner
+    ) -> None:
+        llm.complete.return_value = _llm_response(_json_payload(_sample_items(1)))
+
+        await planner.generate_candidates("Goal", "", 0, direction="forward")
+        sys_fwd = llm.complete.call_args[0][0][0]["content"]
+        await planner.generate_candidates("Goal", "", 0, direction="backward")
+        sys_bwd = llm.complete.call_args[0][0][0]["content"]
+
+        assert sys_fwd == sys_bwd
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_byte_stable_across_nesting_levels(
+        self, llm: AsyncMock, planner: LLMPlanner
+    ) -> None:
+        llm.complete.return_value = _llm_response(_json_payload(_sample_items(1)))
+
+        seen: set[str] = set()
+        for level in (0, 1, 2):
+            await planner.generate_candidates("Goal", "", nesting_level=level)
+            seen.add(llm.complete.call_args[0][0][0]["content"])
+
+        assert len(seen) == 1, "system prompt drifted across nesting levels"
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_byte_stable_across_contexts(
+        self, llm: AsyncMock, planner: LLMPlanner
+    ) -> None:
+        llm.complete.return_value = _llm_response(_json_payload(_sample_items(1)))
+
+        await planner.generate_candidates("Goal", "", 0)
+        sys_empty = llm.complete.call_args[0][0][0]["content"]
+        await planner.generate_candidates("Goal", "Parent chose Python", 0)
+        sys_with_ctx = llm.complete.call_args[0][0][0]["content"]
+
+        assert sys_empty == sys_with_ctx
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_byte_stable_across_candidates_per_node(
+        self, llm: AsyncMock
+    ) -> None:
+        llm.complete.return_value = _llm_response(_json_payload(_sample_items(1)))
+        p3 = LLMPlanner(llm, candidates_per_node=3)
+        p7 = LLMPlanner(llm, candidates_per_node=7)
+
+        await p3.generate_candidates("Goal", "", 0)
+        sys_3 = llm.complete.call_args[0][0][0]["content"]
+        await p7.generate_candidates("Goal", "", 0)
+        sys_7 = llm.complete.call_args[0][0][0]["content"]
+
+        assert sys_3 == sys_7
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_equals_module_constant(
+        self, llm: AsyncMock, planner: LLMPlanner
+    ) -> None:
+        """The shipped system prompt is exactly the module constant — no
+        runtime concatenation. Catches accidental f-string templating."""
+        from infrastructure.fractal.llm_planner import _SYSTEM_PROMPT
+
+        llm.complete.return_value = _llm_response(_json_payload(_sample_items(1)))
+        await planner.generate_candidates("Goal", "Parent ctx", 1, direction="backward")
+
+        sys_msg = llm.complete.call_args[0][0][0]["content"]
+        assert sys_msg == _SYSTEM_PROMPT
 
 
 # ===================================================================
