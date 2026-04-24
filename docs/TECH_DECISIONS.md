@@ -7752,3 +7752,105 @@ uv run --extra dev ruff check .              # All checks passed!
 ```
 
 3 production greps still empty (TD-186 baseline preserved).
+
+
+---
+
+## TD-191: Output-requirement gate on bypass — Round 19 architectural fix
+
+**Date**: 2026-04-24
+**Status**: Accepted
+**Sprint**: 85 (v0.6.x — observability + safety)
+**Closes**: Round 19 (2026-04-13 zombie incident on slide-creation goal)
+**Refines**: TD-167 (bypass classifier), TD-181 (hard timeout — symptomatic fix)
+
+### Problem
+Round 19 reproduced a class of failure: the user asked for a slide deck
+("氷川神社のスライドを作って"), and the bypass classifier — a pure-LLM
+intent analyzer — labeled it SIMPLE. The engine then delegated to the
+inner LangGraph runtime, which produced a text answer instead of a file.
+The task hung for 300+ seconds before the hard timeout triggered.
+
+The 2026-04-23 fractal-analyst baseline confirmed the architectural
+cause:
+
+> The bypass decision is made at `fractal_engine.py:296-306`, BEFORE the
+> `OutputRequirementClassifier` is consulted (line 317-327). A goal like
+> "create a slide deck" can be classified SIMPLE by the LLM and bypass
+> fractal planning entirely — the output-requirement gate never fires on
+> the bypass path.
+
+TD-181 added a hard `asyncio.wait_for` timeout — that prevented the
+zombie from running forever, but it did not stop the misclassification.
+The bypass kept firing for the wrong tasks; the user just got a faster
+*wrong* answer.
+
+### Decision
+Hoist `OutputRequirementClassifier.classify()` above the bypass block.
+**Bypass may only fire when `output_requirement == TEXT`** (or when the
+classifier is absent / errored — fail-open to preserve TD-167's latency
+win for legitimate text Q&A).
+
+This makes the output requirement a **hard precondition** on bypass,
+not an after-the-fact check. File / code / data artifacts always take
+the fractal path even when the bypass LLM says SIMPLE.
+
+### Why this is a generic framework improvement
+The fix is not a special case for slides. It is a structural assertion:
+*bypass is a latency optimization for textual Q&A; any goal that
+produces an artifact inherently needs the fractal path's tool execution
++ artifact validation*. The previous code had two LLM classifiers
+running independently; this commit makes the safer one (output
+requirement) gate the riskier one (bypass).
+
+### Per user preference
+"No rule-based heuristics" — both classifiers remain pure LLM. The
+gate is a *composition* of two LLM decisions, not a regex shortcut.
+
+### Changes
+
+1. **`infrastructure/fractal/fractal_engine.py`** — `execute()` reordered:
+   - `goal_output_req` classified first (was: after bypass, only on
+     fractal path)
+   - Bypass block guarded by `bypass_allowed_by_output = goal_output_req
+     in (None, OutputRequirement.TEXT)`
+   - When bypass is skipped due to non-TEXT output, log
+     `"Bypass skipped: output requirement is %s (non-TEXT)"` for
+     observability
+   - The fractal-path duplicate classification block removed (no
+     double LLM call)
+
+2. **Tests** — `TestBypassOutputGate` (6 tests) in
+   `tests/unit/infrastructure/test_fractal_bypass.py`:
+   - `test_file_artifact_blocks_bypass` (Round 19 regression — pinned
+     with the original Japanese goal)
+   - `test_code_artifact_blocks_bypass`
+   - `test_data_artifact_blocks_bypass`
+   - `test_text_requirement_allows_bypass` (TD-167 latency win
+     preserved)
+   - `test_no_output_classifier_preserves_legacy_bypass` (engine
+     still works without output_classifier wired)
+   - `test_output_classifier_error_does_not_block_bypass` (fail-open
+     on classifier error so a flaky LLM doesn't permanently disable
+     the latency optimization)
+
+### Fail-open rationale (classifier error)
+If the output classifier raises, `goal_output_req` stays `None` and the
+bypass gate evaluates `None in (None, TEXT)` → True → bypass proceeds.
+This is intentional: a transient LLM error must not permanently degrade
+performance for the most common case (text Q&A). The bypass classifier
+itself has a "default to no bypass" safe-fail (TD-167), so the worst
+case is that one path is unavailable and the other catches the
+misclassification.
+
+### Acceptance
+- Round 19 Japanese goal is pinned by `test_file_artifact_blocks_bypass`.
+- Existing TD-167 happy paths (`test_text_requirement_allows_bypass`,
+  `test_no_output_classifier_preserves_legacy_bypass`) still bypass.
+- Full suite: 3,158 unit pass (+6), ruff clean.
+
+### Out of scope (next sprint)
+- Live Round 20: rerun the original "氷川神社" goal end-to-end with this
+  fix and verify a real PPTX file lands on disk.
+- Bypass classifier could be told about output requirement in its prompt
+  to reduce wasted LLM calls — small cost win, not a correctness fix.

@@ -292,8 +292,27 @@ class FractalTaskEngine(TaskEngine):
         # TD-175: Apply per-execution concurrency/throttle overrides
         self._apply_execution_overrides()
 
-        # TD-167: SIMPLE task bypass — LLM intent analysis
-        if self._bypass_classifier is not None:
+        # TD-191: Classify output requirement BEFORE bypass so non-text goals
+        # (file/code/data artifacts) cannot be short-circuited by a bypass
+        # misclassification — Round 19 root-cause fix.
+        goal_output_req: OutputRequirement | None = None
+        if self._output_classifier is not None:
+            try:
+                goal_output_req = await self._output_classifier.classify(task.goal)
+                logger.info(
+                    "Output requirement for goal: %s", goal_output_req.value
+                )
+            except Exception:
+                logger.warning(
+                    "Output requirement classification failed — skipping",
+                    exc_info=True,
+                )
+
+        # TD-167 + TD-191: SIMPLE task bypass — LLM intent analysis,
+        # gated to TEXT-only outputs. Artifact-producing goals always take
+        # the fractal path even when the bypass classifier says SIMPLE.
+        bypass_allowed_by_output = goal_output_req in (None, OutputRequirement.TEXT)
+        if self._bypass_classifier is not None and bypass_allowed_by_output:
             try:
                 decision = await self._bypass_classifier.should_bypass(task.goal)
                 logger.info(
@@ -309,23 +328,13 @@ class FractalTaskEngine(TaskEngine):
                     "Bypass classification error — falling through to fractal",
                     exc_info=True,
                 )
+        elif self._bypass_classifier is not None:
+            logger.info(
+                "Bypass skipped: output requirement is %s (non-TEXT)",
+                goal_output_req.value if goal_output_req else "unknown",
+            )
 
         try:
-            # Classify output requirement for the top-level goal so Gate ②
-            # can check whether the right kind of output was produced.
-            goal_output_req: OutputRequirement | None = None
-            if self._output_classifier is not None:
-                try:
-                    goal_output_req = await self._output_classifier.classify(task.goal)
-                    logger.info(
-                        "Output requirement for goal: %s", goal_output_req.value
-                    )
-                except Exception:
-                    logger.warning(
-                        "Output requirement classification failed — skipping",
-                        exc_info=True,
-                    )
-
             plan = await self._generate_approved_plan(task.goal, nesting_level=0)
 
             # Propagate output requirement to all terminal visible nodes

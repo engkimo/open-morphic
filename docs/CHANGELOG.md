@@ -1,7 +1,8 @@
 # CLAUDE.md Changelog
 
-## v0.6.0 → v0.6.1 (2026-04-24) — **Observability**
+## v0.6.0 → v0.6.1 (2026-04-24) — **Observability + Round 19 fix**
 
+- **[SAFETY/TD-191]** Bypass classifier の前に `OutputRequirementClassifier` を移動し、bypass 発火条件に `output_requirement == TEXT` を追加。**結果: file/code/data 出力要求のあるタスク (Round 19 のスライド作成等) が SIMPLE 誤分類で短絡される経路を architectural に閉鎖。** TD-181 (hard timeout, 症状治療) → TD-191 (root cause). Round 19 の元の日本語ゴールを regression test として固定 (6 新テスト). Fail-open: classifier error 時は bypass を許可 (TEXT Q&A の latency 維持)
 - **[OBSERVABILITY/TD-188]** Cache-read tokens を LLM 応答 → CostRecord に通す配線を完成。`LLMResponse.cached_tokens` 追加、LiteLLMGateway が `usage.prompt_tokens_details.cached_tokens` (OpenAI/normalized) と `usage.cache_read_input_tokens` (Anthropic raw) の両方から抽出、CostTracker のハードコード `0` を撤廃。**結果: 安定 prefix 設計の効果が初めて DB に記録されるようになった** (cache_hit_rate 集計は次スプリント)
 
 ---
