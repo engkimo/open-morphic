@@ -6,8 +6,8 @@ Plan: `specs/council-pilot/plan.md` §Infrastructure impls.
 
 from __future__ import annotations
 
-from domain.entities.council import DebateEvent
 from domain.ports.event_bus import EventBusPort
+from domain.value_objects.council_events import DebateEvent
 
 
 class InMemoryEventBus(EventBusPort):

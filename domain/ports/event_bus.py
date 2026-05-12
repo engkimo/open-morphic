@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from domain.entities.council import DebateEvent
+from domain.value_objects.council_events import DebateEvent
 
 
 class EventBusPort(ABC):
