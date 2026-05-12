@@ -124,6 +124,16 @@ class TestDoctorCheck:
         result = runner.invoke(app, ["doctor", "check"])
         assert "OpenHands" in result.output
 
+    def test_missing_optional_clis_do_not_fail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """CI envs without claude/gemini/codex binaries should still exit 0."""
+        from interface.cli.commands import doctor as doctor_mod
+
+        monkeypatch.setattr(doctor_mod.shutil, "which", lambda _b: None)
+        result = runner.invoke(app, ["doctor", "check"])
+        assert result.exit_code == 0
+        assert "WARN" in result.output
+        assert "optional" in result.output
+
 
 # ── Docker check unit tests ──
 
