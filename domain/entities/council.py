@@ -1,22 +1,17 @@
-"""Council entities — debate primitives + publish-only event vocabulary.
+"""Council entities — debate primitives.
+
+`Argument` and `SubtaskBrief` are the domain inputs/outputs of a council
+debate. The event vocabulary (`DebateEvent` discriminated union) lives in
+`domain/value_objects/council_events.py` since events are immutable
+value objects with no identity beyond their data.
 
 Spec: `specs/council-pilot/spec.md` (FR-3, FR-4).
-Plan: `specs/council-pilot/plan.md` §Data Model.
-
-The `DebateEvent` discriminated union is the contract that the next sprint's
-SSE/WebSocket renderer subscribes to. The `Decision` entity is reused
-unchanged from `domain/entities/cognitive.py` (FR-4).
 """
 
 from __future__ import annotations
 
-import uuid
-from datetime import datetime
-from typing import Annotated, Literal
+from pydantic import BaseModel, Field
 
-from pydantic import BaseModel, Field, TypeAdapter
-
-from domain.entities.cognitive import Decision
 from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.model_tier import TaskType
 
@@ -37,41 +32,3 @@ class SubtaskBrief(BaseModel):
     id: str = Field(min_length=1)
     description: str = Field(min_length=1)
     task_type: TaskType
-
-
-class _BaseEvent(BaseModel):
-    debate_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-
-
-class DebateStarted(_BaseEvent):
-    kind: Literal["debate_started"] = "debate_started"
-    subtask: SubtaskBrief
-    candidates: list[AgentEngineType]
-    started_at: datetime = Field(default_factory=datetime.now)
-
-
-class ArgumentSubmitted(_BaseEvent):
-    kind: Literal["argument_submitted"] = "argument_submitted"
-    argument: Argument
-    submitted_at: datetime = Field(default_factory=datetime.now)
-
-
-class DecisionResolved(_BaseEvent):
-    kind: Literal["decision_resolved"] = "decision_resolved"
-    decision: Decision
-    arguments: list[Argument]
-    resolved_at: datetime = Field(default_factory=datetime.now)
-
-
-class DebateAbandoned(_BaseEvent):
-    kind: Literal["debate_abandoned"] = "debate_abandoned"
-    reason: str = Field(min_length=1)
-    abandoned_at: datetime = Field(default_factory=datetime.now)
-
-
-DebateEvent = Annotated[
-    DebateStarted | ArgumentSubmitted | DecisionResolved | DebateAbandoned,
-    Field(discriminator="kind"),
-]
-
-DebateEventAdapter: TypeAdapter[DebateEvent] = TypeAdapter(DebateEvent)
