@@ -442,7 +442,7 @@
     with a body that links `specs/council-pilot/spec.md` and `specs/council-pilot/plan.md`.
   - **Done when:** PR URL is captured and the PR body contains both spec/plan links.
 
-- [ ] **T-32** — Post-merge: delete feature branch.
+- [x] **T-32** — Post-merge: delete feature branch.
   - Commands: `git switch main && git pull && git branch -d feature/council-pilot`
   - **Done when:** `git branch --list feature/council-pilot` is empty.
 
