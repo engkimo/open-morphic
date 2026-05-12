@@ -5,15 +5,14 @@ from __future__ import annotations
 import pytest
 
 from domain.entities.cognitive import Decision
-from domain.entities.council import (
-    Argument,
+from domain.entities.council import Argument, SubtaskBrief
+from domain.value_objects.agent_engine import AgentEngineType
+from domain.value_objects.council_events import (
     ArgumentSubmitted,
     DebateAbandoned,
     DebateStarted,
     DecisionResolved,
-    SubtaskBrief,
 )
-from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.model_tier import TaskType
 from tests.unit.application._fakes.fake_council_debate import FakeCouncilDebate
 from tests.unit.application._fakes.in_memory_event_bus import FakeEventBus

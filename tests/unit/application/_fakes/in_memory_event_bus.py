@@ -8,8 +8,8 @@ grow features the unit tests do not care about).
 
 from __future__ import annotations
 
-from domain.entities.council import DebateEvent
 from domain.ports.event_bus import EventBusPort
+from domain.value_objects.council_events import DebateEvent
 
 
 class FakeEventBus(EventBusPort):

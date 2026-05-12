@@ -22,12 +22,9 @@ import time
 import pytest
 
 from application.use_cases.run_council_debate import RunCouncilDebateUseCase  # noqa: E402
-from domain.entities.council import (
-    DebateStarted,
-    DecisionResolved,
-    SubtaskBrief,
-)
+from domain.entities.council import SubtaskBrief
 from domain.value_objects.agent_engine import AgentEngineType
+from domain.value_objects.council_events import DebateStarted, DecisionResolved
 from domain.value_objects.model_tier import TaskType
 from infrastructure.council.two_engine_debate import TwoEngineDebate
 from infrastructure.events.in_memory_event_bus import InMemoryEventBus

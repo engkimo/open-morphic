@@ -14,16 +14,16 @@ import logging
 import uuid
 
 from domain.entities.cognitive import Decision
-from domain.entities.council import (
+from domain.entities.council import SubtaskBrief
+from domain.ports.council_debate import CouncilDebatePort
+from domain.ports.event_bus import EventBusPort
+from domain.value_objects.agent_engine import AgentEngineType
+from domain.value_objects.council_events import (
     ArgumentSubmitted,
     DebateAbandoned,
     DebateStarted,
     DecisionResolved,
-    SubtaskBrief,
 )
-from domain.ports.council_debate import CouncilDebatePort
-from domain.ports.event_bus import EventBusPort
-from domain.value_objects.agent_engine import AgentEngineType
 
 logger = logging.getLogger(__name__)
 
