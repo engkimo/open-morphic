@@ -64,7 +64,7 @@ class RunCouncilDebateUseCase:
                 self._debate_port.debate(subtask, candidates),
                 timeout=self._timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await self._event_bus.publish(
                 DebateAbandoned(debate_id=debate_id, reason="timeout")
             )
