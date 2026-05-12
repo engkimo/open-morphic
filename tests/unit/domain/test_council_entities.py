@@ -9,13 +9,9 @@ import pytest
 from pydantic import ValidationError
 
 from domain.entities.cognitive import Decision
-from domain.entities.council import (
-    Argument,
-    DebateStarted,
-    DecisionResolved,
-    SubtaskBrief,
-)
+from domain.entities.council import Argument, SubtaskBrief
 from domain.value_objects.agent_engine import AgentEngineType
+from domain.value_objects.council_events import DebateStarted, DecisionResolved
 from domain.value_objects.model_tier import TaskType
 
 
@@ -50,7 +46,7 @@ def test_debate_event_discriminator() -> None:
     resolved = DecisionResolved(decision=decision, arguments=arguments)
     payload = resolved.model_dump_json()
 
-    from domain.entities.council import DebateEventAdapter
+    from domain.value_objects.council_events import DebateEventAdapter
 
     parsed = DebateEventAdapter.validate_json(payload)
     assert isinstance(parsed, DecisionResolved)
