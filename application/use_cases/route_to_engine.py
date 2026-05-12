@@ -17,9 +17,11 @@ from dataclasses import dataclass
 from application.use_cases.run_council_debate import RunCouncilDebateUseCase
 from domain.entities.cognitive import AgentAction, Decision
 from domain.entities.council import SubtaskBrief
+from domain.ports.agent_affinity_repository import AgentAffinityRepository
 from domain.ports.agent_engine import AgentEngineCapabilities, AgentEnginePort, AgentEngineResult
 from domain.ports.context_adapter import ContextAdapterPort
 from domain.ports.engine_cost_recorder import EngineCostRecorderPort
+from domain.ports.shared_task_state_repository import SharedTaskStateRepository
 from domain.services.agent_engine_router import AgentEngineRouter
 from domain.services.topic_extractor import TopicExtractor
 from domain.value_objects.agent_engine import AgentEngineType
@@ -27,10 +29,6 @@ from domain.value_objects.fallback_attempt import FallbackAttempt
 from domain.value_objects.model_tier import TaskType
 
 logger = logging.getLogger(__name__)
-
-# Lazy imports to avoid circular — these are optional deps
-_AgentAffinityRepository = None
-_SharedTaskStateRepository = None
 
 
 @dataclass
@@ -52,8 +50,8 @@ class RouteToEngineUseCase:
         self,
         drivers: dict[AgentEngineType, AgentEnginePort],
         context_adapters: dict[AgentEngineType, ContextAdapterPort] | None = None,
-        affinity_repo: object | None = None,  # AgentAffinityRepository
-        task_state_repo: object | None = None,  # SharedTaskStateRepository
+        affinity_repo: AgentAffinityRepository | None = None,
+        task_state_repo: SharedTaskStateRepository | None = None,
         affinity_min_samples: int = 3,
         affinity_boost_threshold: float = 0.6,
         cost_tracker: EngineCostRecorderPort | None = None,
@@ -373,11 +371,21 @@ class RouteToEngineUseCase:
         task_id: str | None,
         decision: Decision,
     ) -> None:
-        """Record council Decision to SharedTaskState (FR-10, fire-and-forget)."""
+        """Record council Decision to SharedTaskState (FR-10, fire-and-forget).
+
+        Uses the existing SharedTaskStateRepository port: fetch state,
+        append the decision via the entity method, then persist with
+        update_decisions. The port has no add_decision(task_id, decision)
+        method — the entity owns that mutation.
+        """
         if task_id is None or self._task_state_repo is None:
             return
         try:
-            await self._task_state_repo.add_decision(task_id, decision)  # type: ignore[union-attr]
+            state = await self._task_state_repo.get(task_id)
+            if state is None:
+                return
+            state.add_decision(decision)
+            await self._task_state_repo.update_decisions(state)
         except Exception:
             logger.debug("Failed to record council decision for task=%s", task_id)
 
@@ -397,7 +405,7 @@ class RouteToEngineUseCase:
         if task_id and self._context_adapters and self._task_state_repo:
             adapter = self._context_adapters.get(engine_type)
             if adapter:
-                state = await self._task_state_repo.get(task_id)  # type: ignore[union-attr]
+                state = await self._task_state_repo.get(task_id)
                 if state is not None:
                     memory_ctx = context or ""
                     injected = adapter.inject_context(
@@ -416,7 +424,7 @@ class RouteToEngineUseCase:
         if self._affinity_repo is None:
             return []
         try:
-            return await self._affinity_repo.get_by_topic(topic)  # type: ignore[union-attr]
+            return await self._affinity_repo.get_by_topic(topic)
         except Exception:
             logger.debug("Failed to fetch affinities for topic=%s", topic)
             return []
@@ -458,7 +466,7 @@ class RouteToEngineUseCase:
         try:
             from domain.entities.cognitive import AgentAffinityScore
 
-            existing = await self._affinity_repo.get(engine_type, topic)  # type: ignore[union-attr]
+            existing = await self._affinity_repo.get(engine_type, topic)
             if existing is not None:
                 # Incremental update
                 new_count = existing.sample_count + 1
@@ -485,7 +493,7 @@ class RouteToEngineUseCase:
                     cost_efficiency=0.5,
                     sample_count=1,
                 )
-            await self._affinity_repo.upsert(updated)  # type: ignore[union-attr]
+            await self._affinity_repo.upsert(updated)
         except Exception:
             logger.debug("Failed to update affinity for %s/%s", engine_type.value, topic)
 
@@ -507,7 +515,7 @@ class RouteToEngineUseCase:
                 cost_usd=result.cost_usd,
                 duration_seconds=duration,
             )
-            await self._task_state_repo.append_action(task_id, action)  # type: ignore[union-attr]
+            await self._task_state_repo.append_action(task_id, action)
         except Exception:
             logger.debug("Failed to record action for task=%s", task_id)
 
