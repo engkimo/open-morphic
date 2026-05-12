@@ -48,11 +48,11 @@ def test_debate_event_discriminator() -> None:
     )
     arguments = [_make_argument(), _make_argument()]
     resolved = DecisionResolved(decision=decision, arguments=arguments)
-    payload = resolved.model_dump(mode="json")
+    payload = resolved.model_dump_json()
 
     from domain.entities.council import DebateEventAdapter
 
-    parsed = DebateEventAdapter.validate_python(payload)
+    parsed = DebateEventAdapter.validate_json(payload)
     assert isinstance(parsed, DecisionResolved)
     assert parsed.decision.agent_engine is AgentEngineType.OLLAMA
 
