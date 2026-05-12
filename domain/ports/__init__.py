@@ -14,8 +14,10 @@ from domain.ports.agent_engine import (
 from domain.ports.agent_registry import AgentRegistryPort
 from domain.ports.audit_logger import AuditLogger
 from domain.ports.cost_repository import CostRepository
+from domain.ports.council_debate import CouncilDebatePort
 from domain.ports.embedding import EmbeddingPort
 from domain.ports.engine_cost_recorder import EngineCostRecorderPort
+from domain.ports.event_bus import EventBusPort
 from domain.ports.execution_record_repository import (
     ExecutionRecordRepository,
     ExecutionStats,
@@ -45,8 +47,10 @@ __all__ = [
     "AgentEngineResult",
     "AuditLogger",
     "CostRepository",
+    "CouncilDebatePort",
     "EmbeddingPort",
     "EngineCostRecorderPort",
+    "EventBusPort",
     "ExecutionRecordRepository",
     "ExecutionStats",
     "FractalLearningRepository",
