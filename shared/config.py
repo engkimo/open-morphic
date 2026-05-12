@@ -9,6 +9,7 @@ from __future__ import annotations
 from enum import Enum
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -156,6 +157,13 @@ class Settings(BaseSettings):
     # ── Affinity ──
     affinity_min_samples: int = 3
     affinity_boost_threshold: float = 0.6
+
+    # ── Council pilot (TD-194) ──
+    council_debate_enabled: bool = Field(default=False, validation_alias="MORPHIC_COUNCIL_DEBATE")
+    council_resolver_model: str = Field(
+        default="gemini/gemini-2.5-flash",
+        validation_alias="MORPHIC_COUNCIL_RESOLVER_MODEL",
+    )
 
     # ── Evolution ──
     evolution_enabled: bool = True

@@ -91,6 +91,9 @@ class _FakeSettings:
     discussion_adaptive = False
     discussion_convergence_threshold = 0.85
     discussion_min_rounds = 1
+    # Council pilot (TD-194)
+    council_debate_enabled = False
+    council_resolver_model = "gemini/gemini-2.5-flash"
 
     @property
     def marketplace_safety_threshold_tier(self):  # type: ignore[no-untyped-def]

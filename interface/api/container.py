@@ -217,6 +217,21 @@ class AppContainer:
         # Affinity store (Sprint 7.4)
         self.affinity_repo: AgentAffinityRepository = self._create_affinity_repo()
 
+        # Council pilot (TD-194): default-off; constructed always so flag flip is no-op risk.
+        from application.use_cases.run_council_debate import RunCouncilDebateUseCase
+        from infrastructure.council.two_engine_debate import TwoEngineDebate
+        from infrastructure.events.in_memory_event_bus import InMemoryEventBus
+
+        self.council_event_bus = InMemoryEventBus()
+        self.council_debate = TwoEngineDebate(
+            llm_gateway=self.llm,
+            resolver_model=self.settings.council_resolver_model,
+        )
+        self.run_council_debate = RunCouncilDebateUseCase(
+            debate_port=self.council_debate,
+            event_bus=self.council_event_bus,
+        )
+
         # Engine routing use case (Sprint 4.3, enhanced Sprint 7.4, BUG-002/003 Sprint 23.1)
         self.route_to_engine = RouteToEngineUseCase(
             drivers=self.agent_drivers,
@@ -226,6 +241,8 @@ class AppContainer:
             affinity_min_samples=self.settings.affinity_min_samples,
             affinity_boost_threshold=self.settings.affinity_boost_threshold,
             cost_tracker=self.cost_tracker,
+            run_council_debate=self.run_council_debate,
+            council_enabled=self.settings.council_debate_enabled,
         )
 
         # Sprint 12.2: Wire RouteToEngineUseCase into task engine

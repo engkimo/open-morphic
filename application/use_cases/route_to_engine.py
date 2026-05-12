@@ -14,7 +14,9 @@ import logging
 import time
 from dataclasses import dataclass
 
-from domain.entities.cognitive import AgentAction
+from application.use_cases.run_council_debate import RunCouncilDebateUseCase
+from domain.entities.cognitive import AgentAction, Decision
+from domain.entities.council import SubtaskBrief
 from domain.ports.agent_engine import AgentEngineCapabilities, AgentEnginePort, AgentEngineResult
 from domain.ports.context_adapter import ContextAdapterPort
 from domain.ports.engine_cost_recorder import EngineCostRecorderPort
@@ -55,6 +57,8 @@ class RouteToEngineUseCase:
         affinity_min_samples: int = 3,
         affinity_boost_threshold: float = 0.6,
         cost_tracker: EngineCostRecorderPort | None = None,
+        run_council_debate: RunCouncilDebateUseCase | None = None,
+        council_enabled: bool = False,
     ) -> None:
         self._drivers = drivers
         self._context_adapters = context_adapters
@@ -63,6 +67,8 @@ class RouteToEngineUseCase:
         self._affinity_min_samples = affinity_min_samples
         self._affinity_boost_threshold = affinity_boost_threshold
         self._cost_tracker = cost_tracker
+        self._run_council_debate = run_council_debate
+        self._council_enabled = council_enabled
 
     async def list_engines(self) -> list[EngineStatus]:
         """Return all registered engines with current availability."""
@@ -129,6 +135,8 @@ class RouteToEngineUseCase:
             context_tokens=context_tokens,
             preferred_engine=preferred_engine,
             topic=topic,
+            task=task,
+            task_id=task_id,
         )
 
         engines_tried = [e.value for e in chain]
@@ -272,8 +280,60 @@ class RouteToEngineUseCase:
         context_tokens: int,
         preferred_engine: AgentEngineType | None,
         topic: str = "general",
+        task: str = "",
+        task_id: str | None = None,
     ) -> list[AgentEngineType]:
-        """Build ordered engine chain. Preferred engine goes first if set."""
+        """Build ordered engine chain. Preferred engine goes first if set.
+
+        When the council pilot flag is enabled and no preferred engine is forced,
+        a 2-engine debate may promote one candidate to the head of the chain.
+        """
+        base_chain = await self._build_base_chain(
+            task_type=task_type,
+            budget=budget,
+            estimated_hours=estimated_hours,
+            context_tokens=context_tokens,
+            preferred_engine=preferred_engine,
+            topic=topic,
+        )
+
+        if (
+            self._council_enabled
+            and self._run_council_debate is not None
+            and preferred_engine is None
+            and len(base_chain) >= 2
+        ):
+            top_two = [e for e in base_chain if e != AgentEngineType.OLLAMA][:2]
+            if len(top_two) == 2:
+                brief = SubtaskBrief(
+                    id=task_id or "anonymous",
+                    description=task,
+                    task_type=task_type,
+                )
+                decision = await self._run_council_debate.execute(brief, top_two)
+                if decision is not None:
+                    new_chain: list[AgentEngineType] = [decision.agent_engine]
+                    for engine in base_chain:
+                        if engine not in new_chain:
+                            new_chain.append(engine)
+                    if AgentEngineType.OLLAMA in new_chain:
+                        new_chain.remove(AgentEngineType.OLLAMA)
+                    new_chain.append(AgentEngineType.OLLAMA)
+                    await self._record_council_decision(task_id, decision)
+                    return new_chain
+
+        return base_chain
+
+    async def _build_base_chain(
+        self,
+        task_type: TaskType,
+        budget: float,
+        estimated_hours: float,
+        context_tokens: int,
+        preferred_engine: AgentEngineType | None,
+        topic: str,
+    ) -> list[AgentEngineType]:
+        """Deterministic chain builder — preferred / affinity / router fallback."""
         if preferred_engine is not None:
             # Start with preferred, then add router fallbacks (deduped)
             chain = [preferred_engine]
@@ -307,6 +367,19 @@ class RouteToEngineUseCase:
             estimated_hours=estimated_hours,
             context_tokens=context_tokens,
         )
+
+    async def _record_council_decision(
+        self,
+        task_id: str | None,
+        decision: Decision,
+    ) -> None:
+        """Record council Decision to SharedTaskState (FR-10, fire-and-forget)."""
+        if task_id is None or self._task_state_repo is None:
+            return
+        try:
+            await self._task_state_repo.add_decision(task_id, decision)  # type: ignore[union-attr]
+        except Exception:
+            logger.debug("Failed to record council decision for task=%s", task_id)
 
     async def _build_effective_task(
         self,

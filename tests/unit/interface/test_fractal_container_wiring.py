@@ -91,6 +91,9 @@ class _FakeSettings:
     fractal_max_execution_seconds = 180
     anthropic_api_key = ""
     openai_api_key = ""
+    # Council pilot (TD-194)
+    council_debate_enabled = False
+    council_resolver_model = "gemini/gemini-2.5-flash"
 
     @property
     def marketplace_safety_threshold_tier(self):  # type: ignore[no-untyped-def]
