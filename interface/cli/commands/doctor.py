@@ -63,7 +63,7 @@ def _check_cli_binary(name: str, binary: str) -> _Check:
     path = shutil.which(binary)
     if path:
         return _Check(name, "OK", f"Found at {path}")
-    return _Check(name, "FAIL", f"'{binary}' not found in PATH")
+    return _Check(name, "WARN", f"'{binary}' not found in PATH (optional)")
 
 
 def _check_api_keys(container) -> list[_Check]:  # type: ignore[type-arg]
