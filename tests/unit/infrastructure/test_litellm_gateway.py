@@ -347,6 +347,116 @@ class TestCacheTokens:
         assert result.cached is True
 
 
+class TestAnthropicCacheControl:
+    """TD-193 — Anthropic prompt caching only activates when (a) cache_control
+    survives end-to-end and (b) the cached portion meets the provider minimum.
+
+    LiteLLM 1.81 silently strips ``cache_control`` from ``role: "system"``
+    content blocks inside ``messages``, but it correctly forwards a top-level
+    ``system=[{type, text, cache_control}]`` kwarg as Anthropic's native
+    ``system`` parameter. The gateway lifts the system message out for Claude
+    models so the marker reaches Anthropic.
+    """
+
+    @pytest.fixture
+    def claude_gateway(self, ollama: AsyncMock, cost_tracker: AsyncMock) -> LiteLLMGateway:
+        s = Settings(
+            local_first=False,
+            anthropic_api_key="sk-test",
+            openai_api_key="",
+            google_gemini_api_key="",
+            ollama_default_model="qwen3:8b",
+        )
+        return LiteLLMGateway(ollama, cost_tracker, s)
+
+    async def test_claude_system_lifted_to_kwarg_with_cache_control(
+        self, claude_gateway: LiteLLMGateway
+    ) -> None:
+        with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
+            mock_litellm.acompletion = AsyncMock(return_value=_mock_litellm_response(cost=0.001))
+            await claude_gateway.complete(
+                messages=[
+                    {"role": "system", "content": "Stable prefix"},
+                    {"role": "user", "content": "go"},
+                ],
+                model="claude-haiku-4-5-20251001",
+            )
+        call_kwargs = mock_litellm.acompletion.call_args[1]
+        # System must arrive as Anthropic-native top-level kwarg with cache_control
+        assert call_kwargs["system"] == [
+            {
+                "type": "text",
+                "text": "Stable prefix",
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+        # And the messages list must NOT contain a system message anymore
+        assert call_kwargs["messages"] == [{"role": "user", "content": "go"}]
+
+    async def test_ollama_messages_unchanged_no_system_kwarg(
+        self, gateway: LiteLLMGateway
+    ) -> None:
+        with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
+            mock_litellm.acompletion = AsyncMock(return_value=_mock_litellm_response())
+            await gateway.complete(
+                messages=[
+                    {"role": "system", "content": "Stable prefix"},
+                    {"role": "user", "content": "go"},
+                ],
+                model="ollama/qwen3:8b",
+            )
+        call_kwargs = mock_litellm.acompletion.call_args[1]
+        assert "system" not in call_kwargs
+        assert call_kwargs["messages"][0]["content"] == "Stable prefix"
+
+    async def test_caller_messages_not_mutated(
+        self, claude_gateway: LiteLLMGateway
+    ) -> None:
+        original = [
+            {"role": "system", "content": "Stable prefix"},
+            {"role": "user", "content": "go"},
+        ]
+        with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
+            mock_litellm.acompletion = AsyncMock(return_value=_mock_litellm_response(cost=0.001))
+            await claude_gateway.complete(
+                messages=original, model="claude-haiku-4-5-20251001"
+            )
+        assert len(original) == 2
+        assert original[0] == {"role": "system", "content": "Stable prefix"}
+
+    async def test_claude_without_system_message_no_op(
+        self, claude_gateway: LiteLLMGateway
+    ) -> None:
+        with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
+            mock_litellm.acompletion = AsyncMock(return_value=_mock_litellm_response(cost=0.001))
+            await claude_gateway.complete(
+                messages=[{"role": "user", "content": "hi"}],
+                model="claude-haiku-4-5-20251001",
+            )
+        call_kwargs = mock_litellm.acompletion.call_args[1]
+        assert "system" not in call_kwargs
+        assert call_kwargs["messages"] == [{"role": "user", "content": "hi"}]
+
+    async def test_claude_with_tools_also_lifts_system(
+        self, claude_gateway: LiteLLMGateway
+    ) -> None:
+        with patch("infrastructure.llm.litellm_gateway.litellm") as mock_litellm:
+            resp = _mock_litellm_response(cost=0.001)
+            resp.choices[0].message.tool_calls = []
+            mock_litellm.acompletion = AsyncMock(return_value=resp)
+            await claude_gateway.complete_with_tools(
+                messages=[
+                    {"role": "system", "content": "Stable prefix"},
+                    {"role": "user", "content": "go"},
+                ],
+                tools=[{"type": "function", "function": {"name": "x"}}],
+                model="claude-haiku-4-5-20251001",
+            )
+        call_kwargs = mock_litellm.acompletion.call_args[1]
+        assert call_kwargs["system"][0]["cache_control"] == {"type": "ephemeral"}
+        assert call_kwargs["messages"] == [{"role": "user", "content": "go"}]
+
+
 class TestIsAvailable:
     async def test_ollama_available_when_running_and_installed(
         self, gateway: LiteLLMGateway, ollama: AsyncMock

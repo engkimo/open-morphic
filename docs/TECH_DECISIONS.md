@@ -7932,3 +7932,87 @@ per-request data per Manus 5原則. Simpler design wins.
   in place. Requires a multi-call workload to amortize cold-start.
 - Aggregate `cache_hit_rate` per task on `ExecutionRecord` — needs the
   CostRecord ↔ task_id link (deferred to TD-189-ish).
+
+
+---
+
+## TD-193: Live cache_hit_rate measurement + Anthropic prompt-cache wiring
+
+**Date**: 2026-05-12
+**Status**: Accepted
+**Sprint**: 87 (v0.6.x — observability + safety)
+**Builds on**: TD-188 (cached_tokens propagation), TD-190 (stable system prefix)
+
+### Problem
+TD-188 wired `cached_tokens` end-to-end and TD-190 made `LLMPlanner._SYSTEM_PROMPT` byte-stable, but the recorded `cache_hit_rate` was still always 0. Two latent issues blocked actual cache hits:
+
+1. **No `cache_control` marker.** Anthropic prompt caching is opt-in: a request must include `cache_control: {"type": "ephemeral"}` on the content block whose prefix should be cached. `LiteLLMGateway` was sending neither.
+2. **LiteLLM 1.81 silently strips `cache_control` from `role: "system"` content blocks** when the system message is included in `messages`. The marker is dropped before the request leaves the gateway, so even a correctly-shaped message has no effect.
+
+Measurement consequence: `cached_tokens = 0` for every Claude call, regardless of how stable the prefix actually was.
+
+### Decision
+1. Lift the system message into Anthropic's **top-level `system=` kwarg** instead of leaving it inside `messages`. LiteLLM forwards this kwarg to Anthropic verbatim, including a `cache_control` marker.
+2. Add `_maybe_extract_anthropic_system(model, messages)` helper in `infrastructure/llm/litellm_gateway.py`: for Claude models with a string system message, returns `(messages_without_system, [{type, text, cache_control: ephemeral}])`; for everything else, returns the original list and `None`.
+3. Wire into both `complete()` and `complete_with_tools()`. Caller `messages` list is never mutated.
+4. Add a live measurement script `benchmarks/cache_hit_rate.py` that builds a real `LLMPlanner → LiteLLMGateway → InMemoryCostRepository` chain, calls `generate_candidates` N times against a real Anthropic model, and prints per-call cached/total/cost plus aggregate `cache_hit_rate`.
+
+### Why not cache_control on a user content block?
+That works for ad-hoc workloads but inverts the architecture: per-request user data would become the cache prefix, defeating Manus 5原則 stable-prefix design (TD-190). System kwarg keeps system/user roles correct AND caches.
+
+### Why not pin LiteLLM to a version that does not strip the marker?
+The top-level kwarg path is the **documented contract** with both LiteLLM and Anthropic. Relying on the (broken) message-content path would break again on the next LiteLLM upgrade.
+
+### Empirical findings (2026-05-12)
+Differential testing isolated each layer:
+
+| Path | Result |
+| --- | --- |
+| Raw Anthropic SDK, system=[{...,cache_control}] | cc=3003, cr=3003 ✓ |
+| LiteLLM acompletion, messages=[{role:system, content:[{...,cache_control}]}] | cc=0, cr=0 ✗ (marker stripped) |
+| LiteLLM acompletion, system=[{...,cache_control}] kwarg | cc=3003, cr=3003 ✓ |
+| Gateway via new helper (claude-sonnet-4-6, padded prompt) | cc=8324, cr=8324 ✓ |
+
+**Cache minimum is empirically ~2048 tokens for Claude 4 Sonnet** (not the 1024 advertised in older docs). Threshold sweep:
+
+| Prompt tokens | Cache creation |
+| --- | --- |
+| 1010 | 0 |
+| 1510 | 0 |
+| 2010 | 0 |
+| 2503 | 2503 ✓ |
+
+**Claude Haiku 4.5 did not cache at 3009 tokens** — minimum is higher than Sonnet, or caching is not yet enabled for that model on this account tier. Recorded as a follow-up risk.
+
+### Baseline (claude-sonnet-4-6, 5 calls, --verify-wiring pad to 8376 prompt tokens)
+```
+  #   prompt   cached  completion   cost_usd  hit
+--------------------------------------------------------
+  1     8376        0         623  $0.04072  no
+  2     8376     8324         619  $0.01197  YES
+  3     8376     8324         492  $0.01007  YES
+  4     8376     8324         602  $0.01172  YES
+  5     8376     8324         633  $0.01218  YES
+--------------------------------------------------------
+cache_hit_rate = 0.795  (33296/41880 cached tokens)
+total_cost     = $0.08667
+```
+
+Observed cost reduction on cache-hit calls: ~70 percent per call ($0.0407 → ~$0.012). With production prompts that exceed the 2048-token minimum naturally, this carries over without padding.
+
+### Files touched
+| File | Change |
+| --- | --- |
+| `infrastructure/llm/litellm_gateway.py` | New `_maybe_extract_anthropic_system`; both completion paths pass `system=` kwarg with cache_control |
+| `tests/unit/infrastructure/test_litellm_gateway.py` | New `TestAnthropicCacheControl` (5 tests) |
+| `benchmarks/cache_hit_rate.py` | New script + `--verify-wiring` pads `_SYSTEM_PROMPT` past Anthropic minimum |
+
+### Acceptance
+- Gateway suite: 37/37 pass (32 prior + 5 new TestAnthropicCacheControl).
+- Live benchmark: `cache_hit_rate=0.795` against real Anthropic API, cost-reduction visible.
+- Stable-prefix wiring (TD-190) verified to actually work end-to-end — was not measurable before this sprint.
+
+### Out of scope (later)
+- ExecutionRecord per-task `cache_hit_rate` aggregation — needs CostRecord ↔ task_id link.
+- Re-evaluate Haiku 4.5 cache minimum once Anthropic clarifies (or once we measure with `--verify-wiring` at 4K+ tokens).
+- TD-192 prompt consolidation (fold output_requirement into bypass classifier).

@@ -17,6 +17,39 @@ from shared.config import Settings
 logger = logging.getLogger(__name__)
 
 
+def _maybe_extract_anthropic_system(
+    model: str, messages: list[dict]
+) -> tuple[list[dict], list[dict] | None]:
+    """Split a stable system message off into Anthropic's ``system`` kwarg
+    with a cache_control marker (TD-193).
+
+    Anthropic prompt caching only activates when (a) the cache_control
+    marker is preserved end-to-end and (b) the cached portion is at least
+    the provider minimum (~1024 tokens for Claude 4 Sonnet/Opus, ~2048 for
+    Haiku). LiteLLM 1.81 silently strips ``cache_control`` from
+    ``role: "system"`` content blocks inside ``messages``, but it correctly
+    forwards a top-level ``system=[{type, text, cache_control}]`` kwarg as
+    Anthropic's native ``system`` parameter.
+
+    Returns ``(new_messages, system_blocks_or_None)``. For non-Claude
+    models or missing/empty system messages, returns the original list and
+    ``None`` so the caller passes nothing extra. The caller's ``messages``
+    list is never mutated.
+    """
+    if "claude" not in model or not messages:
+        return messages, None
+    head = messages[0]
+    if head.get("role") != "system":
+        return messages, None
+    text = head.get("content")
+    if not isinstance(text, str) or not text:
+        return messages, None
+    system_blocks = [
+        {"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}
+    ]
+    return list(messages[1:]), system_blocks
+
+
 def _extract_cached_tokens(usage: Any) -> int:
     """Pull cache-read token count out of a LiteLLM usage object.
 
@@ -138,12 +171,17 @@ class LiteLLMGateway(LLMGateway):
             else:
                 logger.warning("Model %s unavailable and no fallback found", resolved)
 
+        msgs_for_call, anthropic_system = _maybe_extract_anthropic_system(
+            resolved, messages
+        )
         kwargs: dict = {
             "model": resolved,
-            "messages": messages,
+            "messages": msgs_for_call,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if anthropic_system is not None:
+            kwargs["system"] = anthropic_system
 
         # O-series models (o3, o4-mini) only support temperature=1
         if resolved.startswith("o3") or resolved.startswith("o4"):
@@ -211,13 +249,18 @@ class LiteLLMGateway(LLMGateway):
             else:
                 logger.warning("Model %s unavailable and no fallback found", resolved)
 
+        msgs_for_call, anthropic_system = _maybe_extract_anthropic_system(
+            resolved, messages
+        )
         kwargs: dict[str, Any] = {
             "model": resolved,
-            "messages": messages,
+            "messages": msgs_for_call,
             "tools": tools,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if anthropic_system is not None:
+            kwargs["system"] = anthropic_system
 
         if resolved.startswith("o3") or resolved.startswith("o4"):
             kwargs.pop("temperature", None)
