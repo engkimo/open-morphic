@@ -8016,3 +8016,12 @@ Observed cost reduction on cache-hit calls: ~70 percent per call ($0.0407 → ~$
 - ExecutionRecord per-task `cache_hit_rate` aggregation — needs CostRecord ↔ task_id link.
 - Re-evaluate Haiku 4.5 cache minimum once Anthropic clarifies (or once we measure with `--verify-wiring` at 4K+ tokens).
 - TD-192 prompt consolidation (fold output_requirement into bypass classifier).
+
+---
+
+## TD-194: Council Pilot — 2-Engine Debate as a Domain Port
+
+**Date:** 2026-05-12
+**Status:** Proposed
+
+Body to be filled on landing — see `specs/council-pilot/`.
