@@ -35,5 +35,4 @@ todo.md
 pgdata/
 neo4jdata/
 
-# uv
-uv.lock
+# uv — lockfile is committed for reproducible builds (CI docker-build needs it)
