@@ -8022,6 +8022,40 @@ Observed cost reduction on cache-hit calls: ~70 percent per call ($0.0407 → ~$
 ## TD-194: Council Pilot — 2-Engine Debate as a Domain Port
 
 **Date:** 2026-05-12
-**Status:** Proposed
+**Status:** Accepted
 
-Body to be filled on landing — see `specs/council-pilot/`.
+**Decision** — Introduce `CouncilDebatePort` + `EventBusPort` in
+`domain/ports/`; reuse the existing `Decision` entity unchanged; resolve via
+an LLM-judge (`gemini/gemini-2.5-flash` by default) instead of a weighted
+vote. Single wiring point at `RouteToEngineUseCase._build_chain` behind the
+`MORPHIC_COUNCIL_DEBATE` feature flag (default off). Pilot scope is fixed at
+exactly 2 candidate engines, single round, no fallback path inside the
+debate adapter.
+
+**Rationale** — Vision constraint #2 (deliberation, not lookup): routing must
+be observably argued, not silently scored. The UX sprint (live-debate panel)
+was blocked on a stable event vocabulary, so freezing
+`DebateStarted` / `ArgumentEmitted` / `DecisionResolved` /
+`DebateAbandoned` first unblocks UI without committing to a particular
+resolver implementation. LLM-judge avoids re-baking the deterministic
+routing table into resolver weights — the judge sees the actual arguments,
+not the prior. Argument order is randomized to mitigate positional bias.
+Default-off flag means production routing is unchanged on merge; the pilot
+is opt-in via a single env var.
+
+**Consequences** — Adds 1 domain port pair, 1 use case, and 2 infrastructure
+adapters (`TwoEngineDebate`, `InMemoryEventBus`). Cost is bounded:
+2 argument calls + 1 judge call per debate, behind a flag, with a 15 s
+total timeout; live integration test asserts < $0.02 / debate. KV-cache
+discipline maintained: argument and resolver system prompts are
+module-level constants. Domain stays framework-free (port ABCs only);
+`infrastructure/council/` imports nothing from `application/` or
+`interface/`. The `Decision` entity is touched **zero** lines, preserving
+backward compatibility for all existing routing consumers.
+
+**Follow-ups** — (1) Wire UI to consume the `DebateEvent` stream from
+`InMemoryEventBus` (separate sprint); (2) replace InMemory bus with a
+durable adapter once event volume warrants it; (3) measure flag-on cost +
+latency in shadow mode before defaulting on; (4) consider extending to
+3-engine debates once the 2-engine pilot is validated against the
+`live_debate_ux` vision memory.
