@@ -82,6 +82,7 @@ testpaths = ["tests"]
 markers = [
     "ollama: tests requiring a running Ollama instance",
     "openhands: tests requiring OpenHands Docker container",
+    "live: tests that hit live LLM APIs (cost-bounded, opt-in via -m live)",
 ]
 
 [tool.mypy]
