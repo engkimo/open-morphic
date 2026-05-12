@@ -14,7 +14,7 @@
 
 ## Milestone 0 — Setup & constitution check
 
-- [ ] **T-01** — Constitution audit before code: confirm the new domain files will
+- [x] **T-01** — Constitution audit before code: confirm the new domain files will
   not violate `.specify/memory/constitution.md` Principle #2 or
   `.claude/rules/clean-architecture.md`.
   - Action: re-read both files; record in the task tracker that the planned
@@ -25,18 +25,18 @@
     `spec.md` (already satisfied at spec time; this is a gate against drift).
   - **Commit:** none.
 
-- [ ] **T-02** — Create feature branch `feature/council-pilot` off `main`.
+- [x] **T-02** — Create feature branch `feature/council-pilot` off `main`.
   - Command: `git switch -c feature/council-pilot`
   - **Done when:** `git rev-parse --abbrev-ref HEAD` prints `feature/council-pilot`.
   - **Commit:** none.
 
-- [ ] **T-03** — Capture pre-spike baseline (RED-protection).
+- [x] **T-03** — Capture pre-spike baseline (RED-protection).
   - Command: `uv run --extra dev pytest tests/unit/application/test_route_to_engine.py tests/unit/domain/test_agent_engine_router.py -v`
   - **Done when:** both suites pass on `main` HEAD; record pass count and
     duration for later regression comparison (NFR-7 evidence).
   - **Commit:** none.
 
-- [ ] **T-04** — Draft TD-194 ADR header in `docs/TECH_DECISIONS.md` (body filled at T-22).
+- [x] **T-04** — Draft TD-194 ADR header in `docs/TECH_DECISIONS.md` (body filled at T-22).
   - File: `/Users/ryousuke/open-morphic/docs/TECH_DECISIONS.md`
   - Edit: append a stub section
     `## TD-194: Council Pilot — 2-Engine Debate as a Domain Port` with
@@ -49,7 +49,7 @@
 
 ## Milestone 1 — RED: domain entity tests
 
-- [ ] **T-05** `[P]` — Add `tests/unit/domain/test_council_entities.py`.
+- [x] **T-05** `[P]` — Add `tests/unit/domain/test_council_entities.py`.
   - File: `/Users/ryousuke/open-morphic/tests/unit/domain/test_council_entities.py`
   - Content (per plan §Test Strategy item 1, ≥ 4 tests):
     1. `test_argument_round_trip` — instantiate `Argument(...)` with all fields,
@@ -72,7 +72,7 @@
 
 ## Milestone 2 — GREEN: domain entities
 
-- [ ] **T-06** — Create `domain/entities/council.py` (per plan §Data Model code block).
+- [x] **T-06** — Create `domain/entities/council.py` (per plan §Data Model code block).
   - File: `/Users/ryousuke/open-morphic/domain/entities/council.py`
   - Content: verbatim from plan §Data Model — `Argument`, `SubtaskBrief`,
     `DebateStarted`, `ArgumentSubmitted`, `DecisionResolved`, `DebateAbandoned`,
@@ -91,7 +91,7 @@
 > Both ports may be added in parallel (disjoint files). The re-export edit in
 > T-09 is sequential after both.
 
-- [ ] **T-07** `[P]` — Create `domain/ports/council_debate.py` (per plan §Data Model).
+- [x] **T-07** `[P]` — Create `domain/ports/council_debate.py` (per plan §Data Model).
   - File: `/Users/ryousuke/open-morphic/domain/ports/council_debate.py`
   - Content: verbatim from plan code block — `CouncilDebatePort(ABC)` with one
     abstract method `debate(subtask, candidates) -> tuple[Decision, list[Argument]]`.
@@ -103,7 +103,7 @@
     - `rg -n "from (sqlalchemy|fastapi|litellm|redis|mem0|celery|httpx)" domain/ports/council_debate.py` returns nothing.
   - **Commit:** `feat(council-pilot): add CouncilDebatePort ABC in domain/ports`
 
-- [ ] **T-08** `[P]` — Create `domain/ports/event_bus.py` (per plan §Data Model).
+- [x] **T-08** `[P]` — Create `domain/ports/event_bus.py` (per plan §Data Model).
   - File: `/Users/ryousuke/open-morphic/domain/ports/event_bus.py`
   - Content: verbatim from plan code block — `EventBusPort(ABC)` with one
     abstract method `publish(event: DebateEvent) -> None`. Class docstring
@@ -113,7 +113,7 @@
     - `rg -n "from (sqlalchemy|fastapi|litellm|redis|mem0|celery|httpx)" domain/ports/event_bus.py` returns nothing.
   - **Commit:** `feat(council-pilot): add EventBusPort ABC in domain/ports`
 
-- [ ] **T-09** — Re-export both new ports from `domain/ports/__init__.py`.
+- [x] **T-09** — Re-export both new ports from `domain/ports/__init__.py`.
   - File: `/Users/ryousuke/open-morphic/domain/ports/__init__.py`
   - Edit: insert two import lines (alphabetical: `council_debate` between
     `context_adapter` and `cost_repository`; `event_bus` between
@@ -126,20 +126,20 @@
 
 ## Milestone 4 — RED: use case tests + fakes
 
-- [ ] **T-10** `[P]` — Create `tests/unit/application/_fakes/__init__.py` if missing
+- [x] **T-10** `[P]` — Create `tests/unit/application/_fakes/__init__.py` if missing
   (already exists per TD-187; verify and skip if present).
   - Command: `test -f tests/unit/application/_fakes/__init__.py || touch tests/unit/application/_fakes/__init__.py`
   - **Done when:** `ls tests/unit/application/_fakes/__init__.py` succeeds.
   - **Commit:** none if already present; otherwise none (tracked under T-11/T-12 commits).
 
-- [ ] **T-11** `[P]` — Add `tests/unit/application/_fakes/in_memory_event_bus.py`.
+- [x] **T-11** `[P]` — Add `tests/unit/application/_fakes/in_memory_event_bus.py`.
   - File: `/Users/ryousuke/open-morphic/tests/unit/application/_fakes/in_memory_event_bus.py`
   - Content: minimal `FakeEventBus(EventBusPort)` with `self.events: list[DebateEvent] = []`
     and `async def publish(event)` that appends. ~20 LOC. Imports the port
     from `domain.ports.event_bus`.
   - **Done when:** file exists; `python -c "from tests.unit.application._fakes.in_memory_event_bus import FakeEventBus; from domain.ports.event_bus import EventBusPort; b=FakeEventBus(); assert isinstance(b, EventBusPort)"` succeeds.
 
-- [ ] **T-12** `[P]` — Add `tests/unit/application/_fakes/fake_council_debate.py`.
+- [x] **T-12** `[P]` — Add `tests/unit/application/_fakes/fake_council_debate.py`.
   - File: `/Users/ryousuke/open-morphic/tests/unit/application/_fakes/fake_council_debate.py`
   - Content: `FakeCouncilDebate(CouncilDebatePort)` with constructor knobs
     `decision_to_return`, `arguments_to_return`, `raise_on_call: Exception | None = None`,
@@ -149,7 +149,7 @@
   - **Done when:** file exists; importable; `isinstance` check against
     `CouncilDebatePort` succeeds.
 
-- [ ] **T-13** — Add `tests/unit/application/test_run_council_debate.py` (per plan §Test Strategy item 4, ≥ 4 tests).
+- [x] **T-13** — Add `tests/unit/application/test_run_council_debate.py` (per plan §Test Strategy item 4, ≥ 4 tests).
   - File: `/Users/ryousuke/open-morphic/tests/unit/application/test_run_council_debate.py`
   - Content:
     1. `test_happy_path_emits_four_events_in_order` — fake debate returns a real
@@ -171,7 +171,7 @@
 
 ## Milestone 5 — GREEN: use case
 
-- [ ] **T-14** — Implement `application/use_cases/run_council_debate.py`.
+- [x] **T-14** — Implement `application/use_cases/run_council_debate.py`.
   - File: `/Users/ryousuke/open-morphic/application/use_cases/run_council_debate.py`
   - Content (per plan §Use cases added):
     - `RunCouncilDebateUseCase` constructor `(debate_port, event_bus, timeout_seconds=15.0)`.
@@ -196,7 +196,7 @@
 
 ## Milestone 6 — RED: route-to-engine council branch tests
 
-- [ ] **T-15** — Add `tests/unit/application/test_route_to_engine_council.py` (per plan §Test Strategy item 5, ≥ 3 tests).
+- [x] **T-15** — Add `tests/unit/application/test_route_to_engine_council.py` (per plan §Test Strategy item 5, ≥ 3 tests).
   - File: `/Users/ryousuke/open-morphic/tests/unit/application/test_route_to_engine_council.py`
   - Content:
     1. `test_council_disabled_chain_unchanged` — `council_enabled=False`, `run_council_debate=None`,
@@ -217,7 +217,7 @@
 
 ## Milestone 7 — GREEN: wire council into route-to-engine
 
-- [ ] **T-16** — Extend `application/use_cases/route_to_engine.py`.
+- [x] **T-16** — Extend `application/use_cases/route_to_engine.py`.
   - File: `/Users/ryousuke/open-morphic/application/use_cases/route_to_engine.py`
   - Edits (per plan §Use cases changed):
     1. Constructor: add `run_council_debate: RunCouncilDebateUseCase | None = None`,
@@ -271,7 +271,7 @@
 
 > Adapters are independent of each other. T-17 and T-18 may run in parallel.
 
-- [ ] **T-17** `[P]` — Create `infrastructure/events/in_memory_event_bus.py`.
+- [x] **T-17** `[P]` — Create `infrastructure/events/in_memory_event_bus.py`.
   - File: `/Users/ryousuke/open-morphic/infrastructure/events/in_memory_event_bus.py`
   - Content: ~25 LOC. `InMemoryEventBus(EventBusPort)`:
     - `__init__(self) -> None: self._events: list[DebateEvent] = []`
@@ -281,7 +281,7 @@
   - **Done when:** `python -c "from infrastructure.events.in_memory_event_bus import InMemoryEventBus; b=InMemoryEventBus(); assert b.events == []"` succeeds.
   - **Commit:** `feat(council-pilot): add InMemoryEventBus adapter (publish-only recorder)`
 
-- [ ] **T-18** `[P]` — Create `infrastructure/council/two_engine_debate.py`.
+- [x] **T-18** `[P]` — Create `infrastructure/council/two_engine_debate.py`.
   - File: `/Users/ryousuke/open-morphic/infrastructure/council/two_engine_debate.py`
   - Also create empty `infrastructure/council/__init__.py`.
   - Content (per plan §Infrastructure impls): `TwoEngineDebate(CouncilDebatePort)`.
@@ -308,7 +308,7 @@
 
 ## Milestone 9 — DI wiring + feature flag
 
-- [ ] **T-19** — Add settings fields and wire DI in container.
+- [x] **T-19** — Add settings fields and wire DI in container.
   - Files:
     - `/Users/ryousuke/open-morphic/shared/config/__init__.py` (or whichever file
       defines `Settings` — verify location at edit time per plan §Risks row 6):
@@ -330,7 +330,7 @@
 
 ## Milestone 10 — Live integration test
 
-- [ ] **T-20** — Add `tests/integration/test_council_pilot_live.py`.
+- [x] **T-20** — Add `tests/integration/test_council_pilot_live.py`.
   - File: `/Users/ryousuke/open-morphic/tests/integration/test_council_pilot_live.py`
   - Content (per plan §Test Strategy item 6):
     - `pytest.mark.live` marker; `pytest.mark.asyncio` if needed.
@@ -357,28 +357,28 @@
 
 ## Milestone 11 — Verification gates
 
-- [ ] **T-21** `[P]` — Full unit suite green, no regressions.
+- [x] **T-21** `[P]` — Full unit suite green, no regressions.
   - Command: `uv run --extra dev pytest tests/unit/ -v`
   - **Done when:** exit code 0; total passing count ≥ baseline captured in T-03;
     zero new failures.
 
-- [ ] **T-22** `[P]` — Domain purity gate.
+- [x] **T-22** `[P]` — Domain purity gate.
   - Command: `rg -l "from (sqlalchemy|fastapi|litellm|redis|mem0|celery|httpx|infrastructure|application|interface)" domain/ports/council_debate.py domain/ports/event_bus.py domain/entities/council.py`
   - **Done when:** no output. Spec NFR-5 evidence.
 
-- [ ] **T-23** `[P]` — Application purity gate.
+- [x] **T-23** `[P]` — Application purity gate.
   - Command: `rg -n "from infrastructure" application/use_cases/run_council_debate.py application/use_cases/route_to_engine.py`
   - **Done when:** no output. Constitution #2 + spec success-metrics row 1.
 
-- [ ] **T-24** `[P]` — `Decision` entity unchanged (FR-4 evidence).
+- [x] **T-24** `[P]` — `Decision` entity unchanged (FR-4 evidence).
   - Command: `git diff main -- domain/entities/cognitive.py`
   - **Done when:** no output (the existing `Decision` is reused as-is).
 
-- [ ] **T-25** `[P]` — Lint clean for all touched files.
+- [x] **T-25** `[P]` — Lint clean for all touched files.
   - Command: `uv run --extra dev ruff check domain/entities/council.py domain/ports/council_debate.py domain/ports/event_bus.py domain/ports/__init__.py application/use_cases/run_council_debate.py application/use_cases/route_to_engine.py infrastructure/council/two_engine_debate.py infrastructure/events/in_memory_event_bus.py interface/api/container.py shared/config/__init__.py tests/unit/domain/test_council_entities.py tests/unit/application/test_run_council_debate.py tests/unit/application/test_route_to_engine_council.py tests/integration/test_council_pilot_live.py tests/unit/application/_fakes/in_memory_event_bus.py tests/unit/application/_fakes/fake_council_debate.py`
   - **Done when:** exit code 0.
 
-- [ ] **T-26** — Constitution-compliance checklist in `spec.md` all `[x]`.
+- [x] **T-26** — Constitution-compliance checklist in `spec.md` all `[x]`.
   - File: `/Users/ryousuke/open-morphic/specs/council-pilot/spec.md`
   - Action: re-read the bottom checklist; confirm every box is `[x]`. (Already
     `[x]` at spec time; this is a drift gate.)
@@ -388,7 +388,7 @@
 
 ## Milestone 12 — Documentation
 
-- [ ] **T-27** — Fill in TD-194 ADR body in `docs/TECH_DECISIONS.md`.
+- [x] **T-27** — Fill in TD-194 ADR body in `docs/TECH_DECISIONS.md`.
   - File: `/Users/ryousuke/open-morphic/docs/TECH_DECISIONS.md`
   - Edit: replace the stub body inserted at T-04 with:
     - **Decision** — Introduce `CouncilDebatePort` + `EventBusPort` in
@@ -409,7 +409,7 @@
   - **Done when:** `rg -n "Promotion criteria for follow-up sprint" docs/TECH_DECISIONS.md` returns 1 line.
   - **Commit:** `docs(council-pilot): fill TD-194 ADR body`
 
-- [ ] **T-28** — Append CHANGELOG entry under the next unreleased heading.
+- [x] **T-28** — Append CHANGELOG entry under the next unreleased heading.
   - File: `/Users/ryousuke/open-morphic/docs/CHANGELOG.md`
   - Edit (additive only, constitution #9): add a bullet:
     `- **[FEAT]** Council Pilot — 2-engine debate (\`CouncilDebatePort\` + \`EventBusPort\`) wired into \`RouteToEngineUseCase\` behind \`MORPHIC_COUNCIL_DEBATE\` flag (default off). See \`specs/council-pilot/\` and TD-194.`
@@ -421,7 +421,7 @@
 
 ## Milestone 13 — Memory + ship
 
-- [ ] **T-29** — Update `MEMORY.md` with Round 21 live verification.
+- [x] **T-29** — Update `MEMORY.md` with Round 21 live verification.
   - File: `/Users/ryousuke/.claude/projects/-Users-ryousuke-open-morphic/memory/MEMORY.md`
   - Edit: append under "Live Verification Summary":
     `- **Round 21** (2026-05-12+): Council Pilot live — 2-engine debate (Ollama + Gemini Flash) over a trivial subtask; Decision rationale cited both engines; cost ≤ $0.02; wall-clock ≤ 15s. Pinned as \`tests/integration/test_council_pilot_live.py\`.`
@@ -429,12 +429,12 @@
   - **Done when:** both lines present in MEMORY.md.
   - **Commit:** none (memory file is outside the repo).
 
-- [ ] **T-30** — Self-review via `/morphic-pr-reviewer` subagent.
+- [x] **T-30** — Self-review via `/morphic-pr-reviewer` subagent.
   - Action: invoke `/morphic-pr-reviewer` against the diff. Confirm zero
     Clean-Architecture violations and zero layer-import regressions.
   - **Done when:** the reviewer's summary contains no `[VIOLATION]` entries.
 
-- [ ] **T-31** — Push branch and open PR.
+- [x] **T-31** — Push branch and open PR.
   - Commands:
     `git push -u origin feature/council-pilot`
     then open a PR titled
