@@ -163,6 +163,15 @@ class TestCostRecord:
         assert record.cost_usd == 0.0045
         assert record.is_local is False
 
+    def test_task_id_optional_default_none(self):
+        record = CostRecord(model="claude-sonnet-4-6")
+        assert record.task_id is None
+
+    def test_task_id_round_trip(self):
+        record = CostRecord(model="claude-sonnet-4-6", task_id="task-abc")
+        rebuilt = CostRecord.model_validate_json(record.model_dump_json())
+        assert rebuilt.task_id == "task-abc"
+
 
 # ══════════════════════════════════════════════════════════════════
 #  Strict Validation Tests — ConfigDict(strict=True) enforcement

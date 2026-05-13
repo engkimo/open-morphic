@@ -23,6 +23,7 @@ class CostRecord(BaseModel):
     cached_tokens: int = Field(default=0, ge=0)
     is_local: bool = False
     engine_type: str | None = None
+    task_id: str | None = None
     timestamp: datetime = Field(default_factory=datetime.now)
 
     @classmethod
