@@ -28,6 +28,7 @@ class PgCostRepository(CostRepository):
             cost_usd=Decimal(str(record.cost_usd)),
             cached_tokens=record.cached_tokens,
             is_local=record.is_local,
+            task_id=record.task_id,
             created_at=record.timestamp,
         )
 
@@ -40,6 +41,7 @@ class PgCostRepository(CostRepository):
             cost_usd=float(model.cost_usd),
             cached_tokens=model.cached_tokens,
             is_local=model.is_local,
+            task_id=model.task_id,
             timestamp=model.created_at,
         )
 
@@ -87,7 +89,14 @@ class PgCostRepository(CostRepository):
             return [self._to_entity(row) for row in result.scalars().all()]
 
     async def get_cache_hit_rate_for_task(self, task_id: str) -> float:
-        # TD-189 step 3 wires the actual SQL once the cost_logs.task_id
-        # column + Alembic migration land. Until then this stays a no-op
-        # so production code paths fall back to the existing 0.0 default.
-        return 0.0
+        async with self._session_factory() as session:
+            stmt = select(
+                func.coalesce(func.sum(CostLogModel.cached_tokens), 0),
+                func.coalesce(func.sum(CostLogModel.prompt_tokens), 0),
+            ).where(CostLogModel.task_id == task_id)
+            row = (await session.execute(stmt)).one()
+            cached, prompt = int(row[0]), int(row[1])
+            denom = cached + prompt
+            if denom == 0:
+                return 0.0
+            return cached / denom
