@@ -199,7 +199,6 @@ class TestRound19EndToEnd:
     async def test_round19_goal_takes_fractal_path(
         self,
         bypass_classifier: FractalBypassClassifier,
-        output_classifier: OutputRequirementClassifier,
     ) -> None:
         """The exact goal that broke Round 19 must NOT trigger bypass."""
         planner, pe, re_, inner = _stub_planning_path()
@@ -207,7 +206,6 @@ class TestRound19EndToEnd:
             planner=planner, plan_evaluator=pe, result_evaluator=re_,
             inner_engine=inner,
             bypass_classifier=bypass_classifier,
-            output_classifier=output_classifier,
         )
 
         task = TaskEntity(goal=ROUND_19_GOAL)
@@ -223,7 +221,6 @@ class TestRound19EndToEnd:
     async def test_simple_question_still_bypasses(
         self,
         bypass_classifier: FractalBypassClassifier,
-        output_classifier: OutputRequirementClassifier,
     ) -> None:
         """TD-167's latency win for legitimate text Q&A must be preserved."""
         planner, pe, re_, inner = _stub_planning_path()
@@ -231,7 +228,6 @@ class TestRound19EndToEnd:
             planner=planner, plan_evaluator=pe, result_evaluator=re_,
             inner_engine=inner,
             bypass_classifier=bypass_classifier,
-            output_classifier=output_classifier,
         )
 
         task = TaskEntity(goal="What is 2+2?")

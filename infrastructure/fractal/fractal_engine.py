@@ -64,7 +64,6 @@ from infrastructure.fractal.node_executor import NodeExecutor
 
 if TYPE_CHECKING:
     from domain.ports.task_repository import TaskRepository
-    from domain.services.output_requirement_classifier import OutputRequirementClassifier
     from infrastructure.fractal.bypass_classifier import FractalBypassClassifier
 
 logger = logging.getLogger(__name__)
@@ -119,7 +118,6 @@ class FractalTaskEngine(TaskEngine):
         cache_planner_candidates: bool = False,
         max_concurrent_nodes: int = 0,
         throttle_delay_ms: int = 0,
-        output_classifier: OutputRequirementClassifier | None = None,
         max_execution_seconds: int = 180,
     ) -> None:
         self._planner = planner
@@ -166,9 +164,6 @@ class FractalTaskEngine(TaskEngine):
         # Concurrency throttle: limit parallel node execution (TD-175)
         self._max_concurrent_nodes = max_concurrent_nodes  # 0 = unlimited
         self._throttle_delay_ms = throttle_delay_ms
-
-        # Output-aware evaluation: classifier for goal output requirements
-        self._output_classifier = output_classifier
 
         # TD-181: Time-based timeout — hard limit to prevent zombie tasks.
         # Kills execution after max_execution_seconds regardless of retries/reflection.
@@ -292,33 +287,21 @@ class FractalTaskEngine(TaskEngine):
         # TD-175: Apply per-execution concurrency/throttle overrides
         self._apply_execution_overrides()
 
-        # TD-191: Classify output requirement BEFORE bypass so non-text goals
-        # (file/code/data artifacts) cannot be short-circuited by a bypass
-        # misclassification — Round 19 root-cause fix.
+        # TD-192: SIMPLE-task bypass + output-requirement classification in
+        # a single LLM call. BypassDecision carries both signals; the
+        # classifier internally gates bypass to TEXT-only outputs so that
+        # artifact-producing goals always take the fractal path (the
+        # Round 19 fix is preserved at the source).
         goal_output_req: OutputRequirement | None = None
-        if self._output_classifier is not None:
-            try:
-                goal_output_req = await self._output_classifier.classify(task.goal)
-                logger.info(
-                    "Output requirement for goal: %s", goal_output_req.value
-                )
-            except Exception:
-                logger.warning(
-                    "Output requirement classification failed — skipping",
-                    exc_info=True,
-                )
-
-        # TD-167 + TD-191: SIMPLE task bypass — LLM intent analysis,
-        # gated to TEXT-only outputs. Artifact-producing goals always take
-        # the fractal path even when the bypass classifier says SIMPLE.
-        bypass_allowed_by_output = goal_output_req in (None, OutputRequirement.TEXT)
-        if self._bypass_classifier is not None and bypass_allowed_by_output:
+        if self._bypass_classifier is not None:
             try:
                 decision = await self._bypass_classifier.should_bypass(task.goal)
+                goal_output_req = decision.output_requirement
                 logger.info(
-                    "Bypass classifier: bypass=%s complexity=%s reason=%r",
+                    "Bypass classifier: bypass=%s complexity=%s output=%s reason=%r",
                     decision.bypass,
                     decision.complexity.value,
+                    decision.output_requirement.value,
                     decision.reason[:100],
                 )
                 if decision.bypass:
@@ -328,11 +311,6 @@ class FractalTaskEngine(TaskEngine):
                     "Bypass classification error — falling through to fractal",
                     exc_info=True,
                 )
-        elif self._bypass_classifier is not None:
-            logger.info(
-                "Bypass skipped: output requirement is %s (non-TEXT)",
-                goal_output_req.value if goal_output_req else "unknown",
-            )
 
         try:
             plan = await self._generate_approved_plan(task.goal, nesting_level=0)

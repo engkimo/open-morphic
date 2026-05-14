@@ -364,15 +364,11 @@ class AppContainer:
 
         reflection_evaluator = LLMReflectionEvaluator(llm=self.llm)
 
-        # TD-167: SIMPLE task bypass — LLM intent analysis classifier
+        # TD-167 + TD-192: SIMPLE task bypass + output-requirement classifier,
+        # collapsed into a single LLM call via BypassDecision.
         from infrastructure.fractal.bypass_classifier import FractalBypassClassifier
 
         bypass_classifier = FractalBypassClassifier(llm=self.llm)
-
-        # Output-aware evaluation: classify goal output requirements
-        from domain.services.output_requirement_classifier import OutputRequirementClassifier
-
-        output_classifier = OutputRequirementClassifier(llm=self.llm)
 
         logger.info(
             "FractalTaskEngine enabled (depth=%d, retries=%d, reflect=%d, bypass=on)",
@@ -403,7 +399,6 @@ class AppContainer:
             cache_planner_candidates=True,  # TD-173: skip LLM on repeat goals
             max_concurrent_nodes=self.settings.fractal_max_concurrent_nodes,  # TD-175
             throttle_delay_ms=self.settings.fractal_throttle_delay_ms,  # TD-175
-            output_classifier=output_classifier,
             max_execution_seconds=self.settings.fractal_max_execution_seconds,  # TD-181
         )
 
