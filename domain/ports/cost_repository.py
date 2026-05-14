@@ -22,3 +22,13 @@ class CostRepository(ABC):
 
     @abstractmethod
     async def list_recent(self, limit: int = 50) -> list[CostRecord]: ...
+
+    @abstractmethod
+    async def get_cache_hit_rate_for_task(self, task_id: str) -> float:
+        """Cache-hit ratio for a single task across all of its CostRecords.
+
+        Returns ratio in [0.0, 1.0] computed as
+        ``sum(cached_tokens) / sum(prompt_tokens + cached_tokens)`` over all
+        records whose ``task_id`` matches. Returns 0.0 when no records exist
+        or when the denominator is zero (e.g. only engine costs were tracked).
+        """

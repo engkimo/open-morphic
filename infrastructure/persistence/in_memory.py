@@ -74,6 +74,19 @@ class InMemoryCostRepository(CostRepository):
     async def list_recent(self, limit: int = 50) -> list[CostRecord]:
         return sorted(self._records, key=lambda r: r.timestamp, reverse=True)[:limit]
 
+    async def get_cache_hit_rate_for_task(self, task_id: str) -> float:
+        cached = 0
+        prompt = 0
+        for r in self._records:
+            if r.task_id != task_id:
+                continue
+            cached += r.cached_tokens
+            prompt += r.prompt_tokens
+        denom = cached + prompt
+        if denom == 0:
+            return 0.0
+        return cached / denom
+
 
 class InMemoryMemoryRepository(MemoryRepository):
     """Dict-backed MemoryRepository with optional embedding-based vector search.
