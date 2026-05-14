@@ -202,3 +202,42 @@ class TestRecordEngineResult:
         repo.save = AsyncMock(side_effect=RuntimeError("DB down"))
         # Should not raise
         await tracker.record_engine_result(_make_engine_result())
+
+
+# ═══════════════════════════════════════════════════════════════
+# TD-189 step 4: task_id propagation via ContextVar
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestTaskIdPropagation:
+    """CostTracker must stamp the active task_id from shared.task_context."""
+
+    async def test_llm_record_stamps_active_task_id(
+        self, tracker: CostTracker, repo: InMemoryCostRepository
+    ) -> None:
+        from shared.task_context import task_id_scope
+
+        with task_id_scope("task-42"):
+            await tracker.record(_make_response(model="claude-sonnet-4-6", cost=0.01))
+        assert repo.records[0].task_id == "task-42"
+
+    async def test_llm_record_task_id_none_outside_scope(
+        self, tracker: CostTracker, repo: InMemoryCostRepository
+    ) -> None:
+        await tracker.record(_make_response(model="claude-sonnet-4-6", cost=0.01))
+        assert repo.records[0].task_id is None
+
+    async def test_engine_result_stamps_active_task_id(
+        self, tracker: CostTracker, repo: InMemoryCostRepository
+    ) -> None:
+        from shared.task_context import task_id_scope
+
+        with task_id_scope("task-99"):
+            await tracker.record_engine_result(_make_engine_result(cost_usd=0.05))
+        assert repo.records[0].task_id == "task-99"
+
+    async def test_engine_result_task_id_none_outside_scope(
+        self, tracker: CostTracker, repo: InMemoryCostRepository
+    ) -> None:
+        await tracker.record_engine_result(_make_engine_result(cost_usd=0.05))
+        assert repo.records[0].task_id is None

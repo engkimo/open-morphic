@@ -33,6 +33,7 @@ class CostRecord(BaseModel):
         model_used: str | None,
         cost_usd: float,
         is_local: bool = False,
+        task_id: str | None = None,
     ) -> CostRecord:
         """Create a CostRecord from an agent engine execution result."""
         return cls(
@@ -43,5 +44,6 @@ class CostRecord(BaseModel):
             cached_tokens=0,
             is_local=is_local,
             engine_type=engine_type,
+            task_id=task_id,
             timestamp=datetime.now(UTC),
         )

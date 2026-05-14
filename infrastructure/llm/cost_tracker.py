@@ -10,6 +10,7 @@ from domain.ports.agent_engine import AgentEngineResult
 from domain.ports.cost_repository import CostRepository
 from domain.ports.engine_cost_recorder import EngineCostRecorderPort
 from domain.ports.llm_gateway import LLMResponse
+from shared.task_context import get_current_task_id
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class CostTracker(EngineCostRecorderPort):
             cost_usd=response.cost_usd,
             cached_tokens=response.cached_tokens,
             is_local=response.model.startswith("ollama/"),
+            task_id=get_current_task_id(),
             timestamp=datetime.now(UTC),
         )
         await self._repo.save(record)
@@ -49,6 +51,7 @@ class CostTracker(EngineCostRecorderPort):
             model_used=result.model_used,
             cost_usd=result.cost_usd,
             is_local=is_local,
+            task_id=get_current_task_id(),
         )
         try:
             await self._repo.save(record)

@@ -285,6 +285,7 @@ class AppContainer:
             discover_tools=self.discover_tools,
             install_tool=self.install_tool,
             execution_record_repo=self.execution_record_repo,
+            cost_repo=self.cost_repo,
             default_model=self.settings.ollama_default_model,
             event_bus=self.event_bus,
             max_skill_retries=1,
