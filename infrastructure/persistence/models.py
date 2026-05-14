@@ -122,6 +122,7 @@ class CostLogModel(Base):
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(10, 6), default=Decimal("0"))
     cached_tokens: Mapped[int] = mapped_column(Integer, default=0)
     is_local: Mapped[bool] = mapped_column(Boolean, default=False)
+    task_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

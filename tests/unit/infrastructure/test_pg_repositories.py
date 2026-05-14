@@ -107,6 +107,18 @@ class TestPgCostRepositoryMapping:
         assert model.is_local is True
         assert model.cost_usd == Decimal("0")
 
+    def test_task_id_round_trip(self) -> None:
+        record = CostRecord(model="claude-sonnet-4-6", task_id="task-xyz")
+        model = PgCostRepository._to_model(record)
+        assert model.task_id == "task-xyz"
+        roundtrip = PgCostRepository._to_entity(model)
+        assert roundtrip.task_id == "task-xyz"
+
+    def test_task_id_defaults_to_none(self) -> None:
+        record = CostRecord(model="claude-sonnet-4-6")
+        model = PgCostRepository._to_model(record)
+        assert model.task_id is None
+
 
 class TestPgMemoryRepositoryMapping:
     def test_to_model_and_back(self) -> None:
@@ -264,6 +276,55 @@ class TestPgCostRepositorySave:
         await repo.save(record)
         session.add.assert_called_once()
         session.commit.assert_awaited_once()
+
+
+class TestPgCostRepositoryCacheHitRate:
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_no_records(self) -> None:
+        factory, session = _mock_session_factory()
+        mock_result = MagicMock()
+        mock_result.one.return_value = (0, 0)
+        session.execute = AsyncMock(return_value=mock_result)
+        repo = PgCostRepository(factory)
+        rate = await repo.get_cache_hit_rate_for_task("missing")
+        assert rate == 0.0
+
+    @pytest.mark.asyncio
+    async def test_computes_ratio_from_sums(self) -> None:
+        factory, session = _mock_session_factory()
+        mock_result = MagicMock()
+        mock_result.one.return_value = (600, 400)  # cached, prompt
+        session.execute = AsyncMock(return_value=mock_result)
+        repo = PgCostRepository(factory)
+        rate = await repo.get_cache_hit_rate_for_task("t1")
+        # 600 / (600 + 400) = 0.6
+        assert rate == pytest.approx(0.6)
+
+    @pytest.mark.asyncio
+    async def test_zero_denominator_returns_zero(self) -> None:
+        """Engine-only records (no tokens) must not divide by zero."""
+        factory, session = _mock_session_factory()
+        mock_result = MagicMock()
+        mock_result.one.return_value = (0, 0)
+        session.execute = AsyncMock(return_value=mock_result)
+        repo = PgCostRepository(factory)
+        rate = await repo.get_cache_hit_rate_for_task("engine-only")
+        assert rate == 0.0
+
+    @pytest.mark.asyncio
+    async def test_query_filters_by_task_id(self) -> None:
+        """SQL WHERE clause must reference the task_id parameter."""
+        factory, session = _mock_session_factory()
+        mock_result = MagicMock()
+        mock_result.one.return_value = (10, 90)
+        session.execute = AsyncMock(return_value=mock_result)
+        repo = PgCostRepository(factory)
+        await repo.get_cache_hit_rate_for_task("specific-task")
+        session.execute.assert_awaited_once()
+        executed_stmt = session.execute.await_args.args[0]
+        compiled = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+        assert "cost_logs.task_id" in compiled
+        assert "specific-task" in compiled
 
 
 class TestPgMemoryRepositoryAdd:
