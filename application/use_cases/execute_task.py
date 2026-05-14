@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from domain.entities.execution_record import ExecutionRecord
 from domain.entities.task import TaskEntity
+from domain.ports.cost_repository import CostRepository
 from domain.ports.execution_record_repository import ExecutionRecordRepository
 from domain.ports.task_engine import TaskEngine
 from domain.ports.task_repository import TaskRepository
@@ -16,6 +17,7 @@ from domain.services.topic_extractor import TopicExtractor
 from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.model_tier import TaskType
 from domain.value_objects.status import SubTaskStatus, TaskStatus
+from shared.task_context import task_id_scope
 
 if TYPE_CHECKING:
     from application.use_cases.discover_tools import DiscoverToolsUseCase
@@ -55,6 +57,7 @@ class ExecuteTaskUseCase:
         discover_tools: DiscoverToolsUseCase | None = None,
         install_tool: InstallToolUseCase | None = None,
         execution_record_repo: ExecutionRecordRepository | None = None,
+        cost_repo: CostRepository | None = None,
         default_model: str = "ollama/qwen3:8b",
         event_bus: object | None = None,
         max_skill_retries: int = 1,
@@ -66,6 +69,7 @@ class ExecuteTaskUseCase:
         self._discover_tools = discover_tools
         self._install_tool = install_tool
         self._execution_record_repo = execution_record_repo
+        self._cost_repo = cost_repo
         self._default_model = default_model
         self._event_bus = event_bus
         self._max_skill_retries = max_skill_retries
@@ -81,6 +85,17 @@ class ExecuteTaskUseCase:
         if task is None:
             raise TaskNotFoundError(task_id)
 
+        with task_id_scope(task_id):
+            return await self._execute_in_scope(task, engine_type, model_used)
+
+    async def _execute_in_scope(
+        self,
+        task: TaskEntity,
+        engine_type: AgentEngineType,
+        model_used: str | None,
+    ) -> TaskEntity:
+        """Body of execute(), run while task_id_scope is active."""
+        task_id = task.id
         task.status = TaskStatus.RUNNING
         await self._repo.update(task)
 
@@ -174,6 +189,17 @@ class ExecuteTaskUseCase:
                 error_message = st.error
                 break
 
+        cache_hit_rate = 0.0
+        if self._cost_repo is not None:
+            try:
+                cache_hit_rate = await self._cost_repo.get_cache_hit_rate_for_task(task.id)
+            except Exception:
+                logger.debug(
+                    "cache_hit_rate lookup failed for task %s — defaulting to 0.0",
+                    task.id,
+                    exc_info=True,
+                )
+
         record = ExecutionRecord(
             task_id=task.id,
             task_type=self._infer_task_type(task.goal),
@@ -184,7 +210,7 @@ class ExecuteTaskUseCase:
             error_message=error_message,
             cost_usd=task.total_cost_usd,
             duration_seconds=duration_s,
-            cache_hit_rate=0.0,
+            cache_hit_rate=cache_hit_rate,
         )
 
         try:
