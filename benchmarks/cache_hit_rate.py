@@ -33,7 +33,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("cache_hit_rate")
 
 
-async def _run(model: str, calls: int, goal: str, verify_wiring: bool) -> None:
+async def _run(
+    model: str,
+    calls: int,
+    goal: str,
+    verify_wiring: bool,
+    pad_entries: int = 160,
+) -> None:
     settings = Settings()
     if "claude" in model and not settings.has_anthropic:
         raise SystemExit("ANTHROPIC_API_KEY is required for Claude models.")
@@ -61,7 +67,7 @@ async def _run(model: str, calls: int, goal: str, verify_wiring: bool) -> None:
                 f"the cached portion of the system prompt above the provider "
                 f"minimum (~2048 tokens empirically for Claude 4) so cache "
                 f"reads can be observed end-to-end."
-                for i in range(160)
+                for i in range(pad_entries)
             )
         )
         original = _planner_mod._SYSTEM_PROMPT
@@ -126,9 +132,27 @@ def _parse() -> argparse.Namespace:
             "cache_control wiring works end-to-end; not a normal workload."
         ),
     )
+    p.add_argument(
+        "--pad-entries",
+        type=int,
+        default=160,
+        help=(
+            "Number of glossary entries appended to the SYSTEM prompt when "
+            "--verify-wiring is set. ~225 chars/entry → 160 ≈ 8.4K tokens. "
+            "Use to sweep cache thresholds."
+        ),
+    )
     return p.parse_args()
 
 
 if __name__ == "__main__":
     args = _parse()
-    asyncio.run(_run(args.model, args.calls, args.goal, args.verify_wiring))
+    asyncio.run(
+        _run(
+            args.model,
+            args.calls,
+            args.goal,
+            args.verify_wiring,
+            args.pad_entries,
+        )
+    )
