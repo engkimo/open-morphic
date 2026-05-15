@@ -194,7 +194,11 @@ class TestLLMClassification:
 # ---------------------------------------------------------------------------
 
 
-def _make_fractal_mocks(*, classifier_bypass: bool = True):
+def _make_fractal_mocks(
+    *,
+    classifier_bypass: bool = True,
+    output_requirement: OutputRequirement = OutputRequirement.TEXT,
+):
     """Create common mocks for FractalTaskEngine bypass tests."""
     # Mock classifier
     classifier = AsyncMock()
@@ -204,6 +208,7 @@ def _make_fractal_mocks(*, classifier_bypass: bool = True):
             TaskComplexity.SIMPLE if classifier_bypass else TaskComplexity.MEDIUM
         ),
         reason="test",
+        output_requirement=output_requirement,
     )
 
     # Mock planner + evaluators (for fractal path)
@@ -342,35 +347,31 @@ class TestFractalEngineBypass:
 
 
 # ---------------------------------------------------------------------------
-# TD-191: Output-requirement gate on bypass (Round 19 architectural fix)
+# TD-191 / TD-192: Output-requirement gate inside the bypass classifier
 # ---------------------------------------------------------------------------
 
 
-def _output_classifier(requirement: OutputRequirement) -> AsyncMock:
-    """Mock OutputRequirementClassifier returning a fixed requirement."""
-    cls = AsyncMock()
-    cls.classify.return_value = requirement
-    return cls
-
-
 class TestBypassOutputGate:
-    """When OutputRequirementClassifier reports a non-TEXT requirement, the
-    bypass path MUST be skipped — even if the bypass LLM said SIMPLE.
+    """The bypass classifier now carries ``output_requirement`` itself
+    (TD-192). When the LLM reports a non-TEXT requirement, ``BypassDecision``
+    is internally clamped to ``bypass=False`` so the engine takes the
+    fractal path even if complexity was SIMPLE.
 
     Round 19 (2026-04-13): bypass misclassified a slide-creation goal as
-    SIMPLE → no slide was ever produced. TD-191 closes the gap by requiring
-    output_requirement == TEXT for bypass to fire."""
+    SIMPLE → no slide was ever produced. TD-191 introduced the gate as a
+    separate ``OutputRequirementClassifier`` call; TD-192 folds it into the
+    bypass call to save one LLM round-trip while preserving the guarantee."""
 
     @pytest.mark.asyncio
     async def test_file_artifact_blocks_bypass(self) -> None:
-        """FILE_ARTIFACT goals must take the fractal path even if bypass=True."""
+        """FILE_ARTIFACT goals must take the fractal path even if SIMPLE."""
         classifier, planner, pe, re_, inner = _make_fractal_mocks(
-            classifier_bypass=True,
+            classifier_bypass=False,  # parse_response would clamp this
+            output_requirement=OutputRequirement.FILE_ARTIFACT,
         )
         engine = FractalTaskEngine(
             planner=planner, plan_evaluator=pe, result_evaluator=re_,
             inner_engine=inner, bypass_classifier=classifier,
-            output_classifier=_output_classifier(OutputRequirement.FILE_ARTIFACT),
         )
 
         task = TaskEntity(goal="氷川神社のスライドを作って")
@@ -382,12 +383,12 @@ class TestBypassOutputGate:
     @pytest.mark.asyncio
     async def test_code_artifact_blocks_bypass(self) -> None:
         classifier, planner, pe, re_, inner = _make_fractal_mocks(
-            classifier_bypass=True,
+            classifier_bypass=False,
+            output_requirement=OutputRequirement.CODE_ARTIFACT,
         )
         engine = FractalTaskEngine(
             planner=planner, plan_evaluator=pe, result_evaluator=re_,
             inner_engine=inner, bypass_classifier=classifier,
-            output_classifier=_output_classifier(OutputRequirement.CODE_ARTIFACT),
         )
         task = TaskEntity(goal="Write hello.py and save it")
         await engine.execute(task)
@@ -396,12 +397,12 @@ class TestBypassOutputGate:
     @pytest.mark.asyncio
     async def test_data_artifact_blocks_bypass(self) -> None:
         classifier, planner, pe, re_, inner = _make_fractal_mocks(
-            classifier_bypass=True,
+            classifier_bypass=False,
+            output_requirement=OutputRequirement.DATA_ARTIFACT,
         )
         engine = FractalTaskEngine(
             planner=planner, plan_evaluator=pe, result_evaluator=re_,
             inner_engine=inner, bypass_classifier=classifier,
-            output_classifier=_output_classifier(OutputRequirement.DATA_ARTIFACT),
         )
         task = TaskEntity(goal="Fetch the latest stock prices")
         await engine.execute(task)
@@ -412,11 +413,11 @@ class TestBypassOutputGate:
         """TEXT goals may still bypass — preserves TD-167 latency win."""
         classifier, planner, pe, re_, inner = _make_fractal_mocks(
             classifier_bypass=True,
+            output_requirement=OutputRequirement.TEXT,
         )
         engine = FractalTaskEngine(
             planner=planner, plan_evaluator=pe, result_evaluator=re_,
             inner_engine=inner, bypass_classifier=classifier,
-            output_classifier=_output_classifier(OutputRequirement.TEXT),
         )
         task = TaskEntity(goal="What is 2+2?")
         await engine.execute(task)
@@ -425,41 +426,95 @@ class TestBypassOutputGate:
         inner.execute.assert_called_once()
         planner.generate_candidates.assert_not_called()
 
-    @pytest.mark.asyncio
-    async def test_no_output_classifier_preserves_legacy_bypass(self) -> None:
-        """When output_classifier is not wired, bypass behaves as in TD-167."""
-        classifier, planner, pe, re_, inner = _make_fractal_mocks(
-            classifier_bypass=True,
-        )
-        engine = FractalTaskEngine(
-            planner=planner, plan_evaluator=pe, result_evaluator=re_,
-            inner_engine=inner, bypass_classifier=classifier,
-            # No output_classifier
-        )
-        task = TaskEntity(goal="What is 2+2?")
-        await engine.execute(task)
 
-        inner.execute.assert_called_once()
-        planner.generate_candidates.assert_not_called()
+class TestParseResponseGate:
+    """``_parse_response`` must clamp ``bypass`` to ``False`` whenever
+    ``output_requirement != TEXT`` even if complexity is SIMPLE."""
 
     @pytest.mark.asyncio
-    async def test_output_classifier_error_does_not_block_bypass(self) -> None:
-        """Classifier exception must not regress to permanent fractal fallback
-        for legitimate text Q&A. Fail-open is acceptable here because the
-        bypass classifier has its own confidence check."""
-        classifier, planner, pe, re_, inner = _make_fractal_mocks(
-            classifier_bypass=True,
-        )
-        broken_output = AsyncMock()
-        broken_output.classify.side_effect = RuntimeError("LLM down")
+    async def test_simple_text_returns_bypass(self) -> None:
+        llm = _mock_llm(json.dumps({
+            "complexity": "SIMPLE",
+            "output_requirement": "text",
+            "reason": "trivial",
+        }))
+        classifier = FractalBypassClassifier(llm=llm)
+        decision = await classifier.should_bypass("What is 2+2?")
+        assert decision.bypass is True
+        assert decision.output_requirement == OutputRequirement.TEXT
 
-        engine = FractalTaskEngine(
-            planner=planner, plan_evaluator=pe, result_evaluator=re_,
-            inner_engine=inner, bypass_classifier=classifier,
-            output_classifier=broken_output,
-        )
-        task = TaskEntity(goal="What is 2+2?")
-        await engine.execute(task)
+    @pytest.mark.asyncio
+    async def test_simple_file_blocks_bypass(self) -> None:
+        llm = _mock_llm(json.dumps({
+            "complexity": "SIMPLE",
+            "output_requirement": "file",
+            "reason": "slide artifact",
+        }))
+        classifier = FractalBypassClassifier(llm=llm)
+        decision = await classifier.should_bypass("Make a slide deck")
+        # SIMPLE complexity preserved, but bypass clamped because non-TEXT
+        assert decision.complexity == TaskComplexity.SIMPLE
+        assert decision.output_requirement == OutputRequirement.FILE_ARTIFACT
+        assert decision.bypass is False
 
-        # Fail-open: bypass still fires when classifier errors
-        inner.execute.assert_called_once()
+    @pytest.mark.asyncio
+    async def test_simple_code_blocks_bypass(self) -> None:
+        llm = _mock_llm(json.dumps({
+            "complexity": "SIMPLE",
+            "output_requirement": "code",
+            "reason": "needs a real file",
+        }))
+        classifier = FractalBypassClassifier(llm=llm)
+        decision = await classifier.should_bypass("Write hello.py and save it")
+        assert decision.bypass is False
+        assert decision.output_requirement == OutputRequirement.CODE_ARTIFACT
+
+    @pytest.mark.asyncio
+    async def test_simple_data_blocks_bypass(self) -> None:
+        llm = _mock_llm(json.dumps({
+            "complexity": "SIMPLE",
+            "output_requirement": "data",
+            "reason": "needs fresh data",
+        }))
+        classifier = FractalBypassClassifier(llm=llm)
+        decision = await classifier.should_bypass("Fetch latest prices")
+        assert decision.bypass is False
+        assert decision.output_requirement == OutputRequirement.DATA_ARTIFACT
+
+    @pytest.mark.asyncio
+    async def test_missing_output_requirement_defaults_to_text(self) -> None:
+        """Backward compat: classifiers that omit output_requirement still bypass."""
+        llm = _mock_llm(json.dumps({
+            "complexity": "SIMPLE",
+            "reason": "no output field",
+        }))
+        classifier = FractalBypassClassifier(llm=llm)
+        decision = await classifier.should_bypass("What is 2+2?")
+        assert decision.bypass is True
+        assert decision.output_requirement == OutputRequirement.TEXT
+
+    @pytest.mark.asyncio
+    async def test_unknown_output_requirement_falls_back_to_text(self) -> None:
+        llm = _mock_llm(json.dumps({
+            "complexity": "SIMPLE",
+            "output_requirement": "alien",
+            "reason": "garbage value",
+        }))
+        classifier = FractalBypassClassifier(llm=llm)
+        decision = await classifier.should_bypass("test")
+        assert decision.bypass is True
+        assert decision.output_requirement == OutputRequirement.TEXT
+
+    @pytest.mark.asyncio
+    async def test_complex_carries_output_requirement(self) -> None:
+        """Non-SIMPLE decisions still expose the parsed output requirement."""
+        llm = _mock_llm(json.dumps({
+            "complexity": "COMPLEX",
+            "output_requirement": "file",
+            "reason": "big task",
+        }))
+        classifier = FractalBypassClassifier(llm=llm)
+        decision = await classifier.should_bypass("Build a slide deck app")
+        assert decision.bypass is False
+        assert decision.complexity == TaskComplexity.COMPLEX
+        assert decision.output_requirement == OutputRequirement.FILE_ARTIFACT

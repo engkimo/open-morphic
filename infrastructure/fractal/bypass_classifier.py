@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass
 
 from domain.ports.llm_gateway import LLMGateway
+from domain.value_objects.output_requirement import OutputRequirement
 from domain.value_objects.task_complexity import TaskComplexity
 
 logger = logging.getLogger(__name__)
@@ -25,13 +26,17 @@ logger = logging.getLogger(__name__)
 # Stable system prompt (KV-cache friendly — never changes)
 # ---------------------------------------------------------------------------
 _CLASSIFY_SYSTEM = """\
-You are a task complexity classifier. Analyze the user's goal and determine \
-whether it can be completed in a SINGLE step or requires multi-step planning.
+You are a task classifier. Analyze the user's goal on TWO axes and return a \
+single JSON object combining both signals:
 
 Respond with ONLY a JSON object (no other text):
-{"complexity": "SIMPLE" | "MEDIUM" | "COMPLEX", "reason": "one sentence"}
+{
+  "complexity": "SIMPLE" | "MEDIUM" | "COMPLEX",
+  "output_requirement": "text" | "file" | "code" | "data",
+  "reason": "one sentence"
+}
 
-Definitions:
+Complexity definitions:
 SIMPLE = Answerable in ONE step with a single LLM call. No external tools, \
 no research, no multi-step coordination needed.
   Examples: "What is 2+2?", "Write a fibonacci function in Python", \
@@ -45,17 +50,37 @@ COMPLEX = Requires 4+ steps, multiple tools, architecture decisions, or deep \
 investigation across many files.
   Examples: "Refactor the auth system to use OAuth2", "Build a full-stack app"
 
-IMPORTANT: When uncertain, choose MEDIUM. It is safer to plan than to skip.\
+Output requirement definitions:
+- "text": A textual answer or explanation is sufficient.
+- "file": A file deliverable is required (slide, PDF, report, spreadsheet, \
+image, presentation, etc.).
+- "code": A code file or script must be produced.
+- "data": External data must be fetched, analyzed, or structured.
+
+IMPORTANT: When uncertain about complexity, choose MEDIUM. It is safer to plan \
+than to skip. When uncertain about output_requirement, choose "text".\
 """
+
+_REQUIREMENT_VALUE_MAP: dict[str, OutputRequirement] = {
+    "text": OutputRequirement.TEXT,
+    "file": OutputRequirement.FILE_ARTIFACT,
+    "code": OutputRequirement.CODE_ARTIFACT,
+    "data": OutputRequirement.DATA_ARTIFACT,
+}
 
 
 @dataclass(frozen=True)
 class BypassDecision:
-    """Result of the bypass classification."""
+    """Result of the combined bypass + output-requirement classification.
+
+    A single LLM call yields both signals (TD-192). Bypass is gated to TEXT
+    outputs: artifact-producing goals always take the fractal path.
+    """
 
     bypass: bool
     complexity: TaskComplexity
     reason: str
+    output_requirement: OutputRequirement = OutputRequirement.TEXT
 
 
 def _extract_json_object(text: str) -> str:
@@ -118,11 +143,17 @@ class FractalBypassClassifier:
                 bypass=False,
                 complexity=TaskComplexity.MEDIUM,
                 reason="LLM classification failed, defaulting to fractal planning",
+                output_requirement=OutputRequirement.TEXT,
             )
 
     @staticmethod
     def _parse_response(content: str) -> BypassDecision:
-        """Parse LLM classification response into a BypassDecision."""
+        """Parse LLM classification response into a BypassDecision.
+
+        TD-192: gates ``bypass=True`` to ``output_requirement == TEXT``.
+        SIMPLE-but-non-TEXT goals must take the fractal path so that the
+        artifact-producing terminal nodes are properly evaluated by Gate ②.
+        """
         raw = _extract_json_object(content)
         try:
             data = json.loads(raw)
@@ -132,26 +163,37 @@ class FractalBypassClassifier:
                 bypass=False,
                 complexity=TaskComplexity.MEDIUM,
                 reason="Unparseable LLM response, defaulting to fractal",
+                output_requirement=OutputRequirement.TEXT,
             )
 
         complexity_str = str(data.get("complexity", "MEDIUM")).upper()
         reason = str(data.get("reason", "LLM classification"))
+        requirement_str = str(data.get("output_requirement", "text")).lower().strip()
+        output_requirement = _REQUIREMENT_VALUE_MAP.get(
+            requirement_str, OutputRequirement.TEXT,
+        )
 
         if complexity_str == "SIMPLE":
+            # TD-192: bypass only when output is plain text — artifact goals
+            # must run the fractal path so terminal nodes are gated by output.
+            bypass = output_requirement == OutputRequirement.TEXT
             return BypassDecision(
-                bypass=True,
+                bypass=bypass,
                 complexity=TaskComplexity.SIMPLE,
                 reason=reason,
+                output_requirement=output_requirement,
             )
         if complexity_str == "COMPLEX":
             return BypassDecision(
                 bypass=False,
                 complexity=TaskComplexity.COMPLEX,
                 reason=reason,
+                output_requirement=output_requirement,
             )
         # MEDIUM or anything else → don't bypass
         return BypassDecision(
             bypass=False,
             complexity=TaskComplexity.MEDIUM,
             reason=reason,
+            output_requirement=output_requirement,
         )
