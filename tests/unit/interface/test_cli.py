@@ -192,6 +192,29 @@ class TestTaskCommands:
         assert result.exit_code == 0
         assert "detail task" in result.output
 
+    def test_show_displays_cache_hit_rate(
+        self, container: _MockContainer
+    ) -> None:
+        """TD-189 step 5: task show must surface per-task cache_hit_rate."""
+        task = _make_task("cached task")
+        container.task_repo._store[task.id] = task
+        container.cost_repo._records.append(
+            CostRecord(
+                model="claude-haiku-4-5-20251001",
+                cost_usd=0.01,
+                is_local=False,
+                prompt_tokens=200,
+                cached_tokens=800,
+                task_id=task.id,
+            )
+        )
+
+        result = runner.invoke(app, ["task", "show", task.id])
+        assert result.exit_code == 0
+        # 800 cached / (200 prompt + 800 cached) = 80%
+        assert "Cache hit rate" in result.output
+        assert "80%" in result.output
+
     def test_show_not_found(self) -> None:
         result = runner.invoke(app, ["task", "show", "nonexistent"])
         assert result.exit_code == 1
@@ -297,6 +320,34 @@ class TestCostCommands:
         assert result.exit_code == 0
         assert "Budget set" in result.output
         assert "$100.00" in result.output
+
+    def test_task_cache_hit_rate_command(
+        self, container: _MockContainer
+    ) -> None:
+        """TD-189 step 5: cost task <id> reports per-task cache_hit_rate."""
+        task_id = "task-abc"
+        container.cost_repo._records.append(
+            CostRecord(
+                model="claude-haiku-4-5-20251001",
+                cost_usd=0.005,
+                is_local=False,
+                prompt_tokens=100,
+                cached_tokens=900,
+                task_id=task_id,
+            )
+        )
+
+        result = runner.invoke(app, ["cost", "task", task_id])
+        assert result.exit_code == 0
+        # 900 / (100 + 900) = 90%
+        assert "90%" in result.output
+        assert task_id in result.output
+
+    def test_task_cache_hit_rate_no_records(self) -> None:
+        """No records for the task → 0% reported, exit 0."""
+        result = runner.invoke(app, ["cost", "task", "unknown-task"])
+        assert result.exit_code == 0
+        assert "0%" in result.output
 
 
 # ═══════════════════════════════════════════════════════════════
