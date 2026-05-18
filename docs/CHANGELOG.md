@@ -1,5 +1,17 @@
 # CLAUDE.md Changelog
 
+## v0.6.1 → v0.6.2 (2026-05-15) — **Council Pilot full merge + TD-189 per-task cache_hit_rate + TD-192 fractal-entry latency cut + Haiku 4.5 threshold pinned**
+
+- **[PERF/TD-192]** `OutputRequirementClassifier.classify()` を `FractalBypassClassifier.should_bypass()` 内に折り畳み、fractal-entry の LLM 呼出を **2 → 1** に削減。`BypassDecision` を `(bypass, complexity, output_requirement, reason)` に拡張、`FractalTaskEngine` 側の二重呼出を撤廃。Round 22 live regression (`test_round22_td192_latency.py`, real qwen3:8b) で実測: 2 ゴール × 1 call = 2 total (baseline 4)、artifact ゴール 7.80s, text ゴール 1.08s。TD-191 architectural guard は完全維持
+- **[OBSERVABILITY/TD-189]** Per-task `cache_hit_rate` 集計のための plumbing を 4 step で完成: (step 1) `CostRecord.task_id` 追加、(step 2) `CostRepository.get_cache_hit_rate_for_task(task_id)` port メソッド追加、(step 3) `cost_logs.task_id` カラム + PG aggregation SQL、(step 4) `ContextVar` ベースの task_id propagation (request-scoped、async-safe)。**Next:** step 5 = UI/CLI 可視化
+- **[FEAT/TD-194]** Council Pilot full merge (#20): 2-engine debate (`CouncilDebatePort` + `EventBusPort`) を `RouteToEngineUseCase` に `MORPHIC_COUNCIL_DEBATE` flag 越しに wiring 完了。SDD pilot 2 件目 (32 tasks, 全 TDD)。LLM-judge resolver, 1 round, 2 candidates。Round 21 live verify: Ollama qwen3:8b + Gemini Flash、決定 `gemini_cli`、4 events 発火、12.50s, $0.00251
+- **[FIX/COUNCIL]** Council Pilot post-merge 修正: (#24) `DebateEvent` を `domain/entities/council/` → `domain/value_objects/` に relocate、(#25) `task_state_repo` を port 型で型付け + `update_decisions` 経由で Decision を永続化、(#26) `_match_engine` の substring fallback を overlapping engine name に対して pin する regression test
+- **[FIX/CI]** (#22) `uv.lock` を commit して docker build の再現性を確保、(#23) `morphic doctor check` で optional CLI binary 不在を FAIL → WARN にダウングレード (engine drivers は optional のため)
+- **[BENCH/CACHE]** (#33) `benchmarks/cache_hit_rate.py` に `--pad-entries N` を追加 (default 160 ≈ 8.4K tokens)。**Haiku 4.5 cache threshold を binary-search で pin: ≈4096 tokens** (4112=miss, 4161=hit)。Sonnet 4.6 ≈2048 (2^11), Haiku 4.5 ≈4096 (2^12) — 共に clean power of 2。documented 1024 minimum は両モデルとも不正確
+- **[VERSION]** pyproject 0.6.1 → 0.6.2、`interface/api/main.py` + `tests/unit/test_version_consistency.py` 同期
+
+---
+
 ## v0.6.0 → v0.6.1 (2026-05-12) — **Observability + Round 19 fix + KV-cache hardening + live cache baseline**
 
 - **[FEAT/TD-194]** Council Pilot — 2-engine debate (`CouncilDebatePort` + `EventBusPort`) wired into `RouteToEngineUseCase` behind `MORPHIC_COUNCIL_DEBATE` flag (default off). See `specs/council-pilot/` and TD-194.
