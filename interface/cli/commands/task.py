@@ -34,7 +34,8 @@ def create(
             print_error(str(exc))
             raise typer.Exit(code=1) from exc
 
-    print_task_detail(task)
+    cache_hit_rate = _run(c.cost_repo.get_cache_hit_rate_for_task(task.id))
+    print_task_detail(task, cache_hit_rate=cache_hit_rate)
 
 
 @task_app.command("list")
@@ -55,7 +56,8 @@ def show(
     if task is None:
         print_error(f"Task {task_id} not found")
         raise typer.Exit(code=1)
-    print_task_detail(task)
+    cache_hit_rate = _run(c.cost_repo.get_cache_hit_rate_for_task(task.id))
+    print_task_detail(task, cache_hit_rate=cache_hit_rate)
 
 
 @task_app.command("cancel")

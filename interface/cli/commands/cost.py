@@ -39,3 +39,20 @@ def budget_set(
         raise typer.Exit(code=1)
     c.settings.default_monthly_budget_usd = amount
     console.print(f"[green]Budget set:[/] ${amount:.2f}/month")
+
+
+@cost_app.command("task")
+def task_cache_hit_rate(
+    task_id: str = typer.Argument(..., help="Task ID to inspect."),
+) -> None:
+    """Show per-task Anthropic prompt-cache hit rate (TD-189 step 5)."""
+    c = _get_container()
+    rate = _run(c.cost_repo.get_cache_hit_rate_for_task(task_id))
+    style = (
+        "green" if rate >= 0.5
+        else "yellow" if rate >= 0.2
+        else "dim"
+    )
+    console.print(
+        f"Task [bold]{task_id}[/] cache hit rate: [{style}]{rate:.0%}[/]"
+    )

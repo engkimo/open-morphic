@@ -70,12 +70,27 @@ def print_task_table(tasks: list[TaskEntity]) -> None:
     console.print(table)
 
 
-def print_task_detail(task: TaskEntity) -> None:
-    """Print a tree view of a single task with its subtasks."""
+def print_task_detail(
+    task: TaskEntity, cache_hit_rate: float | None = None,
+) -> None:
+    """Print a tree view of a single task with its subtasks.
+
+    If ``cache_hit_rate`` is provided (TD-189 step 5), the per-task
+    Anthropic prompt-cache hit rate is rendered as a percentage.
+    """
     tree = Tree(f"[bold]{task.goal}[/] ({_status_text(task.status.value)})")
     tree.add(f"ID: [dim]{task.id}[/]")
     tree.add(f"Cost: ${task.total_cost_usd:.4f}")
     tree.add(f"Success rate: {task.success_rate:.0%}")
+    if cache_hit_rate is not None:
+        rate_style = (
+            "green" if cache_hit_rate >= 0.5
+            else "yellow" if cache_hit_rate >= 0.2
+            else "dim"
+        )
+        tree.add(
+            f"Cache hit rate: [{rate_style}]{cache_hit_rate:.0%}[/]"
+        )
 
     if task.subtasks:
         st_branch = tree.add("[bold]Subtasks[/]")
