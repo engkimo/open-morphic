@@ -172,8 +172,11 @@ class LLMPlanEvaluator(PlanEvaluatorPort):
             else:
                 raise
 
-        if isinstance(data, list) and data:
+        while isinstance(data, list) and data:
             data = data[0]
+
+        if not isinstance(data, dict):
+            raise ValueError(f"Expected JSON object, got {type(data).__name__}")
 
         completeness = _clamp(float(data.get("completeness", 0.5)))
         feasibility = _clamp(float(data.get("feasibility", 0.5)))

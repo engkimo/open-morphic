@@ -359,3 +359,27 @@ class TestJsonParsing:
         result = await evaluator.evaluate(plan, "Goal")
 
         assert result.completeness == pytest.approx(0.7, abs=0.01)
+
+    @pytest.mark.asyncio
+    async def test_nested_list_payload_unwrapped(
+        self, llm: AsyncMock, evaluator: LLMPlanEvaluator
+    ) -> None:
+        """Regression: live A/B run observed `[[{...}]]` from the judge model.
+
+        The single-level guard was not enough — the second `data.get` blew up
+        and the call fell back to (0.5, 0.5, 1.0). Should unwrap any depth.
+        """
+        nested = (
+            "[[{"
+            '"completeness": 0.9, "feasibility": 0.8, "safety": 0.95, '
+            '"feedback": "nested"}]]'
+        )
+        llm.complete.return_value = _llm_response(nested)
+        plan = _sample_plan()
+
+        result = await evaluator.evaluate(plan, "Goal")
+
+        assert result.completeness == pytest.approx(0.9, abs=0.01)
+        assert result.feasibility == pytest.approx(0.8, abs=0.01)
+        assert result.safety == pytest.approx(0.95, abs=0.01)
+        assert "Fallback" not in result.feedback
