@@ -38,6 +38,20 @@ Choose "haiku" only if ALL of the following hold:
 
 Otherwise choose "sonnet" (the safe default for entity-preservation).
 
+A "quoted specific entity" is ANY token in single or double quotes that names \
+a concrete field, file, column, table, identifier, or proper noun. Even \
+generic-sounding names like 'date', "user", or 'id.csv' count as quoted \
+specific entities when wrapped in quotes — the quoting itself signals the \
+caller wants that exact token preserved verbatim. Route those to "sonnet".
+
+Examples (verdict only — DO NOT echo these in your answer):
+  "Build a REST API in Python"
+    -> {"model":"haiku","confidence":0.95,"reason":"generic tech, no entities"}
+  "Sort a CSV file by the 'date' column"
+    -> {"model":"sonnet","confidence":0.9,"reason":"quoted column entity 'date'"}
+  "東京から京都への新幹線の最安ルートを調査"
+    -> {"model":"sonnet","confidence":0.95,"reason":"non-ASCII place names"}
+
 Return JSON only. No prose outside the JSON object."""
 
 

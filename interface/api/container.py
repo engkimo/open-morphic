@@ -422,6 +422,8 @@ class AppContainer:
 
         from domain.services.planner_model_router import PlannerModelRouter
         from infrastructure.events.in_memory_event_bus import InMemoryEventBus
+        from infrastructure.metrics.router_metrics import RouterMetrics
+        from infrastructure.observability.router_observer import RouterObservingEventBus
         from infrastructure.routing.llm_goal_classifier import LLMGoalClassifier
         from infrastructure.routing.local_goal_classifier import LocalGoalClassifier
 
@@ -430,7 +432,11 @@ class AppContainer:
         else:
             classifier = LocalGoalClassifier(gateway=self.llm)
 
-        self.router_event_bus = InMemoryEventBus()
+        self.router_metrics = RouterMetrics()
+        self.router_event_bus = RouterObservingEventBus(
+            inner=InMemoryEventBus(),
+            metrics=self.router_metrics,
+        )
         return PlannerModelRouter(
             classifier=classifier,
             event_bus=self.router_event_bus,
