@@ -24,7 +24,7 @@ MODEL_COST_TABLE: dict[str, float] = {
     "ollama/llama3.2:3b": 0.0,
     "ollama/phi4:14b": 0.0,
     # Low tier
-    "claude-haiku-4-5-20251001": 0.25,
+    "claude-haiku-4-5-20251001": 1.00,
     "gemini/gemini-3-flash-preview": 0.10,
     # Medium tier
     "claude-sonnet-4-6": 3.00,

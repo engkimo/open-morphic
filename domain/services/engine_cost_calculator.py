@@ -10,12 +10,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # Pricing per 1 million tokens (input, output).
-# Updated 2026-03 — verify periodically against provider pricing pages.
+# Updated 2026-05-19 — verify periodically against provider pricing pages.
 _MODEL_PRICING: dict[str, tuple[float, float]] = {
     # Anthropic
     "claude-sonnet-4-6": (3.00, 15.00),
     "claude-opus-4-6": (15.00, 75.00),
-    "claude-haiku-4-5-20251001": (0.25, 1.25),
+    "claude-haiku-4-5-20251001": (1.00, 5.00),
     # OpenAI
     "o4-mini": (1.10, 4.40),
     "gpt-4o": (2.50, 10.00),
