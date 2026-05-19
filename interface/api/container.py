@@ -343,6 +343,7 @@ class AppContainer:
             candidates_per_node=self.settings.fractal_candidates_per_node,
             max_depth=self.settings.fractal_max_depth,
             learning_repo=learning_repo,
+            router=self._build_planner_router(),
         )
         plan_evaluator = LLMPlanEvaluator(
             llm=self.llm,
@@ -400,6 +401,44 @@ class AppContainer:
             max_concurrent_nodes=self.settings.fractal_max_concurrent_nodes,  # TD-175
             throttle_delay_ms=self.settings.fractal_throttle_delay_ms,  # TD-175
             max_execution_seconds=self.settings.fractal_max_execution_seconds,  # TD-181
+        )
+
+    def _build_planner_router(self):  # type: ignore[no-untyped-def]
+        """Build a ``PlannerModelRouter`` based on settings, or return ``None``.
+
+        TD-195: returns ``None`` when ``planner_router_mode != "enabled"`` so the
+        planner falls back to its default model (byte-identical to pre-router
+        behavior). When enabled, the classifier backend is chosen as:
+
+        - ``LLMGoalClassifier`` (Haiku 4.5) when ``anthropic_api_key`` is set
+          — explicit credentials take precedence over ``local_first``.
+        - ``LocalGoalClassifier`` (Ollama qwen3:8b) otherwise.
+
+        A dedicated ``InMemoryEventBus`` (``router_event_bus``) is attached so
+        ``GoalClassified`` events don't pollute the council debate stream.
+        """
+        if self.settings.planner_router_mode != "enabled":
+            return None
+
+        from domain.services.planner_model_router import PlannerModelRouter
+        from infrastructure.events.in_memory_event_bus import InMemoryEventBus
+        from infrastructure.routing.llm_goal_classifier import LLMGoalClassifier
+        from infrastructure.routing.local_goal_classifier import LocalGoalClassifier
+
+        if self.settings.anthropic_api_key:
+            classifier = LLMGoalClassifier(gateway=self.llm)
+        else:
+            classifier = LocalGoalClassifier(gateway=self.llm)
+
+        self.router_event_bus = InMemoryEventBus()
+        return PlannerModelRouter(
+            classifier=classifier,
+            event_bus=self.router_event_bus,
+            enabled=True,
+            haiku_confidence_threshold=(
+                self.settings.planner_router_haiku_confidence_threshold
+            ),
+            classifier_timeout_ms=self.settings.planner_router_classifier_timeout_ms,
         )
 
     def _create_react_executor(self) -> ReactExecutor | None:
