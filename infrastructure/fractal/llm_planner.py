@@ -15,6 +15,7 @@ from domain.entities.fractal_engine import CandidateNode, PlanNode
 from domain.ports.fractal_learning_repository import FractalLearningRepository
 from domain.ports.llm_gateway import LLMGateway
 from domain.ports.planner import PlannerPort
+from domain.services.planner_model_router import PlannerModelRouter
 from domain.value_objects.fractal_engine import NodeState
 
 logger = logging.getLogger(__name__)
@@ -88,12 +89,14 @@ class LLMPlanner(PlannerPort):
         max_depth: int = 3,
         model: str | None = None,
         learning_repo: FractalLearningRepository | None = None,
+        router: PlannerModelRouter | None = None,
     ) -> None:
         self._llm = llm
         self._candidates_per_node = candidates_per_node
         self._max_depth = max_depth
         self._model = model
         self._learning_repo = learning_repo
+        self._router = router
 
     # ------------------------------------------------------------------
     # PlannerPort implementation
@@ -112,9 +115,10 @@ class LLMPlanner(PlannerPort):
             messages = self._build_messages(
                 goal, context, nesting_level, direction, learning_context
             )
+            model_id = await self._resolve_model_id(goal)
             response = await self._llm.complete(
                 messages,
-                model=self._model,
+                model=model_id,
                 temperature=0.3,
                 max_tokens=2048,
             )
@@ -132,6 +136,23 @@ class LLMPlanner(PlannerPort):
         except Exception:
             logger.exception("LLM planner failed — returning fallback")
             return [self._fallback_candidate(goal, nesting_level)]
+
+    # ------------------------------------------------------------------
+    # Router consultation
+    # ------------------------------------------------------------------
+
+    async def _resolve_model_id(self, goal: str) -> str | None:
+        """Consult ``PlannerModelRouter`` (if injected) for the per-goal model.
+
+        Returns ``None`` when no router is wired and no explicit ``model`` was
+        set — the gateway then picks its own default. Router failures are not
+        masked here: the outer ``except`` in ``generate_candidates`` already
+        catches them and emits the safe single-node fallback.
+        """
+        if self._router is None:
+            return self._model
+        chosen, _verdict = await self._router.select_for(goal)
+        return chosen.to_gateway_id()
 
     # ------------------------------------------------------------------
     # Prompt construction
