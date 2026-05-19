@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, TypeAdapter
 from domain.entities.cognitive import Decision
 from domain.entities.council import Argument, SubtaskBrief
 from domain.value_objects.agent_engine import AgentEngineType
+from domain.value_objects.planner_model import PlannerModel
 
 
 class _BaseEvent(BaseModel):
@@ -52,8 +53,39 @@ class DebateAbandoned(_BaseEvent):
     abandoned_at: datetime = Field(default_factory=datetime.now)
 
 
+ReasonCategory = Literal[
+    "haiku_high_confidence",
+    "sonnet_high_confidence",
+    "low_confidence",
+    "classifier_failed",
+    "router_disabled",
+    "unknown",
+]
+
+
+class GoalClassified(BaseModel):
+    """Emitted whenever the planner router resolves a goal to a model.
+
+    Privacy: ``goal_hash`` is ``sha256(goal)[:16]`` — the raw goal string
+    is never carried in this event.
+    """
+
+    kind: Literal["goal_classified"] = "goal_classified"
+    goal_hash: str = Field(min_length=16, max_length=16)
+    chosen_model: PlannerModel
+    confidence: float = Field(ge=0.0, le=1.0)
+    reason_category: ReasonCategory
+    classifier_latency_ms: int = Field(ge=0)
+    classifier_cost_usd: float = Field(ge=0.0)
+    classified_at: datetime = Field(default_factory=datetime.now)
+
+
 DebateEvent = Annotated[
-    DebateStarted | ArgumentSubmitted | DecisionResolved | DebateAbandoned,
+    DebateStarted
+    | ArgumentSubmitted
+    | DecisionResolved
+    | DebateAbandoned
+    | GoalClassified,
     Field(discriminator="kind"),
 ]
 
