@@ -54,12 +54,12 @@ class DebateAbandoned(_BaseEvent):
 
 
 ReasonCategory = Literal[
-    "haiku_high_confidence",
-    "sonnet_high_confidence",
+    "generic_tech_english",
+    "non_ascii_entity",
+    "quoted_specific_entity",
+    "multilingual_or_proper_noun",
     "low_confidence",
     "classifier_failed",
-    "router_disabled",
-    "unknown",
 ]
 
 

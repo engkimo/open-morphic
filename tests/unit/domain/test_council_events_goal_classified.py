@@ -27,13 +27,13 @@ class TestGoalClassifiedVariant:
             goal_hash=_hash16(),
             chosen_model=PlannerModel.HAIKU,
             confidence=0.91,
-            reason_category="haiku_high_confidence",
+            reason_category="generic_tech_english",
             classifier_latency_ms=210,
             classifier_cost_usd=0.0003,
         )
         assert ev.kind == "goal_classified"
         assert ev.chosen_model is PlannerModel.HAIKU
-        assert ev.reason_category == "haiku_high_confidence"
+        assert ev.reason_category == "generic_tech_english"
 
     def test_kind_discriminator_is_fixed(self) -> None:
         ev = GoalClassified(
@@ -79,7 +79,7 @@ class TestGoalClassifiedVariant:
             goal_hash=_hash16(),
             chosen_model=PlannerModel.HAIKU,
             confidence=0.8,
-            reason_category="haiku_high_confidence",
+            reason_category="generic_tech_english",
             classifier_latency_ms=200,
             classifier_cost_usd=0.0003,
         )
