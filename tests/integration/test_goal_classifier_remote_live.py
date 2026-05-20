@@ -3,7 +3,10 @@
 Exercises the production ``LLMGoalClassifier`` (Anthropic Haiku 4.5) end
 to end through ``LiteLLMGateway`` + ``PlannerModelRouter``.
 
-Run: ``uv run --extra dev pytest tests/integration/test_goal_classifier_remote_live.py -v -s -m live``
+Run::
+
+    uv run --extra dev pytest \
+        tests/integration/test_goal_classifier_remote_live.py -v -s -m live
 
 Prereqs:
 - ``ANTHROPIC_API_KEY`` env var set (or ``shared/config`` carries it).
@@ -27,9 +30,9 @@ from infrastructure.events.in_memory_event_bus import InMemoryEventBus
 from infrastructure.llm.cost_tracker import CostTracker
 from infrastructure.llm.litellm_gateway import LiteLLMGateway
 from infrastructure.llm.ollama_manager import OllamaManager
-from infrastructure.persistence.in_memory import InMemoryCostRepository
 from infrastructure.metrics.router_metrics import RouterMetrics
 from infrastructure.observability.router_observer import RouterObservingEventBus
+from infrastructure.persistence.in_memory import InMemoryCostRepository
 from infrastructure.routing.llm_goal_classifier import LLMGoalClassifier
 from shared.config import Settings
 

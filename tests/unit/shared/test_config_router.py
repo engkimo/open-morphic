@@ -13,6 +13,7 @@ pre-router behavior until an operator opts in via env.
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from shared.config import Settings
 
@@ -50,7 +51,7 @@ class TestEnvVarParsing:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("MORPHIC_PLANNER_ROUTER", "maybe")
-        with pytest.raises(Exception):  # pydantic ValidationError
+        with pytest.raises(ValidationError):
             Settings(_env_file=None)  # type: ignore[call-arg]
 
     def test_threshold_env_override(

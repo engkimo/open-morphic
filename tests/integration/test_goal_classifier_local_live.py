@@ -4,7 +4,10 @@ Exercises the production ``LocalGoalClassifier`` against a real Ollama
 qwen3:8b daemon. Skipped automatically when Ollama isn't running so the
 unit suite stays portable.
 
-Run: ``uv run --extra dev pytest tests/integration/test_goal_classifier_local_live.py -v -s -m live``
+Run::
+
+    uv run --extra dev pytest \
+        tests/integration/test_goal_classifier_local_live.py -v -s -m live
 
 Prereqs:
 - ``ollama`` CLI installed and serving ``qwen3:8b``
@@ -35,9 +38,9 @@ from infrastructure.events.in_memory_event_bus import InMemoryEventBus
 from infrastructure.llm.cost_tracker import CostTracker
 from infrastructure.llm.litellm_gateway import LiteLLMGateway
 from infrastructure.llm.ollama_manager import OllamaManager
-from infrastructure.persistence.in_memory import InMemoryCostRepository
 from infrastructure.metrics.router_metrics import RouterMetrics
 from infrastructure.observability.router_observer import RouterObservingEventBus
+from infrastructure.persistence.in_memory import InMemoryCostRepository
 from infrastructure.routing.local_goal_classifier import LocalGoalClassifier
 from shared.config import Settings
 
