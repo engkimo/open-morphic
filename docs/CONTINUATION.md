@@ -1,7 +1,45 @@
 # Morphic-Agent — Continuation State
 
-> Last updated: 2026-04-13
-> Last commit: `fix: hard time-based timeout for fractal engine + Round 19 E2E verification (TD-181)`
+> Last updated: 2026-05-20
+> Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`
+> Branch: `feature/goal-classifier-router` (HEAD `e49499c`)
+
+---
+
+## What Was Just Done (2026-05-20)
+
+### Sprint 91 (TD-195) — Goal Classifier Router
+
+**TD-195: Per-goal routing of `LLMPlanner` between Sonnet 4.6 and Haiku 4.5**
+
+Spec-driven (`specs/goal-classifier-router/{spec,plan,tasks.md}`), full
+TDD on `feature/goal-classifier-router`. Implements:
+
+- `GoalClassifierPort` (domain ABC) + `GoalClassification` VO + AD-3
+  6-bucket `ReasonCategory` Literal.
+- `PlannerModelRouter.select_for(goal) → (PlannerModel, GoalClassification | None)`
+  — confidence-gated, fail-safe to Sonnet on timeout / parse error.
+- `LLMGoalClassifier` (Haiku 4.5 via LiteLLM) + `LocalGoalClassifier`
+  (qwen3:8b via Ollama) — share byte-identical `SYSTEM_PROMPT` per TD-190.
+- `EventBusPort` + `InMemoryEventBus` + `RouterObservingEventBus`
+  decorator (metrics + structured logs). `sha256(goal)[:16]` only —
+  raw goal **never** serialized.
+- `MORPHIC_PLANNER_ROUTER` env flag (default `disabled`, opt-in
+  `remote` / `local`).
+
+**Live A/B verdict** (3 arms × 10 goals × 3 trials, $0.97 total):
+
+- entity_preserved: 83.8% (Sonnet) → 81.3% (Router) = **−2.5pt** (≤5pt ✓)
+- plan_eval:        0.898 → 0.884 = **−0.014** (≤0.030 ✓)
+- avg cost / call:  $0.01351 → $0.01218 = **−9.85%**
+- Routing: 4/10 Haiku, 6/10 Sonnet (entity-stressed benchmark)
+- Captured-saving: 20.9% (paper bar 30% missed — workload-mix structural)
+
+Memo: `memory/planner_router_ab_2026_05_20.md`. Ship recommendation
+documented.
+
+### Sprint 90 (TD-194) — Council Pilot full merge
+(See `docs/CHANGELOG.md` for the v0.6.1 → v0.6.2 detail.)
 
 ---
 
