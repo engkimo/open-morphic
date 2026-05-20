@@ -48,9 +48,9 @@ LAEE_GUI_ENABLED=true
 LAEE_CRON_ENABLED=true
 
 # ── Planner Model Router (v0.6.3, TD-195) ──
-MORPHIC_PLANNER_ROUTER=disabled                          # disabled | remote | local
+MORPHIC_PLANNER_ROUTER=disabled                          # disabled | enabled (enabled時はANTHROPIC_API_KEY有無でremote/localを自動選択)
 MORPHIC_PLANNER_ROUTER_HAIKU_CONFIDENCE_THRESHOLD=0.7    # 0.0–1.0; Haikuを選ぶ最小信頼度
-MORPHIC_PLANNER_ROUTER_CLASSIFIER_TIMEOUT_MS=5000        # classifier hard timeout → Sonnet fallback
+MORPHIC_PLANNER_ROUTER_CLASSIFIER_TIMEOUT_MS=1500        # classifier hard timeout (ms) → Sonnet fallback
 
 # ── Morphic Settings ──
 MORPHIC_ENV=development

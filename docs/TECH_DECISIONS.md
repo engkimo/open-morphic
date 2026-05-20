@@ -8113,8 +8113,10 @@ router falls back to `PlannerModel.SONNET` (fail-safe to the
 quality-preserving model, never to Haiku). The KV-cache stable-prefix
 invariant from TD-190 extends naturally — `SYSTEM_PROMPT` is a
 module-level constant shared across both adapters. `MORPHIC_PLANNER_ROUTER`
-default-off means production routing is unchanged on merge; opt-in via
-`remote` (Haiku 4.5 classifier) or `local` (qwen3:8b).
+default-off (`disabled`) means production routing is unchanged on merge;
+opt-in via `enabled`. When enabled, the DI container selects the remote
+Haiku 4.5 adapter if `ANTHROPIC_API_KEY` is present, else falls back to
+the local qwen3:8b adapter — both share the byte-identical SYSTEM_PROMPT.
 
 **Follow-ups** — (1) Measure captured-saving in production once router
 logs accumulate (the 10-goal benchmark is entity-stressed by design and
