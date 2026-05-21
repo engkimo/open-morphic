@@ -166,10 +166,13 @@ class Settings(BaseSettings):
     )
     planner_router_haiku_confidence_threshold: float = Field(
         default=0.7,
+        ge=0.0,
+        le=1.0,
         validation_alias="MORPHIC_PLANNER_ROUTER_HAIKU_CONFIDENCE_THRESHOLD",
     )
     planner_router_classifier_timeout_ms: int = Field(
         default=1500,
+        gt=0,
         validation_alias="MORPHIC_PLANNER_ROUTER_CLASSIFIER_TIMEOUT_MS",
     )
 

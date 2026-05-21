@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from domain.entities.cognitive import Decision
 from domain.entities.council import Argument, SubtaskBrief
@@ -70,8 +70,10 @@ class GoalClassified(BaseModel):
     is never carried in this event.
     """
 
+    model_config = ConfigDict(frozen=True)
+
     kind: Literal["goal_classified"] = "goal_classified"
-    goal_hash: str = Field(min_length=16, max_length=16)
+    goal_hash: str = Field(min_length=16, max_length=16, pattern=r"^[0-9a-f]{16}$")
     chosen_model: PlannerModel
     confidence: float = Field(ge=0.0, le=1.0)
     reason_category: ReasonCategory

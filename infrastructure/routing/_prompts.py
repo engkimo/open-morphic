@@ -61,7 +61,35 @@ class ClassificationParseError(ValueError):
 
 _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
-_FIRST_OBJECT_RE = re.compile(r"\{.*?\}", re.DOTALL)
+
+
+def _scan_first_json_object(text: str) -> str | None:
+    """Return the first balanced ``{...}`` slice, tolerant of braces inside strings."""
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
 
 
 def _extract_json_blob(raw: str) -> str:
@@ -74,12 +102,12 @@ def _extract_json_blob(raw: str) -> str:
     if fence_match:
         cleaned = fence_match.group(1).strip()
 
-    obj_match = _FIRST_OBJECT_RE.search(cleaned)
-    if not obj_match:
+    blob = _scan_first_json_object(cleaned)
+    if blob is None:
         raise ClassificationParseError(
             "no JSON object found in classifier output"
         )
-    return obj_match.group(0)
+    return blob
 
 
 def parse_classification(

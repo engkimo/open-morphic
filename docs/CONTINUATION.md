@@ -25,7 +25,8 @@ TDD on `feature/goal-classifier-router`. Implements:
   decorator (metrics + structured logs). `sha256(goal)[:16]` only —
   raw goal **never** serialized.
 - `MORPHIC_PLANNER_ROUTER` env flag (default `disabled`, opt-in
-  `remote` / `local`).
+  `enabled` — adapter is auto-selected at DI wire time: remote Haiku 4.5
+  when `ANTHROPIC_API_KEY` is set, else local qwen3:8b).
 
 **Live A/B verdict** (3 arms × 10 goals × 3 trials, $0.97 total):
 
