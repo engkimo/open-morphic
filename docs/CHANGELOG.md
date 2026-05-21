@@ -1,5 +1,11 @@
 # CLAUDE.md Changelog
 
+## Unreleased
+
+- **[FEAT/TD-195]** Goal Classifier Router for planner model selection — `domain/ports/goal_classifier.py` (ABC) + `infrastructure/routing/{llm,local}_goal_classifier.py` (LLM + Ollama impls) + `domain/services/planner_model_router.py`. Per-goal routing of `LLMPlanner` between Sonnet 4.6 and Haiku 4.5, gated by confidence threshold and `MORPHIC_PLANNER_ROUTER` flag (default disabled). Targets the −11.4pt entity_preserved regression from `haiku_planner_ab_2026_05_19` while retaining ≥30% of Haiku's 47.6% cost saving on the eligible slice. See `specs/goal-classifier-router/`.
+
+---
+
 ## v0.6.1 → v0.6.2 (2026-05-15) — **Council Pilot full merge + TD-189 per-task cache_hit_rate + TD-192 fractal-entry latency cut + Haiku 4.5 threshold pinned**
 
 - **[PERF/TD-192]** `OutputRequirementClassifier.classify()` を `FractalBypassClassifier.should_bypass()` 内に折り畳み、fractal-entry の LLM 呼出を **2 → 1** に削減。`BypassDecision` を `(bypass, complexity, output_requirement, reason)` に拡張、`FractalTaskEngine` 側の二重呼出を撤廃。Round 22 live regression (`test_round22_td192_latency.py`, real qwen3:8b) で実測: 2 ゴール × 1 call = 2 total (baseline 4)、artifact ゴール 7.80s, text ゴール 1.08s。TD-191 architectural guard は完全維持

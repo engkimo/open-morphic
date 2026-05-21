@@ -1,0 +1,1670 @@
+{
+  "judge": "claude-sonnet-4-6",
+  "trials": 3,
+  "router_mode": true,
+  "rows": [
+    {
+      "goal": "Build a small REST API for a TODO list with CRUD endpoints",
+      "model": "claude-sonnet-4-6",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.8,
+      "plan_eval": 0.9167,
+      "candidate_count": 3,
+      "cost_usd": 0.012846,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Initialize a new Node.js/Express project with 'npm init' and install dependencies (express, uuid, body-parser) for the TODO list REST API",
+        "Implement CRUD endpoints (POST /todos, GET /todos, GET /todos/:id, PUT /todos/:id, DELETE /todos/:id) in an Express app with in-memory storage and write the server entry point as 'server.js'",
+        "Test all TODO list CRUD endpoints using curl or Postman to verify POST creates a todo, GET retrieves todos, PUT updates a todo, and DELETE removes a todo"
+      ]
+    },
+    {
+      "goal": "Build a small REST API for a TODO list with CRUD endpoints",
+      "model": "claude-sonnet-4-6",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.8,
+      "plan_eval": 0.9467,
+      "candidate_count": 3,
+      "cost_usd": 0.012843,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Initialize a new Node.js/Express project with 'npm init' and install dependencies (express, uuid, body-parser) for the TODO list REST API",
+        "Create 'server.js' implementing Express CRUD endpoints (GET /todos, GET /todos/:id, POST /todos, PUT /todos/:id, DELETE /todos/:id) with in-memory array storage for TODO items",
+        "Run and validate the TODO list REST API using 'node server.js' and test all CRUD endpoints with curl or Postman (create, read, update, delete TODO items)"
+      ]
+    },
+    {
+      "goal": "Build a small REST API for a TODO list with CRUD endpoints",
+      "model": "claude-sonnet-4-6",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.8,
+      "plan_eval": 0.9167,
+      "candidate_count": 3,
+      "cost_usd": 0.0126,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Initialize a new Node.js/Express project with 'npm init' and install dependencies (express, uuid, nodemon) for the TODO list REST API",
+        "Implement CRUD endpoints (POST /todos, GET /todos, GET /todos/:id, PUT /todos/:id, DELETE /todos/:id) in an Express app with in-memory storage using a todos array",
+        "Test all TODO list CRUD endpoints using curl or Postman to verify create, read, update, and delete operations return correct HTTP status codes and JSON responses"
+      ]
+    },
+    {
+      "goal": "Summarize the difference between TCP and UDP in two paragraphs",
+      "model": "claude-sonnet-4-6",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.6667,
+      "plan_eval": 0.9767,
+      "candidate_count": 3,
+      "cost_usd": 0.013119,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research key technical characteristics of TCP (Transmission Control Protocol) and UDP (User Datagram Protocol), including connection orientation, reliability, ordering, flow control, and use cases",
+        "Draft a two-paragraph summary contrasting TCP and UDP: paragraph one covering TCP's connection-oriented, reliable, ordered delivery with handshaking and flow control; paragraph two covering UDP's connectionless, low-latency, best-effort delivery and its typical use cases like streaming and DNS",
+        "Review and refine the two-paragraph TCP vs UDP summary for clarity, accuracy, and conciseness, ensuring both paragraphs are well-balanced and cover the most important distinctions"
+      ]
+    },
+    {
+      "goal": "Summarize the difference between TCP and UDP in two paragraphs",
+      "model": "claude-sonnet-4-6",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.6667,
+      "plan_eval": 0.9767,
+      "candidate_count": 3,
+      "cost_usd": 0.011688,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research key technical characteristics of TCP (Transmission Control Protocol) including connection-oriented nature, reliability, flow control, and ordered delivery",
+        "Research key technical characteristics of UDP (User Datagram Protocol) including connectionless nature, low latency, lack of guaranteed delivery, and typical use cases such as streaming and gaming",
+        "Generate a two-paragraph summary contrasting TCP and UDP: paragraph one covering TCP's reliability, handshake mechanism, and ordered delivery vs UDP's connectionless design; paragraph two covering trade-offs in speed, overhead, and appropriate use cases for each protocol"
+      ]
+    },
+    {
+      "goal": "Summarize the difference between TCP and UDP in two paragraphs",
+      "model": "claude-sonnet-4-6",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.6667,
+      "plan_eval": 0.9767,
+      "candidate_count": 3,
+      "cost_usd": 0.011469,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research key technical characteristics of TCP (Transmission Control Protocol) including connection-oriented nature, reliability, flow control, and ordered delivery",
+        "Research key technical characteristics of UDP (User Datagram Protocol) including connectionless nature, low latency, lack of guaranteed delivery, and typical use cases",
+        "Write a two-paragraph summary contrasting TCP and UDP: paragraph one covering TCP's connection-oriented, reliable, ordered delivery model versus UDP's connectionless, best-effort model; paragraph two covering trade-offs such as TCP's overhead and latency versus UDP's speed and suitability for real-time applications like video streaming and gaming"
+      ]
+    },
+    {
+      "goal": "Create a PPTX slide file about Hikawa Shrine history",
+      "model": "claude-sonnet-4-6",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.75,
+      "plan_eval": 0.8467,
+      "candidate_count": 3,
+      "cost_usd": 0.013779,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research Hikawa Shrine history, including founding legends, historical significance, deity enshrined (Susanoo-no-Mikoto), and notable events across centuries",
+        "Outline and structure the PPTX slide deck for Hikawa Shrine history, defining slide titles such as 'Introduction', 'Origins & Founding', 'Deity Susanoo-no-Mikoto', 'Historical Timeline', 'Cultural Significance', and 'Modern Hikawa Shrine'",
+        "Generate the PPTX file about Hikawa Shrine history using python-pptx, populating slides with titles, text content, and image placeholders based on the outline"
+      ]
+    },
+    {
+      "goal": "Create a PPTX slide file about Hikawa Shrine history",
+      "model": "claude-sonnet-4-6",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.75,
+      "plan_eval": 0.87,
+      "candidate_count": 3,
+      "cost_usd": 0.012237,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research Hikawa Shrine history, including founding legends, key historical periods, architectural features, and cultural significance",
+        "Outline and draft content for each PPTX slide about Hikawa Shrine history, including title slide, founding origins, historical timeline, architectural highlights, religious significance, and modern-day relevance",
+        "Generate a PPTX file about Hikawa Shrine history using python-pptx (or equivalent tool), applying the drafted outline with formatted text, layout, and placeholder images for each slide"
+      ]
+    },
+    {
+      "goal": "Create a PPTX slide file about Hikawa Shrine history",
+      "model": "claude-sonnet-4-6",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.75,
+      "plan_eval": 0.87,
+      "candidate_count": 3,
+      "cost_usd": 0.012777,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research Hikawa Shrine history, including founding legends, key historical periods, notable deities enshrined, and cultural significance",
+        "Outline and draft PPTX slide content for Hikawa Shrine history, organizing sections such as Overview, Origins & Founding, Historical Timeline, Enshrined Deities, Architecture & Festivals, and Cultural Legacy",
+        "Generate the PPTX file about Hikawa Shrine history using python-pptx, applying a thematic design with shrine imagery placeholders, formatted text, and structured slides per the outline"
+      ]
+    },
+    {
+      "goal": "氷川神社の歴史についてPPTXスライドを作成",
+      "model": "claude-sonnet-4-6",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.5,
+      "plan_eval": 0.86,
+      "candidate_count": 3,
+      "cost_usd": 0.012612,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Search for '氷川神社 歴史' (Hikawa Shrine history) to gather key historical facts, founding date, and cultural significance",
+        "Organize 氷川神社の歴史 research notes into a structured PPTX slide outline covering founding, historical periods, deities enshrined, and modern significance",
+        "Generate a PPTX file about 氷川神社の歴史 using python-pptx (or equivalent tool), incorporating title slide, timeline, key historical events, and deity information slides"
+      ]
+    },
+    {
+      "goal": "氷川神社の歴史についてPPTXスライドを作成",
+      "model": "claude-sonnet-4-6",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.5,
+      "plan_eval": 0.8433,
+      "candidate_count": 3,
+      "cost_usd": 0.013848,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Search for '氷川神社 歴史' (Hikawa Shrine history) to gather key historical facts, founding date, and cultural significance",
+        "Organize 氷川神社の歴史 research notes into a structured PPTX slide outline covering founding, historical periods, deities enshrined, and cultural significance",
+        "Generate a PPTX file about 氷川神社の歴史 using the structured outline, including slides for 創建・起源, 歴史的変遷, 祭神, and 文化的意義"
+      ]
+    },
+    {
+      "goal": "氷川神社の歴史についてPPTXスライドを作成",
+      "model": "claude-sonnet-4-6",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.5,
+      "plan_eval": 0.8167,
+      "candidate_count": 3,
+      "cost_usd": 0.013635,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Search for '氷川神社 歴史' (Hikawa Shrine history) to gather key historical facts, founding date, and cultural significance",
+        "Organize 氷川神社の歴史 research notes into a structured PPTX slide outline covering founding, key periods, deities enshrined, and modern significance",
+        "Generate a PPTX file titled '氷川神社の歴史' using python-pptx (or equivalent tool) with slides covering 創建・起源, 祭神, 歴史的変遷, and 現代の氷川神社"
+      ]
+    },
+    {
+      "goal": "Generate a Python script that sorts a CSV file by the 'date' column",
+      "model": "claude-sonnet-4-6",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.75,
+      "plan_eval": 0.9067,
+      "candidate_count": 3,
+      "cost_usd": 0.01164,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Read and parse the CSV file using Python's pandas library to load data into a DataFrame",
+        "Sort the DataFrame by the 'date' column using pandas sort_values() with proper datetime parsing to ensure chronological ordering",
+        "Write the sorted DataFrame back to a CSV file using pandas to_csv() and wrap all logic into a complete, executable Python script file named sort_csv_by_date.py"
+      ]
+    },
+    {
+      "goal": "Generate a Python script that sorts a CSV file by the 'date' column",
+      "model": "claude-sonnet-4-6",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.9467,
+      "candidate_count": 3,
+      "cost_usd": 0.012081,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Read and parse the CSV file using Python's pandas or csv module to load data including the 'date' column",
+        "Sort the parsed CSV data by the 'date' column in ascending order, ensuring proper datetime parsing for correct chronological sorting",
+        "Generate a complete Python script file (sort_csv_by_date.py) that reads an input CSV, parses the 'date' column as datetime, sorts rows by 'date' ascending, and writes the sorted result to an output CSV file"
+      ]
+    },
+    {
+      "goal": "Generate a Python script that sorts a CSV file by the 'date' column",
+      "model": "claude-sonnet-4-6",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.75,
+      "plan_eval": 0.9467,
+      "candidate_count": 3,
+      "cost_usd": 0.012648,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Read and parse the CSV file using Python's pandas library to load data into a DataFrame, identifying the 'date' column",
+        "Sort the DataFrame by the 'date' column using pandas sort_values(), converting the 'date' column to datetime format with pd.to_datetime() to ensure correct chronological ordering",
+        "Write the complete Python script to a .py file that accepts an input CSV path and output CSV path as arguments, reads the CSV, sorts by 'date', and writes the sorted result back to a new CSV file using df.to_csv()"
+      ]
+    },
+    {
+      "goal": "東京から京都への新幹線の最安ルートを調査して表にまとめる",
+      "model": "claude-sonnet-4-6",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.8333,
+      "plan_eval": 0.78,
+      "candidate_count": 3,
+      "cost_usd": 0.015558,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Search for '東京 京都 新幹線 最安値 ルート' using travel comparison sites such as Ekitan, Jorudan, and JR-ODEKAKE.net to collect fare and route options",
+        "Analyze and compare collected route data including 'のぞみ', 'ひかり', '自由席', '指定席', 'EX早特', 'e5489', 'スマートEX' discount options to identify the cheapest combinations",
+        "Generate a Markdown or Excel table summarizing 東京→京都 新幹線の最安ルート with columns for 列車種別, 座席種別, 通常料金, 割引料金, 割引サービス名, 所要時間, 購入条件"
+      ]
+    },
+    {
+      "goal": "東京から京都への新幹線の最安ルートを調査して表にまとめる",
+      "model": "claude-sonnet-4-6",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.8333,
+      "plan_eval": 0.8267,
+      "candidate_count": 3,
+      "cost_usd": 0.018537,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Search for '東京 京都 新幹線 最安値 ルート 料金比較' using a web search or travel booking site (e.g., えきねっと, JR東海ツアーズ, 新幹線比較ナビ) to collect fare and route options",
+        "Parse and organize the collected fare data into structured records including route name, train type (のぞみ/ひかり/こだま), ticket type (自由席/指定席/グリーン車), discount plan (早割/EX予約/学割 etc.), price (円), travel time, and booking conditions",
+        "Generate a Markdown or Excel (.xlsx) table summarizing 東京→京都 新幹線の最安ルート比較表, sorted by price ascending, with columns: ルート名, 列車種別, 席種, 割引プラン, 料金(円), 所要時間, 予約条件・注意事項"
+      ]
+    },
+    {
+      "goal": "東京から京都への新幹線の最安ルートを調査して表にまとめる",
+      "model": "claude-sonnet-4-6",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.8333,
+      "plan_eval": 0.83,
+      "candidate_count": 3,
+      "cost_usd": 0.015672,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Search for '東京 京都 新幹線 最安値 ルート' using web search to collect fare and route information from JR東海、JR西日本、各種割引きっぷ公式サイト",
+        "Parse and compare collected fare data to identify cheapest options including 通常自由席、指定席、EX早特21、学割、ぷらっとこだまなど各割引プランの料金・条件・所要時間",
+        "Generate a Markdown or Excel表 summarizing 東京〜京都の新幹線最安ルート比較表（列車種別・料金・所要時間・購入方法・注意事項を列として含む）"
+      ]
+    },
+    {
+      "goal": "Write unit tests for a function called calculate_compound_interest",
+      "model": "claude-sonnet-4-6",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8967,
+      "candidate_count": 3,
+      "cost_usd": 0.014508,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Analyze the calculate_compound_interest function signature, parameters (principal, rate, time, n), return type, and edge cases to identify all test scenarios",
+        "Write unit test functions for calculate_compound_interest covering: standard compound interest calculation, zero principal, zero rate, zero time, negative values, fractional compounding periods (n=1,4,12,365), and floating-point precision using a testing framework (e.g. pytest or unittest)",
+        "Execute the unit tests for calculate_compound_interest using pytest or unittest runner and verify all tests pass, fixing any failures in the test logic or uncovering bugs in the implementation"
+      ]
+    },
+    {
+      "goal": "Write unit tests for a function called calculate_compound_interest",
+      "model": "claude-sonnet-4-6",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8933,
+      "candidate_count": 3,
+      "cost_usd": 0.013515,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Analyze the calculate_compound_interest function signature, parameters (principal, rate, time, n), return type, and edge cases to identify all test scenarios",
+        "Write unit test functions for calculate_compound_interest covering: standard compound interest calculation, zero principal, zero rate, zero time, n=1 (annual), n=12 (monthly), n=365 (daily), negative inputs, and floating-point precision",
+        "Execute the unit tests for calculate_compound_interest using a test runner (e.g., pytest or unittest) and verify all tests pass, fixing any failures or assertion errors"
+      ]
+    },
+    {
+      "goal": "Write unit tests for a function called calculate_compound_interest",
+      "model": "claude-sonnet-4-6",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.86,
+      "candidate_count": 3,
+      "cost_usd": 0.014046,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Analyze the calculate_compound_interest function signature, parameters (principal, rate, time, n), return type, and edge cases to identify all test scenarios",
+        "Write unit tests for calculate_compound_interest covering standard cases (e.g. principal=1000, rate=0.05, time=3, n=12), edge cases (zero principal, zero rate, zero time), and invalid inputs (negative values, non-numeric types) using a framework such as pytest or unittest",
+        "Execute the unit tests for calculate_compound_interest using pytest or unittest and verify all tests pass, fixing any failures in the test logic or uncovering bugs in the function"
+      ]
+    },
+    {
+      "goal": "Plan a 3-day trip to Kyoto for a vegetarian traveler in November",
+      "model": "claude-sonnet-4-6",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.9233,
+      "candidate_count": 3,
+      "cost_usd": 0.015987,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research vegetarian-friendly restaurants, Buddhist temples with shojin ryori (精進料理) dining, and tofu cuisine spots in Kyoto available in November",
+        "Build a day-by-day 3-day Kyoto itinerary for November covering key autumn foliage (紅葉) sites such as Arashiyama, Fushimi Inari, Kinkaku-ji, and Philosopher's Path, incorporating vegetarian meal stops and travel logistics",
+        "Compile a final Kyoto 3-day vegetarian travel plan document (PDF or Markdown) including the itinerary, restaurant recommendations, November weather tips, packing suggestions, and useful Japanese phrases for communicating dietary restrictions"
+      ]
+    },
+    {
+      "goal": "Plan a 3-day trip to Kyoto for a vegetarian traveler in November",
+      "model": "claude-sonnet-4-6",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.9233,
+      "candidate_count": 3,
+      "cost_usd": 0.015705,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research vegetarian-friendly restaurants, Buddhist temples with shojin ryori (精進料理) dining, and tofu cuisine spots in Kyoto available in November",
+        "Compile a 3-day Kyoto itinerary covering key November attractions (autumn foliage at Arashiyama, Fushimi Inari, Kinkaku-ji, Philosopher's Path, Nishiki Market) with vegetarian meal stops and travel logistics between sites",
+        "Generate a final Kyoto 3-day trip plan document (Markdown or PDF) including the daily schedule, vegetarian restaurant details, November travel tips (crowds, koyo foliage peak timing, weather), and accommodation recommendations near central Kyoto"
+      ]
+    },
+    {
+      "goal": "Plan a 3-day trip to Kyoto for a vegetarian traveler in November",
+      "model": "claude-sonnet-4-6",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.9233,
+      "candidate_count": 3,
+      "cost_usd": 0.016662,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research vegetarian-friendly restaurants, Buddhist temples with shojin ryori (精進料理) dining, and tofu cuisine spots in Kyoto available in November",
+        "Build a day-by-day 3-day Kyoto itinerary for November covering key attractions (Arashiyama bamboo grove, Fushimi Inari, Kinkaku-ji, Philosopher's Path autumn foliage) with vegetarian meal stops integrated at each location",
+        "Compile a final Kyoto 3-day trip plan document (Markdown or PDF) including the full itinerary, vegetarian restaurant details, November-specific tips (koyo foliage crowds, temple hours, weather packing advice), and transportation guidance (IC card, bus passes)"
+      ]
+    },
+    {
+      "goal": "Convert a markdown file to PDF using pandoc and verify the output",
+      "model": "claude-sonnet-4-6",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8667,
+      "candidate_count": 3,
+      "cost_usd": 0.011784,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Install pandoc and required PDF rendering dependencies (e.g., TeX Live or wkhtmltopdf) on the target system",
+        "Execute pandoc command to convert the input markdown file (e.g., input.md) to PDF output (e.g., output.pdf) using the command: pandoc input.md -o output.pdf",
+        "Verify the generated output.pdf by checking file existence, non-zero file size, and optionally opening or parsing the PDF to confirm content integrity"
+      ]
+    },
+    {
+      "goal": "Convert a markdown file to PDF using pandoc and verify the output",
+      "model": "claude-sonnet-4-6",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8667,
+      "candidate_count": 3,
+      "cost_usd": 0.011592,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Install pandoc and required PDF rendering dependencies (e.g., texlive or wkhtmltopdf) on the target system",
+        "Execute pandoc command to convert the input markdown file (e.g., input.md) to PDF output (e.g., output.pdf) using the command: pandoc input.md -o output.pdf",
+        "Verify the generated output.pdf by checking file existence, non-zero file size, and optionally opening or parsing the PDF to confirm content integrity"
+      ]
+    },
+    {
+      "goal": "Convert a markdown file to PDF using pandoc and verify the output",
+      "model": "claude-sonnet-4-6",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8667,
+      "candidate_count": 3,
+      "cost_usd": 0.012627,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Install pandoc and required PDF engine (e.g., pdflatex or wkhtmltopdf) on the system if not already present",
+        "Execute pandoc command to convert the input markdown file (e.g., input.md) to PDF output file (e.g., output.pdf) using the chosen PDF engine",
+        "Verify the generated output.pdf exists, is non-empty, and can be opened/parsed correctly (e.g., using pdfinfo or a PDF reader to confirm page count and content integrity)"
+      ]
+    },
+    {
+      "goal": "Implement Dijkstra's shortest-path algorithm in Rust with tests",
+      "model": "claude-sonnet-4-6",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.9533,
+      "candidate_count": 3,
+      "cost_usd": 0.012858,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Create a new Rust library project named 'dijkstra' using 'cargo new --lib dijkstra' and set up the project structure",
+        "Implement Dijkstra's shortest-path algorithm in 'dijkstra/src/lib.rs' using a BinaryHeap-based priority queue, adjacency list graph representation, and returning shortest distances from a source node",
+        "Write unit tests for Dijkstra's algorithm in 'dijkstra/src/lib.rs' covering cases such as a simple weighted graph, disconnected nodes, single-node graph, and verify correctness by running 'cargo test'"
+      ]
+    },
+    {
+      "goal": "Implement Dijkstra's shortest-path algorithm in Rust with tests",
+      "model": "claude-sonnet-4-6",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.9533,
+      "candidate_count": 3,
+      "cost_usd": 0.0135,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Create a new Rust library project named 'dijkstra' using 'cargo new --lib dijkstra' and set up the project structure",
+        "Implement Dijkstra's shortest-path algorithm in 'dijkstra/src/lib.rs' using a BinaryHeap-based priority queue, adjacency list graph representation, and returning shortest distances from a source node",
+        "Write unit tests for Dijkstra's algorithm in 'dijkstra/src/lib.rs' covering cases such as a simple weighted graph, disconnected nodes, single-node graph, and negative-weight-free graphs, then run 'cargo test' to verify all tests pass"
+      ]
+    },
+    {
+      "goal": "Implement Dijkstra's shortest-path algorithm in Rust with tests",
+      "model": "claude-sonnet-4-6",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.9567,
+      "candidate_count": 3,
+      "cost_usd": 0.012918,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Create a new Rust project named 'dijkstra' using 'cargo new dijkstra --lib' and set up the project structure",
+        "Implement Dijkstra's shortest-path algorithm in 'dijkstra/src/lib.rs' using a BinaryHeap-based priority queue, adjacency list graph representation, and returning shortest distances from a source node",
+        "Write unit tests for Dijkstra's algorithm in 'dijkstra/src/lib.rs' covering cases such as single-node graph, simple path, graph with multiple shortest paths, and disconnected nodes, then run 'cargo test' to verify all tests pass"
+      ]
+    },
+    {
+      "goal": "Build a small REST API for a TODO list with CRUD endpoints",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.8,
+      "plan_eval": 0.9133,
+      "candidate_count": 3,
+      "cost_usd": 0.00695,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Set up a new Node.js project with Express.js framework for the TODO list REST API",
+        "Implement CRUD endpoints (GET, POST, PUT, DELETE) for TODO items with in-memory or database storage",
+        "Test the TODO list REST API endpoints using curl, Postman, or an HTTP client to verify CRUD functionality"
+      ]
+    },
+    {
+      "goal": "Build a small REST API for a TODO list with CRUD endpoints",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.8,
+      "plan_eval": 0.9167,
+      "candidate_count": 3,
+      "cost_usd": 0.00655,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Set up a new Node.js project with Express.js framework for the TODO list REST API",
+        "Implement CRUD endpoints (GET, POST, PUT, DELETE) for TODO items with in-memory or database storage",
+        "Test the TODO list REST API endpoints using curl, Postman, or automated test suite"
+      ]
+    },
+    {
+      "goal": "Build a small REST API for a TODO list with CRUD endpoints",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.8,
+      "plan_eval": 0.9133,
+      "candidate_count": 3,
+      "cost_usd": 0.006293,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Set up a new Node.js project with Express.js framework for the TODO list REST API",
+        "Implement CRUD endpoints (GET, POST, PUT, DELETE) for TODO list items with in-memory or database storage",
+        "Test the TODO list REST API endpoints using curl, Postman, or automated test suite to verify CRUD functionality"
+      ]
+    },
+    {
+      "goal": "Summarize the difference between TCP and UDP in two paragraphs",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.6667,
+      "plan_eval": 0.95,
+      "candidate_count": 3,
+      "cost_usd": 0.006284,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research the key characteristics of TCP (Transmission Control Protocol) including connection establishment, reliability, ordering, and use cases",
+        "Research the key characteristics of UDP (User Datagram Protocol) including connectionless nature, speed, unreliability, and use cases",
+        "Compose a two-paragraph summary document comparing TCP and UDP, highlighting differences in connection model, reliability, ordering, speed, and typical applications"
+      ]
+    },
+    {
+      "goal": "Summarize the difference between TCP and UDP in two paragraphs",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.6667,
+      "plan_eval": 0.95,
+      "candidate_count": 3,
+      "cost_usd": 0.006284,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research the key characteristics of TCP (Transmission Control Protocol) including connection establishment, reliability, ordering, and use cases",
+        "Research the key characteristics of UDP (User Datagram Protocol) including connectionless nature, speed, unreliability, and use cases",
+        "Compose a two-paragraph summary document comparing TCP and UDP, highlighting differences in connection model, reliability, ordering, speed, and typical applications"
+      ]
+    },
+    {
+      "goal": "Summarize the difference between TCP and UDP in two paragraphs",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.6667,
+      "plan_eval": 0.9767,
+      "candidate_count": 3,
+      "cost_usd": 0.006233,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research the key characteristics, protocols, and use cases of TCP (Transmission Control Protocol) and UDP (User Datagram Protocol)",
+        "Compose a two-paragraph summary document contrasting TCP and UDP, covering connection establishment, reliability, speed, and typical applications",
+        "Review and refine the two-paragraph summary for clarity, accuracy, and conciseness if the initial draft lacks sufficient detail or contains errors"
+      ]
+    },
+    {
+      "goal": "Create a PPTX slide file about Hikawa Shrine history",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8,
+      "candidate_count": 3,
+      "cost_usd": 0.007344,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research Hikawa Shrine history using web search and reliable sources to gather key historical facts, dates, architectural details, and cultural significance",
+        "Create a new PPTX presentation file with a title slide introducing Hikawa Shrine and outline slides for history sections (origins, development, architectural evolution, cultural significance)",
+        "Populate PPTX slides with researched content, add relevant images of Hikawa Shrine architecture and grounds, format text with bullet points, and apply consistent styling and layout"
+      ]
+    },
+    {
+      "goal": "Create a PPTX slide file about Hikawa Shrine history",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8,
+      "candidate_count": 3,
+      "cost_usd": 0.007584,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research Hikawa Shrine history using web search and reliable sources to gather key facts, dates, and historical events",
+        "Organize the Hikawa Shrine historical information into a logical slide structure with sections for origins, key periods, notable events, and cultural significance",
+        "Create a PPTX slide file using PowerPoint or LibreOffice Impress with the Hikawa Shrine history content, including title slide, historical timeline, images, and summary slides"
+      ]
+    },
+    {
+      "goal": "Create a PPTX slide file about Hikawa Shrine history",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8,
+      "candidate_count": 3,
+      "cost_usd": 0.007037,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research Hikawa Shrine history using web search and reliable sources to gather key historical facts, dates, and cultural significance",
+        "Organize the Hikawa Shrine historical research into a logical slide structure with sections for origins, key periods, architectural features, and cultural importance",
+        "Create a PPTX slide file about Hikawa Shrine history using PowerPoint or LibreOffice Impress, incorporating the organized content, relevant images, and formatted text across multiple slides"
+      ]
+    },
+    {
+      "goal": "氷川神社の歴史についてPPTXスライドを作成",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.5,
+      "plan_eval": 0.74,
+      "candidate_count": 3,
+      "cost_usd": 0.007925,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Search for '氷川神社 歴史' (Hikawa Shrine history) on Wikipedia and reliable Japanese historical sources",
+        "Organize the collected historical information into a logical outline with sections for founding period, major historical events, architectural features, and cultural importance",
+        "Create a PPTX slide file about Hikawa Shrine history using PowerPoint or LibreOffice Impress, including title slide, content slides with historical timeline, images, and key facts"
+      ]
+    },
+    {
+      "goal": "氷川神社の歴史についてPPTXスライドを作成",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.5,
+      "plan_eval": 0.74,
+      "candidate_count": 3,
+      "cost_usd": 0.007312,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Search for '氷川神社 歴史' (Hikawa Shrine history) on Wikipedia and Japanese historical databases to gather reliable information about the shrine's origins, development, and significance",
+        "Organize the collected historical information about 氷川神社 into a logical narrative structure with sections covering founding period, historical periods, architectural features, and cultural significance",
+        "Create a PPTX slide file about 氷川神社 歴史 using PowerPoint or LibreOffice Impress, incorporating the organized content with title slide, historical timeline, key facts, images, and conclusion"
+      ]
+    },
+    {
+      "goal": "氷川神社の歴史についてPPTXスライドを作成",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.5,
+      "plan_eval": 0.74,
+      "candidate_count": 3,
+      "cost_usd": 0.008455,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Search for '氷川神社 歴史' (Hikawa Shrine history) on Wikipedia and Japanese historical databases to gather comprehensive information about the shrine's origins, development, and significance",
+        "Organize the collected historical information into a logical narrative structure with sections covering founding period, architectural evolution, religious significance, and modern era for the PPTX slide presentation",
+        "Create a PPTX slide file using PowerPoint or LibreOffice Impress with title slide, content slides covering Hikawa Shrine's history, relevant images, and a conclusion slide"
+      ]
+    },
+    {
+      "goal": "Generate a Python script that sorts a CSV file by the 'date' column",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.5,
+      "plan_eval": 0.6667,
+      "candidate_count": 3,
+      "cost_usd": 0.006573,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Read the CSV file into a pandas DataFrame using pd.read_csv()",
+        "Sort the DataFrame by the 'date' column using df.sort_values('date')",
+        "Write the sorted DataFrame to a new CSV file using df.to_csv()"
+      ]
+    },
+    {
+      "goal": "Generate a Python script that sorts a CSV file by the 'date' column",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.5,
+      "plan_eval": 0.89,
+      "candidate_count": 3,
+      "cost_usd": 0.006636,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Read the CSV file into a pandas DataFrame using pd.read_csv()",
+        "Sort the DataFrame by the 'date' column using sort_values() method",
+        "Write the sorted DataFrame to a new CSV file using to_csv() method"
+      ]
+    },
+    {
+      "goal": "Generate a Python script that sorts a CSV file by the 'date' column",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.5,
+      "plan_eval": 0.84,
+      "candidate_count": 3,
+      "cost_usd": 0.006433,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Read the CSV file into a pandas DataFrame using pd.read_csv()",
+        "Sort the DataFrame by the 'date' column using sort_values() method",
+        "Write the sorted DataFrame back to a CSV file using to_csv()"
+      ]
+    },
+    {
+      "goal": "東京から京都への新幹線の最安ルートを調査して表にまとめる",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.0,
+      "plan_eval": 0.7067,
+      "candidate_count": 3,
+      "cost_usd": 0.009327,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Search for current shinkansen fares and schedules from Tokyo to Kyoto on official JR East and JR Central websites",
+        "Compare discount ticket options (e.g., EX IC card, advance purchase discounts, JR Pass) for Tokyo to Kyoto shinkansen routes",
+        "Create a comparison table in spreadsheet format (Excel or Google Sheets) summarizing the cheapest shinkansen routes from Tokyo to Kyoto with fares, travel times, and discount methods"
+      ]
+    },
+    {
+      "goal": "東京から京都への新幹線の最安ルートを調査して表にまとめる",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.0,
+      "plan_eval": 0.8,
+      "candidate_count": 3,
+      "cost_usd": 0.007785,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Search for current Shinkansen fares and schedules from Tokyo to Kyoto on major Japanese railway booking sites (Hyperdia, Ekinet, JR East official site)",
+        "Compare discount ticket options (回数券, 割引きっぷ, 早割) and alternative routes (Nozomi vs Hikari vs Kodama) to identify the cheapest combination for Tokyo-Kyoto travel",
+        "Create a table (Excel, Google Sheets, or Markdown format) summarizing the cheapest Tokyo-Kyoto Shinkansen routes with columns for route type, regular fare, discount fare, travel time, and booking method"
+      ]
+    },
+    {
+      "goal": "東京から京都への新幹線の最安ルートを調査して表にまとめる",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.0,
+      "plan_eval": 0.83,
+      "candidate_count": 3,
+      "cost_usd": 0.008004,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Search for current shinkansen fares and schedules from Tokyo to Kyoto on major booking sites (Hyperdia, JR East official site, Ekinet)",
+        "Compare discount options including JR Pass, early-bird discounts, group rates, and seasonal promotions for Tokyo-Kyoto shinkansen",
+        "Create a comparison table in spreadsheet format (Excel or Google Sheets) summarizing the cheapest Tokyo-Kyoto shinkansen routes with columns for route type, departure time, arrival time, regular fare, discounted fare, and total cost"
+      ]
+    },
+    {
+      "goal": "Write unit tests for a function called calculate_compound_interest",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.7833,
+      "candidate_count": 3,
+      "cost_usd": 0.007235,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Create a new test file (e.g., test_calculate_compound_interest.py) with standard test framework imports and structure",
+        "Write unit test cases for calculate_compound_interest covering basic scenarios (principal=1000, rate=5%, time=1 year), edge cases (zero principal, negative rate, zero time), and expected output assertions",
+        "Execute the unit tests using a test runner (pytest or unittest) to verify all test cases pass and validate the calculate_compound_interest function behavior"
+      ]
+    },
+    {
+      "goal": "Write unit tests for a function called calculate_compound_interest",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.7833,
+      "candidate_count": 3,
+      "cost_usd": 0.007745,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Create a new test file (e.g., test_calculate_compound_interest.py) with standard test framework imports and setup",
+        "Write unit test cases for calculate_compound_interest covering basic scenarios (principal=1000, rate=5%, time=1 year), edge cases (zero principal, negative rate), and boundary conditions",
+        "Execute the test suite for calculate_compound_interest and verify all tests pass or document failures"
+      ]
+    },
+    {
+      "goal": "Write unit tests for a function called calculate_compound_interest",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8333,
+      "candidate_count": 3,
+      "cost_usd": 0.00698,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Create a new test file (e.g., test_calculate_compound_interest.py) with standard test framework imports and setup",
+        "Write unit test cases for calculate_compound_interest covering basic scenarios (principal=1000, rate=5%, time=1 year), edge cases (zero principal, negative rate, zero time), and expected output validation",
+        "Execute the unit tests for calculate_compound_interest using a test runner (pytest or unittest) and verify all tests pass"
+      ]
+    },
+    {
+      "goal": "Plan a 3-day trip to Kyoto for a vegetarian traveler in November",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.6667,
+      "plan_eval": 0.9067,
+      "candidate_count": 3,
+      "cost_usd": 0.007047,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research vegetarian-friendly accommodations in Kyoto for November dates and check availability",
+        "Identify and compile vegetarian restaurants and Buddhist temple cuisine (shojin ryori) dining options in Kyoto for the 3-day itinerary",
+        "Create a 3-day Kyoto itinerary for November featuring vegetarian-accessible temples, gardens, and cultural sites with transportation logistics"
+      ]
+    },
+    {
+      "goal": "Plan a 3-day trip to Kyoto for a vegetarian traveler in November",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.6667,
+      "plan_eval": 0.8567,
+      "candidate_count": 3,
+      "cost_usd": 0.008652,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research vegetarian restaurants and accommodations in Kyoto for November travel dates",
+        "Create a 3-day itinerary for Kyoto in November that prioritizes vegetarian-friendly temples, gardens, and cultural sites",
+        "Book flights, accommodation, and make restaurant reservations for the 3-day Kyoto trip in November"
+      ]
+    },
+    {
+      "goal": "Plan a 3-day trip to Kyoto for a vegetarian traveler in November",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.6667,
+      "plan_eval": 0.8867,
+      "candidate_count": 3,
+      "cost_usd": 0.007098,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Research vegetarian-friendly accommodations in Kyoto for November dates and check availability",
+        "Identify and compile vegetarian restaurants and Buddhist temple cuisine (shojin ryori) dining options in Kyoto for the 3-day period",
+        "Create a 3-day Kyoto itinerary featuring vegetarian-accessible temples, gardens, and cultural sites suitable for November weather"
+      ]
+    },
+    {
+      "goal": "Convert a markdown file to PDF using pandoc and verify the output",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8167,
+      "candidate_count": 3,
+      "cost_usd": 0.006502,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Install pandoc if not already present on the system",
+        "Convert markdown file to PDF using pandoc command-line tool",
+        "Verify the output PDF file exists, is readable, and contains expected content"
+      ]
+    },
+    {
+      "goal": "Convert a markdown file to PDF using pandoc and verify the output",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8167,
+      "candidate_count": 3,
+      "cost_usd": 0.006665,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Install pandoc if not already present on the system",
+        "Convert the markdown file to PDF using pandoc command-line tool",
+        "Verify the PDF output by checking file existence, size, and readability"
+      ]
+    },
+    {
+      "goal": "Convert a markdown file to PDF using pandoc and verify the output",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.85,
+      "candidate_count": 3,
+      "cost_usd": 0.005969,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Install pandoc if not already present on the system",
+        "Execute pandoc command to convert markdown file to PDF output",
+        "Verify the PDF output by checking file existence, size, and content integrity"
+      ]
+    },
+    {
+      "goal": "Implement Dijkstra's shortest-path algorithm in Rust with tests",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.86,
+      "candidate_count": 3,
+      "cost_usd": 0.007629,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Create a new Rust project using 'cargo new dijkstra_shortest_path' command",
+        "Implement Dijkstra's shortest-path algorithm in Rust with a Graph struct, priority queue, and distance tracking logic in src/lib.rs",
+        "Write unit tests in src/lib.rs and integration tests in tests/ directory to validate Dijkstra's algorithm with sample graphs, edge cases, and expected shortest paths"
+      ]
+    },
+    {
+      "goal": "Implement Dijkstra's shortest-path algorithm in Rust with tests",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.86,
+      "candidate_count": 3,
+      "cost_usd": 0.007725,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Create a new Rust project using 'cargo new dijkstra_shortest_path' command",
+        "Implement Dijkstra's shortest-path algorithm in Rust with a Graph struct, priority queue, and distance tracking logic in src/lib.rs",
+        "Write unit tests in src/lib.rs and integration tests in tests/ directory to validate Dijkstra's algorithm with various graph configurations (single path, multiple paths, disconnected nodes, weighted edges)"
+      ]
+    },
+    {
+      "goal": "Implement Dijkstra's shortest-path algorithm in Rust with tests",
+      "model": "claude-haiku-4-5-20251001",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.9033,
+      "candidate_count": 3,
+      "cost_usd": 0.00636,
+      "chosen_model": null,
+      "classifier_cost_usd": 0.0,
+      "plan_descriptions": [
+        "Create a new Rust project using 'cargo new dijkstra_shortest_path' command",
+        "Implement Dijkstra's shortest-path algorithm in Rust with a Graph struct, priority queue, and distance tracking in src/lib.rs",
+        "Write unit tests for Dijkstra's algorithm in src/lib.rs covering basic shortest paths, disconnected nodes, single-node graphs, and edge cases"
+      ]
+    },
+    {
+      "goal": "Build a small REST API for a TODO list with CRUD endpoints",
+      "model": "router",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.8,
+      "plan_eval": 0.9133,
+      "candidate_count": 3,
+      "cost_usd": 0.008278,
+      "chosen_model": "haiku",
+      "classifier_cost_usd": 0.0006969999999999999,
+      "plan_descriptions": [
+        "Set up a new Node.js project with Express.js framework and initialize package.json with required dependencies (express, body-parser, cors)",
+        "Create REST API endpoints for TODO list CRUD operations (GET /todos, POST /todos, PUT /todos/:id, DELETE /todos/:id) with in-memory data storage",
+        "Test all TODO list CRUD endpoints (create, read, update, delete) using curl commands or Postman to verify correct HTTP responses and data persistence"
+      ]
+    },
+    {
+      "goal": "Build a small REST API for a TODO list with CRUD endpoints",
+      "model": "router",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.8,
+      "plan_eval": 0.9133,
+      "candidate_count": 3,
+      "cost_usd": 0.007502,
+      "chosen_model": "haiku",
+      "classifier_cost_usd": 0.0006969999999999999,
+      "plan_descriptions": [
+        "Set up a new Node.js project with Express.js framework for the TODO list REST API",
+        "Implement CRUD endpoints (GET, POST, PUT, DELETE) for TODO items with in-memory or database storage",
+        "Test the TODO list REST API endpoints using curl, Postman, or an HTTP client to verify CRUD functionality"
+      ]
+    },
+    {
+      "goal": "Build a small REST API for a TODO list with CRUD endpoints",
+      "model": "router",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.8,
+      "plan_eval": 0.9167,
+      "candidate_count": 3,
+      "cost_usd": 0.007517,
+      "chosen_model": "haiku",
+      "classifier_cost_usd": 0.0006969999999999999,
+      "plan_descriptions": [
+        "Set up a new Node.js project with Express.js framework for the TODO list REST API",
+        "Implement CRUD endpoints (GET, POST, PUT, DELETE) for TODO items with in-memory or database storage",
+        "Test the TODO list REST API endpoints using curl, Postman, or an HTTP client to verify CRUD functionality"
+      ]
+    },
+    {
+      "goal": "Summarize the difference between TCP and UDP in two paragraphs",
+      "model": "router",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.6667,
+      "plan_eval": 0.9667,
+      "candidate_count": 3,
+      "cost_usd": 0.00635,
+      "chosen_model": "haiku",
+      "classifier_cost_usd": 0.000678,
+      "plan_descriptions": [
+        "Research TCP (Transmission Control Protocol) characteristics including connection establishment, reliability, ordering, and use cases",
+        "Research UDP (User Datagram Protocol) characteristics including connectionless nature, speed, unreliability, and use cases",
+        "Write a two-paragraph summary comparing TCP and UDP differences, covering connection model, reliability, ordering, speed, and typical applications"
+      ]
+    },
+    {
+      "goal": "Summarize the difference between TCP and UDP in two paragraphs",
+      "model": "router",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.6667,
+      "plan_eval": 0.9667,
+      "candidate_count": 3,
+      "cost_usd": 0.006916,
+      "chosen_model": "haiku",
+      "classifier_cost_usd": 0.000678,
+      "plan_descriptions": [
+        "Research the key characteristics of TCP (Transmission Control Protocol) including connection establishment, reliability, ordering, flow control, and use cases",
+        "Research the key characteristics of UDP (User Datagram Protocol) including connectionless nature, unreliability, speed, and use cases",
+        "Write a two-paragraph summary comparing TCP and UDP, covering connection model, reliability guarantees, ordering, speed, and typical applications in the first paragraph and contrasting their trade-offs and use-case suitability in the second paragraph"
+      ]
+    },
+    {
+      "goal": "Summarize the difference between TCP and UDP in two paragraphs",
+      "model": "router",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.6667,
+      "plan_eval": 0.9667,
+      "candidate_count": 3,
+      "cost_usd": 0.007151,
+      "chosen_model": "haiku",
+      "classifier_cost_usd": 0.000678,
+      "plan_descriptions": [
+        "Research the key characteristics of TCP (Transmission Control Protocol) including connection establishment, reliability, ordering, flow control, and use cases",
+        "Research the key characteristics of UDP (User Datagram Protocol) including connectionless nature, unreliability, speed, and use cases",
+        "Write a two-paragraph summary comparing TCP and UDP, covering connection model, reliability guarantees, ordering, speed, and typical applications in the first paragraph and contrasting their trade-offs and use-case suitability in the second paragraph"
+      ]
+    },
+    {
+      "goal": "Create a PPTX slide file about Hikawa Shrine history",
+      "model": "router",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.75,
+      "plan_eval": 0.87,
+      "candidate_count": 3,
+      "cost_usd": 0.013981,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.0007390000000000001,
+      "plan_descriptions": [
+        "Research Hikawa Shrine history, including founding legends, key historical periods, architectural features, and cultural significance",
+        "Organize Hikawa Shrine research notes into a structured PPTX outline with slide titles, bullet points, and image placeholders for each section (origin, history timeline, architecture, festivals, cultural importance)",
+        "Generate a PPTX slide file about Hikawa Shrine history using python-pptx, populating slides with titles, text content, and image placeholders based on the outline"
+      ]
+    },
+    {
+      "goal": "Create a PPTX slide file about Hikawa Shrine history",
+      "model": "router",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.75,
+      "plan_eval": 0.8567,
+      "candidate_count": 3,
+      "cost_usd": 0.013057,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.0007390000000000001,
+      "plan_descriptions": [
+        "Research Hikawa Shrine history, including founding legends, key historical periods, architectural features, and cultural significance",
+        "Outline the PPTX slide structure for Hikawa Shrine history, defining slide titles, content sections, and visual layout plan",
+        "Generate a PPTX file about Hikawa Shrine history using python-pptx, incorporating slide titles, historical content, and relevant imagery placeholders"
+      ]
+    },
+    {
+      "goal": "Create a PPTX slide file about Hikawa Shrine history",
+      "model": "router",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.75,
+      "plan_eval": 0.87,
+      "candidate_count": 3,
+      "cost_usd": 0.013402,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.0007390000000000001,
+      "plan_descriptions": [
+        "Research Hikawa Shrine history, including founding legends, key historical periods, architectural features, and cultural significance",
+        "Outline and organize the PPTX slide structure for Hikawa Shrine history, defining slide titles, sections, and content hierarchy (e.g., Introduction, Origins, Historical Timeline, Architecture, Cultural Role, Modern Significance)",
+        "Generate the PPTX file about Hikawa Shrine history using python-pptx (or equivalent tool), populating slides with titles, text content, and placeholder image layouts based on the outline"
+      ]
+    },
+    {
+      "goal": "氷川神社の歴史についてPPTXスライドを作成",
+      "model": "router",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.5,
+      "plan_eval": 0.8567,
+      "candidate_count": 3,
+      "cost_usd": 0.013894,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.000715,
+      "plan_descriptions": [
+        "Search for '氷川神社 歴史' (Hikawa Shrine history) to gather key historical facts, founding date, mythology, and cultural significance",
+        "Organize and structure the 氷川神社 historical content into a slide outline covering: 概要, 創建・起源, 祭神, 歴史的変遷, 文化的意義, まとめ",
+        "Generate a PPTX file about 氷川神社の歴史 using python-pptx, incorporating the slide outline with titles, bullet points, and relevant section layouts"
+      ]
+    },
+    {
+      "goal": "氷川神社の歴史についてPPTXスライドを作成",
+      "model": "router",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.5,
+      "plan_eval": 0.86,
+      "candidate_count": 3,
+      "cost_usd": 0.015445,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.000715,
+      "plan_descriptions": [
+        "Search for '氷川神社 歴史' (Hikawa Shrine history) to gather key historical facts, founding date, and cultural significance",
+        "Organize 氷川神社の歴史 research notes into a structured PPTX slide outline covering: 創建・起源, 歴史的変遷, 祭神・信仰, 文化的意義 sections",
+        "Create a PPTX file '氷川神社の歴史.pptx' using python-pptx (or PowerPoint) with slides covering 創建・起源, 歴史的変遷, 祭神・信仰, 文化的意義, and references"
+      ]
+    },
+    {
+      "goal": "氷川神社の歴史についてPPTXスライドを作成",
+      "model": "router",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.5,
+      "plan_eval": 0.87,
+      "candidate_count": 3,
+      "cost_usd": 0.01261,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.000715,
+      "plan_descriptions": [
+        "Search for '氷川神社 歴史' (Hikawa Shrine history) to gather key historical facts, founding date, mythology, and cultural significance",
+        "Organize and structure the 氷川神社 historical content into a PPTX slide outline covering founding, mythology, key periods, and modern significance",
+        "Generate a PPTX file about 氷川神社の歴史 using python-pptx (or equivalent tool), incorporating the structured outline with titles, text, and layout for each slide"
+      ]
+    },
+    {
+      "goal": "Generate a Python script that sorts a CSV file by the 'date' column",
+      "model": "router",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.75,
+      "plan_eval": 0.9467,
+      "candidate_count": 3,
+      "cost_usd": 0.014411,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.000695,
+      "plan_descriptions": [
+        "Read and parse the input CSV file using Python's 'csv' or 'pandas' library to load its contents and identify the 'date' column",
+        "Sort the parsed CSV data by the 'date' column in ascending order, ensuring proper datetime parsing (e.g., using pandas.to_datetime or Python's datetime.strptime) to handle date formats correctly",
+        "Write the final Python script file 'sort_csv_by_date.py' that combines CSV reading, 'date' column parsing, sorting, and writing the sorted output back to a CSV file using pandas"
+      ]
+    },
+    {
+      "goal": "Generate a Python script that sorts a CSV file by the 'date' column",
+      "model": "router",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.9,
+      "candidate_count": 3,
+      "cost_usd": 0.015179,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.000695,
+      "plan_descriptions": [
+        "Read and parse the input CSV file using Python's pandas or csv module to load its contents and identify the 'date' column",
+        "Generate a Python script that sorts the CSV file by the 'date' column using pandas (pd.read_csv, pd.to_datetime conversion, DataFrame.sort_values) and writes the sorted result to an output CSV file",
+        "Generate a Python script that sorts the CSV file by the 'date' column using only the built-in csv and datetime modules (no pandas dependency), sorting rows with sorted() and a datetime.strptime key function"
+      ]
+    },
+    {
+      "goal": "Generate a Python script that sorts a CSV file by the 'date' column",
+      "model": "router",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.95,
+      "candidate_count": 3,
+      "cost_usd": 0.013157,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.000695,
+      "plan_descriptions": [
+        "Read and parse the CSV file using Python's pandas or csv module to load data including the 'date' column",
+        "Sort the parsed CSV data by the 'date' column in ascending order, converting the 'date' column to datetime format to ensure correct chronological sorting",
+        "Generate a complete Python script file (sort_csv_by_date.py) that reads an input CSV file, parses and sorts by the 'date' column using pandas, and writes the sorted result to an output CSV file"
+      ]
+    },
+    {
+      "goal": "東京から京都への新幹線の最安ルートを調査して表にまとめる",
+      "model": "router",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.8333,
+      "plan_eval": 0.8733,
+      "candidate_count": 3,
+      "cost_usd": 0.016847,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.000725,
+      "plan_descriptions": [
+        "Search for '東京 京都 新幹線 最安値 ルート 料金比較' using web search to collect fare and route information",
+        "Analyze and compare collected fare data for 東京→京都 routes including のぞみ・ひかり・こだま, 早割, e5489, EX予約 discount options to identify the cheapest options",
+        "Generate a Markdown or Excel table summarizing 東京→京都 新幹線の最安ルート比較表 with columns for 列車種別, 予約方法/割引, 通常料金, 最安料金, 条件・備考"
+      ]
+    },
+    {
+      "goal": "東京から京都への新幹線の最安ルートを調査して表にまとめる",
+      "model": "router",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.1667,
+      "plan_eval": 0.8,
+      "candidate_count": 3,
+      "cost_usd": 0.018776,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.000725,
+      "plan_descriptions": [
+        "Search for the cheapest Shinkansen routes from Tokyo to Kyoto by querying JR official site, Ekitan, and Navitime for fare options including Hikari, Kodama, and discount tickets (e.g., EX早特, バリ得こだま)",
+        "Compile and compare the collected Tokyo–Kyoto Shinkansen fare data (通常料金, EX早特21, バリ得こだま, 学割, etc.) into a structured comparison table including train type, travel time, price, and booking conditions",
+        "Format the Tokyo–Kyoto Shinkansen cheapest route comparison into a final Markdown or Excel table with columns: 列車種別, 所要時間, 通常料金, 最安値, 割引種別, 予約条件, and highlight the single cheapest option"
+      ]
+    },
+    {
+      "goal": "東京から京都への新幹線の最安ルートを調査して表にまとめる",
+      "model": "router",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.8333,
+      "plan_eval": 0.8333,
+      "candidate_count": 3,
+      "cost_usd": 0.020195,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.000725,
+      "plan_descriptions": [
+        "Search for '東京 京都 新幹線 最安値 ルート' using web search to collect fare and route information from JR東海、JR西日本、旅行予約サイト (e.g., えきねっと, 新幹線予約, じゃらん)",
+        "Parse and compare collected fare data for 東京→京都 新幹線ルート including のぞみ・ひかり・こだま, 自由席・指定席・グリーン車, EX予約・スマートEX・学割・往復割引 などの料金区分を整理する",
+        "Generate a Markdown or CSV形式の表 summarizing 東京→京都 新幹線の最安ルート比較表（列車種別、座席クラス、通常料金、割引料金、所要時間、予約方法を列として含む）"
+      ]
+    },
+    {
+      "goal": "Write unit tests for a function called calculate_compound_interest",
+      "model": "router",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.85,
+      "candidate_count": 3,
+      "cost_usd": 0.014047,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.000706,
+      "plan_descriptions": [
+        "Analyze the calculate_compound_interest function signature, parameters (principal, rate, time, n), return type, and edge cases to identify test scenarios",
+        "Write unit tests for calculate_compound_interest covering normal cases (e.g. principal=1000, rate=0.05, time=3, n=12), edge cases (rate=0, time=0, principal=0), and invalid inputs (negative values, non-numeric types) using a testing framework such as pytest or unittest",
+        "Execute the unit tests for calculate_compound_interest using pytest or unittest and verify all tests pass, fixing any failures or assertion errors found"
+      ]
+    },
+    {
+      "goal": "Write unit tests for a function called calculate_compound_interest",
+      "model": "router",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.9033,
+      "candidate_count": 3,
+      "cost_usd": 0.013882,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.000706,
+      "plan_descriptions": [
+        "Analyze the calculate_compound_interest function signature, parameters (principal, rate, time, n), return type, and edge cases to identify all test scenarios",
+        "Write unit tests for calculate_compound_interest covering standard cases (e.g. principal=1000, rate=0.05, time=3, n=12), edge cases (zero principal, zero rate, zero time), and invalid inputs (negative values, non-numeric types) using a testing framework such as pytest or unittest",
+        "Execute the unit tests for calculate_compound_interest using pytest or unittest runner and verify all tests pass, fixing any failures in either the tests or the implementation"
+      ]
+    },
+    {
+      "goal": "Write unit tests for a function called calculate_compound_interest",
+      "model": "router",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.86,
+      "candidate_count": 3,
+      "cost_usd": 0.015052,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.000706,
+      "plan_descriptions": [
+        "Analyze the calculate_compound_interest function signature, parameters (principal, rate, time, n), return type, and edge cases to identify all test scenarios",
+        "Write unit test functions for calculate_compound_interest covering normal cases (e.g. principal=1000, rate=0.05, time=3, n=12), edge cases (zero principal, zero rate, zero time), and invalid inputs (negative values, non-numeric types) using pytest or unittest framework",
+        "Run the unit tests in test_calculate_compound_interest.py using pytest and verify all tests pass, fixing any failures or assertion errors in the test logic"
+      ]
+    },
+    {
+      "goal": "Plan a 3-day trip to Kyoto for a vegetarian traveler in November",
+      "model": "router",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.9433,
+      "candidate_count": 3,
+      "cost_usd": 0.017429,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.000743,
+      "plan_descriptions": [
+        "Research vegetarian-friendly restaurants, temples, shrines, and seasonal November attractions (autumn foliage spots) in Kyoto",
+        "Build a detailed 3-day Kyoto itinerary covering Day 1 (Arashiyama bamboo grove, Tenryu-ji shojin ryori lunch, Fushimi Inari), Day 2 (Kinkaku-ji, Nishiki Market vegetarian stalls, Philosopher's Path autumn foliage), and Day 3 (Kiyomizu-dera, Gion district, tofu kaiseki dinner) with travel times and vegetarian dining options at each stop",
+        "Compile the finalized 3-day Kyoto vegetarian travel plan into a structured Markdown document including accommodation suggestions near Kyoto Station, November weather tips, transport passes (Kyoto City Bus Pass), and a curated list of vegetarian and vegan restaurants (e.g., Shigetsu, Mumokuteki Cafe, Falafel Garden)"
+      ]
+    },
+    {
+      "goal": "Plan a 3-day trip to Kyoto for a vegetarian traveler in November",
+      "model": "router",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8433,
+      "candidate_count": 3,
+      "cost_usd": 0.018254,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.000743,
+      "plan_descriptions": [
+        "Research vegetarian-friendly restaurants, Buddhist temple cuisine (shojin ryori), and tofu specialty spots in Kyoto available in November",
+        "Build a 3-day Kyoto itinerary covering key November attractions (autumn foliage at Eikan-do, Tofuku-ji, Arashiyama bamboo grove, Fushimi Inari, Kinkaku-ji, Nishiki Market) with vegetarian meal stops integrated each day",
+        "Compile a final Kyoto 3-day trip plan document (PDF or Markdown) including the itinerary, vegetarian restaurant recommendations, November weather/packing tips, transportation advice (IC card, bus passes), and booking links for accommodations near central Kyoto"
+      ]
+    },
+    {
+      "goal": "Plan a 3-day trip to Kyoto for a vegetarian traveler in November",
+      "model": "router",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 0.6667,
+      "plan_eval": 0.9267,
+      "candidate_count": 3,
+      "cost_usd": 0.017309,
+      "chosen_model": "sonnet",
+      "classifier_cost_usd": 0.000743,
+      "plan_descriptions": [
+        "Research vegetarian-friendly restaurants, temples, shrines, and seasonal November attractions (autumn foliage spots) in Kyoto",
+        "Build a detailed 3-day Kyoto itinerary covering Day 1 (Arashiyama & Sagano), Day 2 (Fushimi Inari, Nishiki Market vegetarian food stalls, Gion), and Day 3 (Kinkaku-ji, Ryoan-ji, Philosopher's Path autumn foliage), including vegetarian meal recommendations for each day",
+        "Compile a practical travel guide document (Markdown or PDF) for the 3-day Kyoto vegetarian trip including the itinerary, packing tips for November weather, transportation advice (IC card, bus passes), and a curated list of vegetarian/vegan restaurants such as Falafel Garden, Ain Soph Journey, and shojin ryori (Buddhist cuisine) venues"
+      ]
+    },
+    {
+      "goal": "Convert a markdown file to PDF using pandoc and verify the output",
+      "model": "router",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8167,
+      "candidate_count": 3,
+      "cost_usd": 0.007261,
+      "chosen_model": "haiku",
+      "classifier_cost_usd": 0.000732,
+      "plan_descriptions": [
+        "Install pandoc if not already present on the system",
+        "Execute pandoc command to convert markdown file to PDF output",
+        "Verify the PDF output file exists, is readable, and contains expected content"
+      ]
+    },
+    {
+      "goal": "Convert a markdown file to PDF using pandoc and verify the output",
+      "model": "router",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8167,
+      "candidate_count": 3,
+      "cost_usd": 0.007761,
+      "chosen_model": "haiku",
+      "classifier_cost_usd": 0.000732,
+      "plan_descriptions": [
+        "Install pandoc if not already present on the system",
+        "Execute pandoc command to convert markdown file to PDF output",
+        "Verify the generated PDF file exists, is readable, and contains expected content"
+      ]
+    },
+    {
+      "goal": "Convert a markdown file to PDF using pandoc and verify the output",
+      "model": "router",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8167,
+      "candidate_count": 3,
+      "cost_usd": 0.006652,
+      "chosen_model": "haiku",
+      "classifier_cost_usd": 0.000732,
+      "plan_descriptions": [
+        "Install pandoc if not already present on the system",
+        "Convert the markdown file to PDF using pandoc command-line tool",
+        "Verify the PDF output by checking file existence, size, and content integrity"
+      ]
+    },
+    {
+      "goal": "Implement Dijkstra's shortest-path algorithm in Rust with tests",
+      "model": "router",
+      "trial": 1,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.9,
+      "candidate_count": 3,
+      "cost_usd": 0.007687,
+      "chosen_model": "haiku",
+      "classifier_cost_usd": 0.0006900000000000001,
+      "plan_descriptions": [
+        "Create a new Rust project using 'cargo new dijkstra_shortest_path' command",
+        "Implement Dijkstra's shortest-path algorithm in Rust with a Graph struct, priority queue, and distance tracking in src/lib.rs",
+        "Write unit tests in src/lib.rs and integration tests in tests/ directory to verify Dijkstra's algorithm correctness with sample graphs and edge cases"
+      ]
+    },
+    {
+      "goal": "Implement Dijkstra's shortest-path algorithm in Rust with tests",
+      "model": "router",
+      "trial": 2,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.86,
+      "candidate_count": 3,
+      "cost_usd": 0.007337,
+      "chosen_model": "haiku",
+      "classifier_cost_usd": 0.0006900000000000001,
+      "plan_descriptions": [
+        "Create a new Rust project using 'cargo new dijkstra_shortest_path' command",
+        "Implement Dijkstra's shortest-path algorithm in Rust with a Graph struct, priority queue, and distance tracking logic in src/lib.rs",
+        "Write comprehensive unit tests in src/lib.rs and integration tests in tests/ directory covering basic shortest paths, disconnected nodes, single-node graphs, and edge cases for Dijkstra's algorithm"
+      ]
+    },
+    {
+      "goal": "Implement Dijkstra's shortest-path algorithm in Rust with tests",
+      "model": "router",
+      "trial": 3,
+      "parse_success": true,
+      "schema_valid": true,
+      "entity_preserved": 1.0,
+      "plan_eval": 0.8567,
+      "candidate_count": 3,
+      "cost_usd": 0.008009,
+      "chosen_model": "haiku",
+      "classifier_cost_usd": 0.0006900000000000001,
+      "plan_descriptions": [
+        "Create a new Rust project using `cargo new dijkstra_shortest_path` command",
+        "Implement Dijkstra's shortest-path algorithm in Rust with a Graph struct, priority queue, and distance tracking in src/lib.rs",
+        "Write unit tests in src/lib.rs and integration tests in tests/ directory to validate Dijkstra's algorithm correctness with sample graphs and edge cases"
+      ]
+    }
+  ],
+  "summary": {
+    "sonnet": {
+      "model": "claude-sonnet-4-6",
+      "parse_success": 1.0,
+      "schema_valid": 1.0,
+      "entity_preserved": 0.8383333333333333,
+      "plan_eval": 0.8979,
+      "avg_cost_usd": 0.013509700000000001,
+      "n": 30
+    },
+    "haiku": {
+      "model": "claude-haiku-4-5-20251001",
+      "parse_success": 1.0,
+      "schema_valid": 1.0,
+      "entity_preserved": 0.71334,
+      "plan_eval": 0.8376699999999999,
+      "avg_cost_usd": 0.007153866666666666,
+      "n": 30
+    },
+    "router": {
+      "model": "router",
+      "parse_success": 1.0,
+      "schema_valid": 1.0,
+      "entity_preserved": 0.8133366666666666,
+      "plan_eval": 0.8841166666666667,
+      "avg_cost_usd": 0.012178266666666666,
+      "n": 30
+    }
+  },
+  "total_cost_usd": 0.971015,
+  "router_chosen_models": {
+    "Build a small REST API for a TODO list with CRUD endpoints": "haiku",
+    "Summarize the difference between TCP and UDP in two paragraphs": "haiku",
+    "Create a PPTX slide file about Hikawa Shrine history": "sonnet",
+    "氷川神社の歴史についてPPTXスライドを作成": "sonnet",
+    "Generate a Python script that sorts a CSV file by the 'date' column": "sonnet",
+    "東京から京都への新幹線の最安ルートを調査して表にまとめる": "sonnet",
+    "Write unit tests for a function called calculate_compound_interest": "sonnet",
+    "Plan a 3-day trip to Kyoto for a vegetarian traveler in November": "sonnet",
+    "Convert a markdown file to PDF using pandoc and verify the output": "haiku",
+    "Implement Dijkstra's shortest-path algorithm in Rust with tests": "haiku"
+  },
+  "router_classifier_cost_usd": 0.00712
+}

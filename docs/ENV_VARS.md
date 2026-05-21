@@ -47,6 +47,15 @@ LAEE_BROWSER_HEADLESS=true
 LAEE_GUI_ENABLED=true
 LAEE_CRON_ENABLED=true
 
+# ── Planner Model Router (v0.6.3, TD-195) ──
+# `enabled` 時の分類器adapter選択優先順位:
+#   1. LOCAL_FIRST=true かつ Ollama 到達可能 → LocalGoalClassifier (qwen3:8b, $0)
+#   2. ANTHROPIC_API_KEY あり かつ 月次予算に余裕あり → LLMGoalClassifier (Haiku 4.5)
+#   3. それ以外 → router 無効化と同等 (Sonnet 固定)
+MORPHIC_PLANNER_ROUTER=disabled                          # disabled | enabled
+MORPHIC_PLANNER_ROUTER_HAIKU_CONFIDENCE_THRESHOLD=0.7    # 0.0–1.0; Haikuを選ぶ最小信頼度
+MORPHIC_PLANNER_ROUTER_CLASSIFIER_TIMEOUT_MS=1500        # >0 (ms); classifier hard timeout → Sonnet fallback
+
 # ── Morphic Settings ──
 MORPHIC_ENV=development
 AUTO_TOOL_INSTALL=false       # true: 自動, false: 承認制

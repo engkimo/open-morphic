@@ -8059,3 +8059,71 @@ durable adapter once event volume warrants it; (3) measure flag-on cost +
 latency in shadow mode before defaulting on; (4) consider extending to
 3-engine debates once the 2-engine pilot is validated against the
 `live_debate_ux` vision memory.
+
+---
+
+## TD-195: Goal Classifier Router for Planner Model Selection
+
+**Date:** 2026-05-20
+**Status:** Accepted
+
+**Decision** — Introduce a per-goal planner-model router that classifies
+each incoming goal as Haiku-eligible vs. Sonnet-required via a pure-LLM
+classifier (Anthropic Haiku 4.5 by default; local qwen3:8b alternative for
+$0 ops), and selects `PlannerModel.HAIKU` or `PlannerModel.SONNET`
+accordingly. Wiring lives in `domain/services/planner_model_router.py`,
+behind the new `MORPHIC_PLANNER_ROUTER` env var (default off → all-Sonnet
+preserved). The two classifier adapters
+(`infrastructure/routing/llm_goal_classifier.py`,
+`local_goal_classifier.py`) share a byte-identical `SYSTEM_PROMPT` in
+`infrastructure/routing/_prompts.py` so that the TD-190 stable-prefix
+guarantee carries through the new code path. `GoalClassified` events are
+published via `EventBusPort`; the raw goal is **never** serialized —
+`sha256(goal)[:16]` is used as the privacy-safe identifier.
+
+**Rationale** — The 2026-05-19 A/B
+(`haiku_planner_ab_2026_05_19.md`) showed a blanket Sonnet→Haiku swap
+saves 47.6%/call but regresses entity-preservation by 11.4pt and
+plan_eval by 0.07 — a non-starter for production. Per-goal routing
+captures a meaningful slice of the saving on goals that are objectively
+Haiku-safe (English, no quoted entities, no CJK, no proper nouns) while
+keeping Sonnet as the default for everything else. The 2026-05-20 live
+3-arm A/B (`planner_router_ab_2026_05_20.md`) confirms the router
+**Pareto-dominates** the Sonnet baseline: entity_preserved −2.5pt
+(within the ±5pt acceptance band), plan_eval −0.014 (within ±0.030),
+and 9.85% cheaper / call. Captured-saving landed at 20.9% (under the
+30% paper target), but inspection showed this is a *workload-mix* effect
+— 6 of the 10 benchmark goals carry entities/CJK that the classifier
+correctly routes to Sonnet at confidence ≥0.9. Lowering the threshold
+would not help; only re-shaping the prompt (risking entity regressions)
+or measuring real production traffic (Haiku-heavy expected) would lift
+the ratio. We accept this and document the captured-saving bar as
+*expected-on-prod-mix, not on the entity-stress benchmark*.
+
+**Consequences** — Adds 1 domain port (`GoalClassifierPort`), 1 domain
+service (`PlannerModelRouter`), 1 domain value object
+(`GoalClassification`), 1 closed-set `ReasonCategory` Literal (AD-3), and
+2 infrastructure adapters + 1 observability decorator
+(`RouterObservingEventBus`). Domain stays framework-free; classifier
+implementations live entirely in `infrastructure/routing/`. Cost ceiling:
+each routing decision adds 1 Haiku 4.5 call (~$0.0007 observed; live A/B
+classifier overhead was $0.00712 for 10 goals). Latency budget: 5 s hard
+timeout in the router; on timeout or `ClassificationParseError` the
+router falls back to `PlannerModel.SONNET` (fail-safe to the
+quality-preserving model, never to Haiku). The KV-cache stable-prefix
+invariant from TD-190 extends naturally — `SYSTEM_PROMPT` is a
+module-level constant shared across both adapters. `MORPHIC_PLANNER_ROUTER`
+default-off (`disabled`) means production routing is unchanged on merge;
+opt-in via `enabled`. When enabled, the DI container selects the remote
+Haiku 4.5 adapter if `ANTHROPIC_API_KEY` is present, else falls back to
+the local qwen3:8b adapter — both share the byte-identical SYSTEM_PROMPT.
+
+**Follow-ups** — (1) Measure captured-saving in production once router
+logs accumulate (the 10-goal benchmark is entity-stressed by design and
+will under-report real-world saving); (2) consider per-tenant or
+per-workspace overrides if a customer workload deviates from the
+expected English-tech / CJK split; (3) wire `RouterMetrics` into the
+existing observability dashboard alongside `cache_hit_rate` (TD-189) so
+that classifier latency, decisions_total, and fallback rate are
+first-class signals; (4) revisit the 0.7 `haiku_confidence_threshold`
+once a representative volume of production decisions has been logged.

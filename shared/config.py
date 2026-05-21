@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -157,6 +158,23 @@ class Settings(BaseSettings):
     # ── Affinity ──
     affinity_min_samples: int = 3
     affinity_boost_threshold: float = 0.6
+
+    # ── Planner Router (Goal Classifier — TD-195) ──
+    planner_router_mode: Literal["disabled", "enabled"] = Field(
+        default="disabled",
+        validation_alias="MORPHIC_PLANNER_ROUTER",
+    )
+    planner_router_haiku_confidence_threshold: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        validation_alias="MORPHIC_PLANNER_ROUTER_HAIKU_CONFIDENCE_THRESHOLD",
+    )
+    planner_router_classifier_timeout_ms: int = Field(
+        default=1500,
+        gt=0,
+        validation_alias="MORPHIC_PLANNER_ROUTER_CLASSIFIER_TIMEOUT_MS",
+    )
 
     # ── Council pilot (TD-194) ──
     council_debate_enabled: bool = Field(default=False, validation_alias="MORPHIC_COUNCIL_DEBATE")

@@ -45,12 +45,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from domain.entities.fractal_engine import CandidateNode, ExecutionPlan, PlanNode
+from domain.services.planner_model_router import PlannerModelRouter
+from domain.value_objects.planner_model import PlannerModel
+from infrastructure.events.in_memory_event_bus import InMemoryEventBus
 from infrastructure.fractal.llm_plan_evaluator import LLMPlanEvaluator
 from infrastructure.fractal.llm_planner import LLMPlanner
 from infrastructure.llm.cost_tracker import CostTracker
 from infrastructure.llm.litellm_gateway import LiteLLMGateway
 from infrastructure.llm.ollama_manager import OllamaManager
+from infrastructure.metrics.router_metrics import RouterMetrics
+from infrastructure.observability.router_observer import RouterObservingEventBus
 from infrastructure.persistence.in_memory import InMemoryCostRepository
+from infrastructure.routing.llm_goal_classifier import LLMGoalClassifier
 from shared.config import Settings
 
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(message)s")
@@ -58,7 +64,13 @@ logger = logging.getLogger("planner_quality_ab")
 
 SONNET = "claude-sonnet-4-6"
 HAIKU = "claude-haiku-4-5-20251001"
-JUDGE = SONNET  # consistent judge across both arms — eliminates self-grading bias
+ROUTER = "router"  # virtual arm: PlannerModelRouter picks Haiku or Sonnet per goal
+JUDGE = SONNET  # consistent judge across all arms — eliminates self-grading bias
+
+_PLANNER_MODEL_TO_GATEWAY: dict[PlannerModel, str] = {
+    PlannerModel.SONNET: SONNET,
+    PlannerModel.HAIKU: HAIKU,
+}
 
 # 10 goals chosen to span: simple/complex, EN/JA, text/file output, technical/everyday.
 GOALS: list[str] = [
@@ -142,7 +154,7 @@ def _candidates_to_plan(candidates: list[CandidateNode], goal: str) -> Execution
 @dataclass
 class TrialResult:
     goal: str
-    model: str
+    model: str  # arm label: SONNET, HAIKU, or ROUTER
     trial: int
     parse_success: bool
     schema_valid: bool
@@ -150,6 +162,8 @@ class TrialResult:
     plan_eval: float
     candidate_count: int
     cost_usd: float
+    chosen_model: str | None = None  # for ROUTER arm — actual planner model used
+    classifier_cost_usd: float = 0.0  # for ROUTER arm — extra classifier overhead
     plan_descriptions: list[str] = field(default_factory=list)
 
 
@@ -277,6 +291,81 @@ def _print_summary(sonnet: ModelSummary, haiku: ModelSummary, threshold_pt: floa
     return all_ok
 
 
+async def _classify_goals(
+    *,
+    classifier: LLMGoalClassifier,
+    router: PlannerModelRouter,
+    goals: list[str],
+) -> dict[str, tuple[PlannerModel, float]]:
+    """Run the router once per goal; return ``{goal: (chosen_model, classifier_cost)}``."""
+    out: dict[str, tuple[PlannerModel, float]] = {}
+    for goal in goals:
+        chosen, classification = await router.select_for(goal)
+        cost = classification.cost_usd if classification is not None else 0.0
+        out[goal] = (chosen, cost)
+    return out
+
+
+def _print_router_summary(
+    *,
+    sonnet: ModelSummary,
+    haiku: ModelSummary,
+    router: ModelSummary,
+    threshold_pt: float,
+    plan_eval_threshold: float,
+    captured_saving_threshold: float,
+    chosen_models: dict[str, str],
+) -> bool:
+    print("\n=== Router-gated arm summary (per AD-4 acceptance) ===")
+    print(f"{'metric':<20}  {'Sonnet (base)':>14}  {'Router':>10}  "
+          f"{'Δ (Router−Sonnet)':>22}")
+    print("-" * 74)
+
+    def line(name: str, base: float, r: float, *, pct: bool, threshold: float) -> bool:
+        delta = r - base
+        b_str = f"{base * 100:>12.1f}%" if pct else f"{base:>14.3f}"
+        r_str = f"{r * 100:>8.1f}%" if pct else f"{r:>10.3f}"
+        d_str = f"{delta * 100:>+19.1f}pt" if pct else f"{delta:>+22.3f}"
+        ok = delta >= -threshold
+        marker = "✓" if ok else "✗"
+        print(f"{name:<20}  {b_str}  {r_str}  {d_str}  {marker}")
+        return ok
+
+    ok_parse = line("parse_success", sonnet.parse_success, router.parse_success,
+                    pct=True, threshold=threshold_pt / 100)
+    ok_schema = line("schema_valid", sonnet.schema_valid, router.schema_valid,
+                     pct=True, threshold=threshold_pt / 100)
+    ok_entity = line("entity_preserved", sonnet.entity_preserved, router.entity_preserved,
+                     pct=True, threshold=threshold_pt / 100)
+    ok_eval = line("plan_eval", sonnet.plan_eval, router.plan_eval,
+                   pct=False, threshold=plan_eval_threshold)
+
+    print()
+    print(f"avg cost/call: Sonnet ${sonnet.avg_cost_usd:.5f}  "
+          f"Haiku ${haiku.avg_cost_usd:.5f}  Router ${router.avg_cost_usd:.5f}")
+    captured = 0.0
+    if sonnet.avg_cost_usd > haiku.avg_cost_usd:
+        captured = (
+            (sonnet.avg_cost_usd - router.avg_cost_usd)
+            / (sonnet.avg_cost_usd - haiku.avg_cost_usd)
+        )
+        print(f"captured-saving (Router) vs theoretical max (Haiku-only): "
+              f"{captured * 100:.1f}%")
+    ok_capture = captured >= captured_saving_threshold
+
+    counts: dict[str, int] = {}
+    for v in chosen_models.values():
+        counts[v] = counts.get(v, 0) + 1
+    print(f"router routing breakdown: {counts}")
+
+    all_ok = ok_parse and ok_schema and ok_entity and ok_eval and ok_capture
+    verdict = ("PASS — Router meets AD-4 quality + captured-saving thresholds"
+               if all_ok
+               else "FAIL — Router violates at least one AD-4 acceptance bar")
+    print(f"\nRouter verdict: {verdict}")
+    return all_ok
+
+
 async def _main(args: argparse.Namespace) -> int:
     settings = Settings()
     if not settings.has_anthropic:
@@ -289,31 +378,88 @@ async def _main(args: argparse.Namespace) -> int:
 
     evaluator = LLMPlanEvaluator(gateway, models=[JUDGE])
 
-    print("=== LLMPlanner quality A/B: Sonnet 4.6 vs Haiku 4.5 ===")
+    arms = (SONNET, HAIKU, ROUTER) if args.router else (SONNET, HAIKU)
+    title = ("Sonnet 4.6 vs Haiku 4.5 vs Router"
+             if args.router
+             else "Sonnet 4.6 vs Haiku 4.5")
+    print(f"=== LLMPlanner quality A/B: {title} ===")
     print(f"goals: {len(GOALS)}  trials/model: {args.trials}  judge: {JUDGE}")
     print(f"cost cap: ${args.cost_cap_usd:.2f}\n")
 
+    chosen_models: dict[str, str] = {}
+    classifier_cost_total = 0.0
+    if args.router:
+        classifier = LLMGoalClassifier(gateway=gateway)
+        metrics = RouterMetrics()
+        bus = RouterObservingEventBus(inner=InMemoryEventBus(), metrics=metrics)
+        router = PlannerModelRouter(
+            classifier=classifier,
+            event_bus=bus,
+            enabled=True,
+            haiku_confidence_threshold=0.7,
+            classifier_timeout_ms=5_000,
+        )
+        print("  [router] classifying 10 goals...", flush=True)
+        verdicts = await _classify_goals(
+            classifier=classifier, router=router, goals=GOALS
+        )
+        for g, (m, c) in verdicts.items():
+            chosen_models[g] = m.value
+            classifier_cost_total += c
+        print(f"  [router] classifier cost: ${classifier_cost_total:.5f}  "
+              f"breakdown: {chosen_models}\n", flush=True)
+
     rows: list[TrialResult] = []
-    for model in (SONNET, HAIKU):
-        planner = LLMPlanner(gateway, candidates_per_node=3, max_depth=3, model=model)
-        for goal in GOALS:
-            for trial in range(1, args.trials + 1):
-                running = sum(r.cost_usd for r in cost_repo.records)
-                if running > args.cost_cap_usd:
-                    print(f"\n!! cost cap ${args.cost_cap_usd:.2f} exceeded "
-                          f"(spent ${running:.4f}) — aborting", file=sys.stderr)
-                    _print_detail(rows)
-                    return 2
-                print(f"  {model} | trial {trial} | {goal[:60]}", flush=True)
-                row = await _run_one(
-                    planner=planner,
-                    evaluator=evaluator,
-                    cost_repo=cost_repo,
-                    goal=goal,
-                    model=model,
-                    trial=trial,
+    for arm in arms:
+        if arm == ROUTER:
+            for goal in GOALS:
+                pm, cls_cost = verdicts[goal]
+                planner_model = _PLANNER_MODEL_TO_GATEWAY[pm]
+                planner = LLMPlanner(
+                    gateway, candidates_per_node=3, max_depth=3, model=planner_model
                 )
-                rows.append(row)
+                for trial in range(1, args.trials + 1):
+                    running = sum(r.cost_usd for r in cost_repo.records)
+                    if running > args.cost_cap_usd:
+                        print(f"\n!! cost cap ${args.cost_cap_usd:.2f} exceeded "
+                              f"(spent ${running:.4f}) — aborting", file=sys.stderr)
+                        _print_detail(rows)
+                        return 2
+                    print(f"  router→{pm.value} | trial {trial} | {goal[:50]}",
+                          flush=True)
+                    row = await _run_one(
+                        planner=planner,
+                        evaluator=evaluator,
+                        cost_repo=cost_repo,
+                        goal=goal,
+                        model=ROUTER,
+                        trial=trial,
+                    )
+                    row.chosen_model = pm.value
+                    row.classifier_cost_usd = cls_cost
+                    # Roll the per-goal classifier overhead into the router cost.
+                    row.cost_usd = round(row.cost_usd + cls_cost, 6)
+                    rows.append(row)
+        else:
+            planner = LLMPlanner(gateway, candidates_per_node=3, max_depth=3, model=arm)
+            for goal in GOALS:
+                for trial in range(1, args.trials + 1):
+                    running = sum(r.cost_usd for r in cost_repo.records)
+                    if running > args.cost_cap_usd:
+                        print(f"\n!! cost cap ${args.cost_cap_usd:.2f} exceeded "
+                              f"(spent ${running:.4f}) — aborting", file=sys.stderr)
+                        _print_detail(rows)
+                        return 2
+                    print(f"  {arm} | trial {trial} | {goal[:60]}", flush=True)
+                    row = await _run_one(
+                        planner=planner,
+                        evaluator=evaluator,
+                        cost_repo=cost_repo,
+                        goal=goal,
+                        model=arm,
+                        trial=trial,
+                    )
+                    rows.append(row)
 
     _print_detail(rows)
 
@@ -321,29 +467,46 @@ async def _main(args: argparse.Namespace) -> int:
     haiku_sum = _summarize(rows, HAIKU)
     passed = _print_summary(sonnet_sum, haiku_sum, args.threshold_pt)
 
+    router_passed = True
+    if args.router:
+        router_sum = _summarize(rows, ROUTER)
+        router_passed = _print_router_summary(
+            sonnet=sonnet_sum,
+            haiku=haiku_sum,
+            router=router_sum,
+            threshold_pt=args.threshold_pt,
+            plan_eval_threshold=args.plan_eval_threshold,
+            captured_saving_threshold=args.captured_saving_threshold,
+            chosen_models=chosen_models,
+        )
+
     total_cost = sum(r.cost_usd for r in cost_repo.records)
     print(f"\nTotal benchmark cost: ${total_cost:.4f} ({len(cost_repo.records)} LLM calls)")
+    if args.router:
+        print(f"  (router classifier overhead: ${classifier_cost_total:.5f})")
 
     if args.dump:
+        dump_payload: dict[str, object] = {
+            "judge": JUDGE,
+            "trials": args.trials,
+            "router_mode": args.router,
+            "rows": [r.__dict__ for r in rows],
+            "summary": {
+                "sonnet": sonnet_sum.__dict__,
+                "haiku": haiku_sum.__dict__,
+            },
+            "total_cost_usd": round(total_cost, 6),
+        }
+        if args.router:
+            dump_payload["summary"]["router"] = _summarize(rows, ROUTER).__dict__  # type: ignore[index]
+            dump_payload["router_chosen_models"] = chosen_models
+            dump_payload["router_classifier_cost_usd"] = round(classifier_cost_total, 6)
         Path(args.dump).write_text(
-            json.dumps(
-                {
-                    "judge": JUDGE,
-                    "trials": args.trials,
-                    "rows": [r.__dict__ for r in rows],
-                    "summary": {
-                        "sonnet": sonnet_sum.__dict__,
-                        "haiku": haiku_sum.__dict__,
-                    },
-                    "total_cost_usd": round(total_cost, 6),
-                },
-                indent=2,
-                ensure_ascii=False,
-            )
+            json.dumps(dump_payload, indent=2, ensure_ascii=False)
         )
         print(f"Raw results dumped to {args.dump}")
 
-    return 0 if passed else 1
+    return 0 if (passed and router_passed) else 1
 
 
 def _parse() -> argparse.Namespace:
@@ -356,6 +519,12 @@ def _parse() -> argparse.Namespace:
                    help="Pass if Haiku is within this many points of Sonnet on every axis.")
     p.add_argument("--dump", type=str, default=None,
                    help="Optional path to dump raw JSON results.")
+    p.add_argument("--router", action="store_true",
+                   help="Enable router-gated 3rd arm (AD-4 per-goal routing).")
+    p.add_argument("--plan-eval-threshold", type=float, default=0.030,
+                   help="Router arm passes plan_eval if Δ >= -this (default 0.030).")
+    p.add_argument("--captured-saving-threshold", type=float, default=0.30,
+                   help="Router arm passes captured-saving if >= this (default 0.30).")
     return p.parse_args()
 
 
