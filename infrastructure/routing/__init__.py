@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Goal-classifier routing adapters.
 
 Houses `LLMGoalClassifier` (remote) and `LocalGoalClassifier` (Ollama) plus

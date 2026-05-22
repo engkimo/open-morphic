@@ -59,7 +59,8 @@ def _sample_payload() -> str:
                 "input_artifacts": {},
                 "output_artifacts": {},
             }
-        ]
+        ],
+        sort_keys=True,
     )
 
 

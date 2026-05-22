@@ -502,7 +502,7 @@ async def _main(args: argparse.Namespace) -> int:
             dump_payload["router_chosen_models"] = chosen_models
             dump_payload["router_classifier_cost_usd"] = round(classifier_cost_total, 6)
         Path(args.dump).write_text(
-            json.dumps(dump_payload, indent=2, ensure_ascii=False)
+            json.dumps(dump_payload, indent=2, ensure_ascii=False, sort_keys=True)
         )
         print(f"Raw results dumped to {args.dump}")
 

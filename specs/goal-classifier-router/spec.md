@@ -129,7 +129,7 @@ quality on the rest.
 
 | Metric | Target |
 |---|---|
-| Framework imports in new domain files (`sqlalchemy|fastapi|litellm|...`) | 0 |
+| Framework imports in new domain files (`sqlalchemy\|fastapi\|litellm\|...`) | 0 |
 | `from infrastructure.routing` in `application/` | 0 |
 | Unit tests added for port + router + adapters (fake LLM) | ≥ 12 |
 | Live integration tests added (real Ollama, $0) | ≥ 1 |

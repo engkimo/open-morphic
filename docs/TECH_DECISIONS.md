@@ -8123,7 +8123,7 @@ logs accumulate (the 10-goal benchmark is entity-stressed by design and
 will under-report real-world saving); (2) consider per-tenant or
 per-workspace overrides if a customer workload deviates from the
 expected English-tech / CJK split; (3) wire `RouterMetrics` into the
-existing observability dashboard alongside `cache_hit_rate` (TD-189) so
+existing observability dashboard alongside `cache_hit_rate` (TD-193) so
 that classifier latency, decisions_total, and fallback rate are
 first-class signals; (4) revisit the 0.7 `haiku_confidence_threshold`
 once a representative volume of production decisions has been logged.

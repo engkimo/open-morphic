@@ -57,7 +57,7 @@ class TestGoalClassifiedVariant:
             classifier_latency_ms=1500,
             classifier_cost_usd=0.0,
         )
-        raw = original.model_dump_json()
+        raw = json.dumps(original.model_dump(mode="json"), sort_keys=True)
         parsed: DebateEvent = DebateEventAdapter.validate_json(raw)
         assert isinstance(parsed, GoalClassified)
         assert parsed.chosen_model is PlannerModel.SONNET
@@ -69,7 +69,7 @@ class TestGoalClassifiedVariant:
         from domain.value_objects.council_events import DebateAbandoned
 
         abandoned = DebateAbandoned(reason="quorum lost")
-        raw = abandoned.model_dump_json()
+        raw = json.dumps(abandoned.model_dump(mode="json"), sort_keys=True)
         parsed = DebateEventAdapter.validate_json(raw)
         assert parsed.kind == "debate_abandoned"
         _ = Decision  # imported to confirm domain module untouched
@@ -83,6 +83,6 @@ class TestGoalClassifiedVariant:
             classifier_latency_ms=200,
             classifier_cost_usd=0.0003,
         )
-        payload = json.loads(ev.model_dump_json())
+        payload = json.loads(json.dumps(ev.model_dump(mode="json"), sort_keys=True))
         assert "goal" not in payload
         assert "raw_goal" not in payload

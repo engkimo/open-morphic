@@ -182,7 +182,7 @@ DebateEvent = Annotated[
 
 ### Classifier prompt contract (stable system message, NFR-5)
 
-```
+```text
 SYSTEM (byte-identical across all calls):
 You are a 2-class goal router for a planning LLM. Decide which planner model
 should handle the user goal. Return ONLY a JSON object with these keys:

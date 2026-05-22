@@ -6,7 +6,7 @@ Wraps an inner ``EventBusPort`` and, on each ``GoalClassified`` event:
 2. Emits one INFO log line carrying:
    ``goal_hash``, ``chosen_model``, ``reason_category``,
    ``classifier_latency_ms``, ``classifier_cost_usd``.
-3. Forwards the event to the inner bus (best-effort, errors swallowed).
+3. Forwards the event to the inner bus (errors propagate).
 
 Privacy invariant (spec.md §Risks): the raw goal string MUST NEVER appear
 in the log line — only the 16-char ``goal_hash`` is permitted.

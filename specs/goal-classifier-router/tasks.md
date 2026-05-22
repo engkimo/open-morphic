@@ -40,7 +40,7 @@
   - router-enabled + classifier timeout > `classifier_timeout_ms` → routes Sonnet, category `classifier_failed`
   - reason-category normalization covers all 6 AD-3 buckets
   - event emission failure does NOT abort routing
-  - `goal_hash` is sha256(goal)[:16]; raw goal NEVER appears in the published event (string-match assertion)
+  - `goal_hash` is `sha256(goal)[:16]`; raw goal NEVER appears in the published event (string-match assertion)
   Expected to fail.
 
 ## Domain service — router (TDD GREEN)
@@ -126,7 +126,7 @@
 
 ## Parallel execution groups
 
-```
+```text
 T010, T011, T012                  # Domain VO tests — independent files
 T013, T014, T015                  # Domain VO impls — after T010-T012
 T020 → T021                       # Port test → port impl
