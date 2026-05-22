@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **[FEAT/TD-195]** Goal Classifier Router for planner model selection — `domain/ports/goal_classifier.py` (ABC) + `infrastructure/routing/{llm,local}_goal_classifier.py` (LLM + Ollama impls) + `domain/services/planner_model_router.py`. Per-goal routing of `LLMPlanner` between Sonnet 4.6 and Haiku 4.5, gated by confidence threshold and `MORPHIC_PLANNER_ROUTER` flag (default disabled). Targets the −11.4pt entity_preserved regression from `haiku_planner_ab_2026_05_19` while retaining ≥30% of Haiku's 47.6% cost saving on the eligible slice. See `specs/goal-classifier-router/`.
+- **[FEAT/TD-195]** Goal Classifier Router for planner model selection (PR #40, merged 2026-05-21) — `domain/ports/goal_classifier.py` (ABC) + `infrastructure/routing/{llm,local}_goal_classifier.py` (LLM + Ollama impls) + `domain/services/planner_model_router.py`. Per-goal routing of `LLMPlanner` between Sonnet 4.6 and Haiku 4.5, gated by confidence threshold and `MORPHIC_PLANNER_ROUTER` flag (default `disabled`; opt-in `enabled` auto-selects remote Haiku 4.5 when `ANTHROPIC_API_KEY` present, else local qwen3:8b — both share byte-identical SYSTEM_PROMPT per TD-190). `GoalClassified` event published with `sha256(goal)[:16]` privacy hash (frozen VO, hex pattern). Live A/B (3 arms × 10 goals × 3 trials, $0.97): entity_preserved −2.5pt (≤5pt ✓), plan_eval −0.014 (≤0.030 ✓), captured-saving 20.9% on 4/10 Haiku-eligible goals. See `specs/goal-classifier-router/` and `memory/planner_router_ab_2026_05_20.md`.
 
 ---
 
