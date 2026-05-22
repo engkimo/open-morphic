@@ -2,7 +2,16 @@
 
 ## Unreleased
 
-- **[FEAT/TD-195]** Goal Classifier Router for planner model selection (PR #40, merged 2026-05-21) — `domain/ports/goal_classifier.py` (ABC) + `infrastructure/routing/{llm,local}_goal_classifier.py` (LLM + Ollama impls) + `domain/services/planner_model_router.py`. Per-goal routing of `LLMPlanner` between Sonnet 4.6 and Haiku 4.5, gated by confidence threshold and `MORPHIC_PLANNER_ROUTER` flag (default `disabled`; opt-in `enabled` auto-selects remote Haiku 4.5 when `ANTHROPIC_API_KEY` present, else local qwen3:8b — both share byte-identical SYSTEM_PROMPT per TD-190). `GoalClassified` event published with `sha256(goal)[:16]` privacy hash (frozen VO, hex pattern). Live A/B (3 arms × 10 goals × 3 trials, $0.97): entity_preserved −2.5pt (≤5pt ✓), plan_eval −0.014 (≤0.030 ✓), captured-saving 20.9% on 4/10 Haiku-eligible goals. See `specs/goal-classifier-router/` and `memory/planner_router_ab_2026_05_20.md`.
+---
+
+## v0.6.2 → v0.6.3 (2026-05-22) — **Planner cost work + Goal Classifier Router (SDD pilot #3)**
+
+- **[FEAT/TD-195]** Goal Classifier Router for planner model selection (PR #40, merged 2026-05-21) — `domain/ports/goal_classifier.py` (ABC) + `infrastructure/routing/{llm,local}_goal_classifier.py` (LLM + Ollama impls) + `domain/services/planner_model_router.py`. Per-goal routing of `LLMPlanner` between Sonnet 4.6 and Haiku 4.5, gated by confidence threshold and `MORPHIC_PLANNER_ROUTER` flag (default `disabled`; opt-in `enabled` auto-selects remote Haiku 4.5 when `ANTHROPIC_API_KEY` present, else local qwen3:8b — both share byte-identical SYSTEM_PROMPT per TD-190). `GoalClassified` event published with `sha256(goal)[:16]` privacy hash (frozen VO, hex pattern). Live A/B (3 arms × 10 goals × 3 trials, $0.97): entity_preserved −2.5pt (≤5pt ✓), plan_eval −0.014 (≤0.030 ✓), captured-saving 20.9% on 4/10 Haiku-eligible goals. See `specs/goal-classifier-router/` and `memory/planner_router_ab_2026_05_20.md`. SDD pilot #3 (43 tasks, full TDD, CodeRabbit Major 5件 fixup 含む)
+- **[FIX/PLAN-EVAL]** (#39) `plan_evaluator` の JSON 応答が任意ネスト list で包まれていても unwrap して評価できるよう修正
+- **[BENCH/PLANNER]** (#38) Haiku 4.5 vs Sonnet 4.6 plan-quality A/B (10 goals × 3 trials)。Haiku 47.6% cost 削減を確認するも entity_preserved −11.4pt / plan_eval −7pt 回帰 → blanket switch せず TD-195 の per-goal router 設計に直結
+- **[FIX/PRICING]** (#37) Claude Haiku 4.5 を Anthropic 公開料金 ($1.00 in / $5.00 out per 1M tokens) に修正
+- **[FEAT/BENCH]** (#36) Planner cost simulation harness を追加: Sonnet vs Haiku × cache padding 有/無 の 4 セルで cost / cache-hit-rate を見積もり。短プロンプト workload では padding が net-negative である事実を確立
+- **[FEAT/CLI/TD-189]** (#35) step 5 — `morphic task show` + `morphic cost task` に per-task `cache_hit_rate` を surface。TD-189 5-step plumbing 完結
 
 ---
 

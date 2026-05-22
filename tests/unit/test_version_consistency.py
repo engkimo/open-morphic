@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-EXPECTED_VERSION = "0.6.2"
+EXPECTED_VERSION = "0.6.3"
 
 
 def _read(path: str) -> str:

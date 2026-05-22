@@ -3,7 +3,7 @@
 > *"Mission Control for Intelligence"*
 > ユーザーの意図を汲み取り、タスクをこなし、失敗を糧に自己進化する。
 >
-> **Version:** 0.6.0 | **Last updated:** 2026-04-23
+> **Version:** 0.6.3 | **Last updated:** 2026-05-22
 
 ---
 
