@@ -34,7 +34,7 @@ Choose "haiku" only if ALL of the following hold:
   - goal is generic-tech / English
   - no Japanese / CJK / non-ASCII characters
   - no quoted specific entities (file names, column names, place names)
-  - no proper nouns referring to a specific real-world entity
+  - no proper nouns EXCEPT the well-known-public allow-list below
 
 Otherwise choose "sonnet" (the safe default for entity-preservation).
 
@@ -44,6 +44,19 @@ generic-sounding names like 'date', "user", or 'id.csv' count as quoted \
 specific entities when wrapped in quotes — the quoting itself signals the \
 caller wants that exact token preserved verbatim. Route those to "sonnet".
 
+The well-known-public allow-list (always Haiku-safe when unquoted):
+  - widely-known geographies that planning models reliably echo back \
+    (Tokyo, Kyoto, Paris, London, New York, San Francisco, ...).
+  - widely-known programming languages / tools / libraries \
+    (Python, Rust, Go, pandoc, ffmpeg, React, ...).
+  - bare snake_case / camelCase / PascalCase identifiers naming a \
+    function, class, or variable WITHOUT surrounding quotes — these \
+    pattern-match a programming task, not an entity-preservation contract.
+
+Personal names, organization / company names, proprietary product names, \
+niche localities (specific shrines, small towns), and ANY token wrapped \
+in quotes still route to "sonnet".
+
 Examples (verdict only — DO NOT echo these in your answer):
   "Build a REST API in Python"
     -> {"model":"haiku","confidence":0.95,"reason":"generic tech, no entities"}
@@ -51,6 +64,10 @@ Examples (verdict only — DO NOT echo these in your answer):
     -> {"model":"sonnet","confidence":0.9,"reason":"quoted column entity 'date'"}
   "東京から京都への新幹線の最安ルートを調査"
     -> {"model":"sonnet","confidence":0.95,"reason":"non-ASCII place names"}
+  "Plan a 3-day trip to Kyoto for a vegetarian traveler"
+    -> {"model":"haiku","confidence":0.85,"reason":"Kyoto is well-known public; no quoted entities"}
+  "Write unit tests for a function called calculate_compound_interest"
+    -> {"model":"haiku","confidence":0.85,"reason":"bare snake_case identifier; generic test request"}
 
 Return JSON only. No prose outside the JSON object."""
 
