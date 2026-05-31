@@ -2,6 +2,9 @@
 
 <div align="center">
   <img src="./open-morphic.png" alt="Morphic-Agent" width="500"/>
+  
+  <img width="896" height="1195" alt="open-morphic" src="https://github.com/user-attachments/assets/0221a2b9-1f72-4b80-b3a0-6398739ba1ab" />
+
 
   
 
