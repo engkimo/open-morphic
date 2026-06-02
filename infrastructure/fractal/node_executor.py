@@ -63,6 +63,7 @@ class NodeExecutor:
             input_artifacts=dict(node.input_artifacts),
             output_artifacts=dict(node.output_artifacts),
             spawned_by_reflection=node.spawned_by_reflection,
+            output_requirement=node.output_requirement,
         )
 
     @staticmethod

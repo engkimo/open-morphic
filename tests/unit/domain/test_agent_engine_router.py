@@ -425,3 +425,62 @@ class TestSelectWithAffinity:
             boost_threshold=0.8,
         )
         assert result[0] == AgentEngineType.CLAUDE_CODE
+
+
+# ---------------------------------------------------------------------------
+# TD-197: select_for_output — artifact requirement → capable engine
+# ---------------------------------------------------------------------------
+from domain.value_objects.output_requirement import OutputRequirement  # noqa: E402
+
+
+class TestSelectForOutput:
+    """Artifact-producing subtasks must route to a capable engine, not Ollama."""
+
+    def test_file_artifact_routes_to_openhands(self) -> None:
+        assert (
+            AgentEngineRouter.select_for_output(
+                OutputRequirement.FILE_ARTIFACT, budget=1.0
+            )
+            == AgentEngineType.OPENHANDS
+        )
+
+    def test_code_artifact_routes_to_codex(self) -> None:
+        assert (
+            AgentEngineRouter.select_for_output(
+                OutputRequirement.CODE_ARTIFACT, budget=1.0
+            )
+            == AgentEngineType.CODEX_CLI
+        )
+
+    def test_data_artifact_routes_to_gemini(self) -> None:
+        assert (
+            AgentEngineRouter.select_for_output(
+                OutputRequirement.DATA_ARTIFACT, budget=1.0
+            )
+            == AgentEngineType.GEMINI_CLI
+        )
+
+    def test_text_delegates_to_task_type_router(self) -> None:
+        # TEXT must behave exactly like select(task_type, budget)
+        for tt in (TaskType.SIMPLE_QA, TaskType.WEB_SEARCH, TaskType.COMPLEX_REASONING):
+            assert AgentEngineRouter.select_for_output(
+                OutputRequirement.TEXT, budget=1.0, task_type=tt
+            ) == AgentEngineRouter.select(task_type=tt, budget=1.0)
+
+    def test_none_delegates_to_task_type_router(self) -> None:
+        assert AgentEngineRouter.select_for_output(
+            None, budget=1.0, task_type=TaskType.SIMPLE_QA
+        ) == AgentEngineRouter.select(task_type=TaskType.SIMPLE_QA, budget=1.0)
+
+    def test_budget_zero_forces_ollama_for_every_requirement(self) -> None:
+        for req in (
+            OutputRequirement.FILE_ARTIFACT,
+            OutputRequirement.CODE_ARTIFACT,
+            OutputRequirement.DATA_ARTIFACT,
+            OutputRequirement.TEXT,
+            None,
+        ):
+            assert (
+                AgentEngineRouter.select_for_output(req, budget=0.0)
+                == AgentEngineType.OLLAMA
+            )

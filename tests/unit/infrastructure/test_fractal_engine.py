@@ -1548,3 +1548,97 @@ class TestExecutionTimeout:
         )
         engine._execution_start = time.monotonic() - 9999
         assert engine._is_timed_out() is False
+
+
+# ---------------------------------------------------------------------------
+# TD-197: per-node output-requirement classification
+# ---------------------------------------------------------------------------
+from domain.services.output_requirement_classifier import (  # noqa: E402
+    OutputRequirementClassifier,
+)
+from domain.value_objects.output_requirement import OutputRequirement  # noqa: E402
+
+
+def _engine_with_classifier(
+    planner, plan_evaluator, result_evaluator, inner_engine, classifier
+):
+    return FractalTaskEngine(
+        planner=planner,
+        plan_evaluator=plan_evaluator,
+        result_evaluator=result_evaluator,
+        inner_engine=inner_engine,
+        output_classifier=classifier,
+    )
+
+
+class TestPerNodeOutputClassification:
+    async def test_classifies_node_when_goal_is_artifact(
+        self, planner, plan_evaluator, result_evaluator, inner_engine
+    ) -> None:
+        clf = AsyncMock(spec=OutputRequirementClassifier)
+        clf.classify.return_value = OutputRequirement.FILE_ARTIFACT
+        eng = _engine_with_classifier(
+            planner, plan_evaluator, result_evaluator, inner_engine, clf
+        )
+        eng._goal_output_req = OutputRequirement.FILE_ARTIFACT  # goal is artifact
+        node = PlanNode(id="n1", description="Generate a PPTX slide file")
+        await eng._classify_node_output(node)
+        clf.classify.assert_awaited_once_with("Generate a PPTX slide file")
+        assert node.output_requirement == OutputRequirement.FILE_ARTIFACT
+
+    async def test_skips_classification_when_goal_is_text(
+        self, planner, plan_evaluator, result_evaluator, inner_engine
+    ) -> None:
+        clf = AsyncMock(spec=OutputRequirementClassifier)
+        eng = _engine_with_classifier(
+            planner, plan_evaluator, result_evaluator, inner_engine, clf
+        )
+        eng._goal_output_req = OutputRequirement.TEXT  # pure Q&A goal
+        node = PlanNode(id="n2", description="Explain what REST means")
+        await eng._classify_node_output(node)
+        clf.classify.assert_not_awaited()  # no extra LLM call for text goals
+        assert node.output_requirement is None
+
+    async def test_no_classifier_is_noop(
+        self, planner, plan_evaluator, result_evaluator, inner_engine
+    ) -> None:
+        eng = FractalTaskEngine(
+            planner=planner,
+            plan_evaluator=plan_evaluator,
+            result_evaluator=result_evaluator,
+            inner_engine=inner_engine,
+        )
+        eng._goal_output_req = OutputRequirement.FILE_ARTIFACT
+        node = PlanNode(id="n3", description="anything")
+        await eng._classify_node_output(node)  # must not raise
+        assert node.output_requirement is None
+
+    async def test_already_classified_node_not_reclassified(
+        self, planner, plan_evaluator, result_evaluator, inner_engine
+    ) -> None:
+        clf = AsyncMock(spec=OutputRequirementClassifier)
+        eng = _engine_with_classifier(
+            planner, plan_evaluator, result_evaluator, inner_engine, clf
+        )
+        eng._goal_output_req = OutputRequirement.FILE_ARTIFACT
+        node = PlanNode(
+            id="n4",
+            description="search the web",
+            output_requirement=OutputRequirement.TEXT,
+        )
+        await eng._classify_node_output(node)
+        clf.classify.assert_not_awaited()
+        assert node.output_requirement == OutputRequirement.TEXT
+
+    async def test_classification_failure_is_non_fatal(
+        self, planner, plan_evaluator, result_evaluator, inner_engine
+    ) -> None:
+        clf = AsyncMock(spec=OutputRequirementClassifier)
+        clf.classify.side_effect = RuntimeError("llm down")
+        eng = _engine_with_classifier(
+            planner, plan_evaluator, result_evaluator, inner_engine, clf
+        )
+        eng._goal_output_req = OutputRequirement.FILE_ARTIFACT
+        node = PlanNode(id="n5", description="make a file")
+        await eng._classify_node_output(node)  # must swallow
+        assert node.output_requirement is None

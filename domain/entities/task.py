@@ -7,6 +7,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from domain.value_objects.output_requirement import OutputRequirement
 from domain.value_objects.status import SubTaskStatus, TaskStatus
 from domain.value_objects.task_complexity import TaskComplexity
 
@@ -31,6 +32,7 @@ class SubTask(BaseModel):
     react_iterations: int = Field(default=0, ge=0)
     engine_used: str | None = None
     preferred_model: str | None = None
+    output_requirement: OutputRequirement | None = None
     role: str | None = None
     tools_used: list[str] = Field(default_factory=list)
     data_sources: list[str] = Field(default_factory=list)
