@@ -226,7 +226,13 @@ class LiteLLMGateway(LLMGateway):
             llm_resp.cost_usd,
         )
         logger.debug("LLM content (first 200 chars): %s", llm_resp.content[:200])
-        await self._cost_tracker.record(llm_resp)
+        # Cost recording is a side-effect: a logging/DB failure must never
+        # discard an already-obtained LLM response (which would degrade the
+        # whole agent — classifier/planner/evaluators — to a silent failure).
+        try:
+            await self._cost_tracker.record(llm_resp)
+        except Exception:
+            logger.warning("Cost recording failed — returning LLM response anyway", exc_info=True)
         return llm_resp
 
     async def complete_with_tools(
@@ -318,7 +324,10 @@ class LiteLLMGateway(LLMGateway):
             len(tool_calls),
             llm_resp.cost_usd,
         )
-        await self._cost_tracker.record(llm_resp)
+        try:
+            await self._cost_tracker.record(llm_resp)
+        except Exception:
+            logger.warning("Cost recording failed — returning LLM response anyway", exc_info=True)
         return llm_resp
 
     async def _find_available_fallback(self, failed_model: str) -> str | None:
