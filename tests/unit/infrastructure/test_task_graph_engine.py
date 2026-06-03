@@ -730,3 +730,62 @@ class TestDecompose:
 
         assert result == expected
         analyzer.decompose.assert_awaited_once_with("Test goal")
+
+
+# ---------------------------------------------------------------------------
+# TD-197: artifact subtasks route to a capable engine via output_requirement
+# ---------------------------------------------------------------------------
+from types import SimpleNamespace  # noqa: E402
+
+from domain.value_objects.agent_engine import AgentEngineType  # noqa: E402
+from domain.value_objects.output_requirement import OutputRequirement  # noqa: E402
+
+
+def _engine_result(engine: AgentEngineType, output: str = "slide.pptx created"):
+    return SimpleNamespace(
+        success=True,
+        output=output,
+        engine=engine,
+        model_used=None,
+        cost_usd=0.01,
+        engines_tried=[engine],
+    )
+
+
+class TestArtifactAwareRouting:
+    async def test_file_subtask_routes_to_capable_engine(
+        self, llm: AsyncMock, analyzer: AsyncMock
+    ) -> None:
+        route = AsyncMock()
+        route.execute = AsyncMock(return_value=_engine_result(AgentEngineType.OPENHANDS))
+        engine = LangGraphTaskEngine(llm=llm, analyzer=analyzer, task_budget=1.0)
+        engine._route_to_engine = route
+
+        st = SubTask(
+            description="Create a PPTX slide file",
+            output_requirement=OutputRequirement.FILE_ARTIFACT,
+        )
+        await engine.execute(TaskEntity(goal="slides", subtasks=[st]))
+
+        route.execute.assert_awaited()
+        assert route.execute.call_args[1]["preferred_engine"] == AgentEngineType.OPENHANDS
+
+    async def test_text_subtask_does_not_escalate(
+        self, llm: AsyncMock, analyzer: AsyncMock
+    ) -> None:
+        # TEXT requirement must NOT trigger artifact routing; with budget the
+        # regex path classifies a plain answer as simple_qa → ollama → no
+        # engine-route call (direct LLM/ReAct handles it).
+        route = AsyncMock()
+        route.execute = AsyncMock(return_value=_engine_result(AgentEngineType.OLLAMA))
+        llm.complete.return_value = _ok_response("42")
+        engine = LangGraphTaskEngine(llm=llm, analyzer=analyzer, task_budget=1.0)
+        engine._route_to_engine = route
+
+        st = SubTask(
+            description="What is 2+2?",
+            output_requirement=OutputRequirement.TEXT,
+        )
+        await engine.execute(TaskEntity(goal="qa", subtasks=[st]))
+
+        route.execute.assert_not_awaited()

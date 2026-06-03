@@ -246,3 +246,14 @@ def test_to_subtask_output_requirement_defaults_none() -> None:
     node = PlanNode(id="n2", description="Explain REST")
     sub = NodeExecutor.to_subtask(node)
     assert sub.output_requirement is None
+
+
+def test_build_task_propagates_output_requirement() -> None:
+    # _build_task feeds the inner engine — the routing-critical path (TD-197).
+    node = PlanNode(
+        id="b1",
+        description="Generate a PPTX slide file",
+        output_requirement=OutputRequirement.FILE_ARTIFACT,
+    )
+    task = NodeExecutor._build_task(node, goal="make slides about X")
+    assert task.subtasks[0].output_requirement == OutputRequirement.FILE_ARTIFACT
