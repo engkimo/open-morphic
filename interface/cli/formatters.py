@@ -8,11 +8,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from rich.console import Console
+from rich.panel import Panel
+from rich.rule import Rule
 from rich.table import Table
 from rich.tree import Tree
 
 if TYPE_CHECKING:
     from application.use_cases.route_to_engine import EngineStatus
+    from domain.entities.council import Argument
     from domain.entities.execution_record import ExecutionRecord
     from domain.entities.fractal_learning import ErrorPattern, SuccessfulPath
     from domain.entities.memory import MemoryEntry
@@ -20,6 +23,7 @@ if TYPE_CHECKING:
     from domain.entities.tool_candidate import ToolCandidate
     from domain.ports.agent_engine import AgentEngineResult
     from domain.ports.execution_record_repository import ExecutionStats
+    from domain.value_objects.council_events import DebateEvent
 
 console = Console()
 
@@ -865,3 +869,64 @@ def print_learning_stats(
         table.add_row("Avg path cost", f"${avg_cost:.4f}")
 
     console.print(table)
+
+
+# Engine display labels for council output (engine value → friendly label/style)
+_COUNCIL_ENGINE_STYLE: dict[str, tuple[str, str]] = {
+    "ollama": ("ollama (local, $0)", "cyan"),
+    "claude_code": ("claude_code (cloud)", "magenta"),
+    "gemini_cli": ("gemini_cli (cloud)", "blue"),
+    "codex_cli": ("codex_cli (cloud)", "yellow"),
+    "openhands": ("openhands (sandbox)", "green"),
+}
+
+
+def _council_argument_panel(arg: Argument) -> Panel:
+    label, style = _COUNCIL_ENGINE_STYLE.get(arg.engine.value, (arg.engine.value, "white"))
+    body = (
+        f"[bold]Capability[/]  {arg.capability_claim}\n\n"
+        f"[bold]Cost[/]        {arg.cost_claim}\n\n"
+        f"[bold]Risk[/]        {arg.risk_claim}\n\n"
+        f"[bold]Approach[/]    {arg.recommended_approach}"
+    )
+    return Panel(body, title=label, border_style=style, padding=(1, 2))
+
+
+def print_council_debate(decision, events: list[DebateEvent]) -> None:  # type: ignore[no-untyped-def]
+    """Render a council debate: each engine's argument + the judge's verdict.
+
+    ``decision`` is None when the debate was abandoned (e.g. resolver model
+    unavailable); the abandon reason is surfaced from the event stream.
+    """
+    if decision is None:
+        reason = next(
+            (getattr(e, "reason", "") for e in events if e.kind == "debate_abandoned"),
+            "unknown reason",
+        )
+        console.print(f"[red]Debate abandoned:[/] {reason}")
+        return
+
+    arguments: list = []
+    for e in events:
+        if e.kind == "decision_resolved":
+            arguments = list(e.arguments)
+    if not arguments:
+        arguments = [e.argument for e in events if e.kind == "argument_submitted"]
+
+    console.print(Rule("[bold]Arguments[/]"))
+    for arg in arguments:
+        console.print(_council_argument_panel(arg))
+
+    label, style = _COUNCIL_ENGINE_STYLE.get(
+        decision.agent_engine.value, (decision.agent_engine.value, "green")
+    )
+    console.print(Rule("[bold]Verdict[/]"))
+    console.print(
+        Panel(
+            f"[bold {style}]-> {label}[/]\n\n{decision.rationale}",
+            title="Judge's decision",
+            border_style="green",
+            padding=(1, 2),
+        )
+    )
+    console.print(f"[dim]events: {' -> '.join(e.kind for e in events)}[/]")
