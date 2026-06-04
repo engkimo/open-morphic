@@ -20,6 +20,7 @@ from domain.services.execution_prompt_builder import ExecutionPromptBuilder
 from domain.services.subtask_type_classifier import SubtaskTypeClassifier
 from domain.services.task_complexity import TaskComplexityClassifier
 from domain.value_objects.agent_engine import AgentEngineType
+from domain.value_objects.output_requirement import OutputRequirement
 from domain.value_objects.status import SubTaskStatus
 from domain.value_objects.task_complexity import TaskComplexity
 from infrastructure.context_engineering.kv_cache_optimizer import KVCacheOptimizer
@@ -417,18 +418,30 @@ class LangGraphTaskEngine(TaskEngine):
                     inferred_type = SubtaskTypeClassifier.infer(
                         subtask.description,
                     )
-                    auto_engine = AgentEngineRouter.select(
-                        task_type=inferred_type,
-                        budget=self._task_budget,
-                    )
+                    # TD-197: artifact-producing subtasks (file/code/data) route
+                    # to a capable engine via the LLM-derived output_requirement,
+                    # NOT the regex task-type heuristic which sends them to Ollama.
+                    req = subtask.output_requirement
+                    if req is not None and req != OutputRequirement.TEXT:
+                        auto_engine = AgentEngineRouter.select_for_output(
+                            req,
+                            budget=self._task_budget,
+                            task_type=inferred_type,
+                        )
+                    else:
+                        auto_engine = AgentEngineRouter.select(
+                            task_type=inferred_type,
+                            budget=self._task_budget,
+                        )
                     # Only use engine routing for non-OLLAMA engines
                     # (OLLAMA is handled more efficiently by ReactExecutor/direct LLM)
                     if auto_engine != AgentEngineType.OLLAMA:
                         engine_type = auto_engine
                         logger.info(
-                            "Auto-route subtask %s: type=%s → engine=%s",
+                            "Auto-route subtask %s: type=%s output=%s → engine=%s",
                             subtask_id,
                             inferred_type.value,
+                            req.value if req is not None else "n/a",
                             auto_engine.value,
                         )
 

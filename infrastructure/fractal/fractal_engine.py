@@ -52,6 +52,7 @@ from domain.services.candidate_space_manager import CandidateSpaceManager
 from domain.services.failure_propagator import FailurePropagator
 from domain.services.fractal_learner import FractalLearner
 from domain.services.nesting_depth_controller import NestingDepthController
+from domain.services.output_requirement_classifier import OutputRequirementClassifier
 from domain.value_objects.fractal_engine import (
     NodeState,
     PlanEvalDecision,
@@ -112,6 +113,7 @@ class FractalTaskEngine(TaskEngine):
         max_reflection_rounds: int = 2,
         max_total_nodes: int = 20,
         bypass_classifier: FractalBypassClassifier | None = None,
+        output_classifier: OutputRequirementClassifier | None = None,
         skip_gate2_for_terminal_success: bool = False,
         parallel_node_execution: bool = False,
         skip_reflection_for_single_success: bool = False,
@@ -142,6 +144,13 @@ class FractalTaskEngine(TaskEngine):
 
         # SIMPLE task bypass: skip fractal for trivial goals (TD-167)
         self._bypass_classifier = bypass_classifier
+
+        # TD-197: per-node output-requirement classification. When the goal
+        # produces an artifact, each terminal node is classified individually
+        # so the producing node escalates to a capable engine while text
+        # subnodes (e.g. "search …") stay on Ollama. Set during execute().
+        self._output_classifier = output_classifier
+        self._goal_output_req: OutputRequirement | None = None
 
         # Gate 2 skip: when True, successful terminal nodes skip result
         # evaluation LLM call for ~30s latency savings (TD-168)
@@ -312,11 +321,18 @@ class FractalTaskEngine(TaskEngine):
                     exc_info=True,
                 )
 
+        # TD-197: remember the goal-level requirement so terminal nodes can be
+        # classified per-node (lazily, at execute_terminal) when an output
+        # classifier is wired. Without a classifier, fall back to blanket
+        # goal-inheritance (legacy behaviour).
+        self._goal_output_req = goal_output_req
+
         try:
             plan = await self._generate_approved_plan(task.goal, nesting_level=0)
 
-            # Propagate output requirement to all terminal visible nodes
-            if goal_output_req is not None:
+            # Legacy fallback: with no per-node classifier, propagate the
+            # goal requirement to all terminal visible nodes (TD-192 behaviour).
+            if goal_output_req is not None and self._output_classifier is None:
                 for node in plan.visible_nodes:
                     if node.is_terminal:
                         node.output_requirement = goal_output_req
@@ -1036,6 +1052,34 @@ class FractalTaskEngine(TaskEngine):
             plan.visible_nodes.append(node)
         return nodes
 
+    async def _classify_node_output(self, node: PlanNode) -> None:
+        """TD-197: classify a terminal node's output requirement per-node.
+
+        Only runs when (a) an output classifier is wired, (b) the goal itself
+        produces an artifact, and (c) the node isn't already classified. This
+        keeps pure-TEXT goals free of extra LLM calls (every node inherits
+        TEXT) while letting an artifact goal's producing node escalate to a
+        capable engine and its text subnodes (e.g. "search …") stay on Ollama.
+        A classification failure is non-fatal — the node simply keeps its
+        existing (possibly None) requirement.
+        """
+        if self._output_classifier is None:
+            return
+        if node.output_requirement is not None:
+            return
+        if self._goal_output_req in (None, OutputRequirement.TEXT):
+            return
+        try:
+            node.output_requirement = await self._output_classifier.classify(
+                node.description
+            )
+        except Exception:
+            logger.warning(
+                "Per-node output classification failed for '%s' — leaving unset",
+                node.description[:60],
+                exc_info=True,
+            )
+
     async def _execute_with_eval(
         self,
         node: PlanNode,
@@ -1065,6 +1109,7 @@ class FractalTaskEngine(TaskEngine):
                 return
 
             if should_term:
+                await self._classify_node_output(node)
                 await self._node_executor.execute_terminal(node, goal)
             else:
                 await self._execute_expandable(node, goal, nesting_level, accumulated_cost)

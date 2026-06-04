@@ -223,3 +223,37 @@ class TestExecuteTerminal:
         call_args = inner_engine.execute.call_args
         task_arg: TaskEntity = call_args[0][0]
         assert "prev: data123" in task_arg.subtasks[0].description
+
+
+# ---------------------------------------------------------------------------
+# TD-197: to_subtask must propagate output_requirement so node-execution
+# routing can escalate artifact nodes to a capable engine.
+# ---------------------------------------------------------------------------
+from domain.value_objects.output_requirement import OutputRequirement  # noqa: E402
+
+
+def test_to_subtask_propagates_output_requirement() -> None:
+    node = PlanNode(
+        id="n1",
+        description="Create a PPTX slide file",
+        output_requirement=OutputRequirement.FILE_ARTIFACT,
+    )
+    sub = NodeExecutor.to_subtask(node)
+    assert sub.output_requirement == OutputRequirement.FILE_ARTIFACT
+
+
+def test_to_subtask_output_requirement_defaults_none() -> None:
+    node = PlanNode(id="n2", description="Explain REST")
+    sub = NodeExecutor.to_subtask(node)
+    assert sub.output_requirement is None
+
+
+def test_build_task_propagates_output_requirement() -> None:
+    # _build_task feeds the inner engine — the routing-critical path (TD-197).
+    node = PlanNode(
+        id="b1",
+        description="Generate a PPTX slide file",
+        output_requirement=OutputRequirement.FILE_ARTIFACT,
+    )
+    task = NodeExecutor._build_task(node, goal="make slides about X")
+    assert task.subtasks[0].output_requirement == OutputRequirement.FILE_ARTIFACT

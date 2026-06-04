@@ -371,6 +371,14 @@ class AppContainer:
 
         bypass_classifier = FractalBypassClassifier(llm=self.llm)
 
+        # TD-197: per-node output-requirement classifier — lets artifact nodes
+        # (slide/file/code/data) escalate to a capable engine instead of Ollama.
+        from domain.services.output_requirement_classifier import (
+            OutputRequirementClassifier,
+        )
+
+        output_classifier = OutputRequirementClassifier(llm=self.llm)
+
         logger.info(
             "FractalTaskEngine enabled (depth=%d, retries=%d, reflect=%d, bypass=on)",
             self.settings.fractal_max_depth,
@@ -394,6 +402,7 @@ class AppContainer:
             max_reflection_rounds=self.settings.fractal_max_reflection_rounds,
             max_total_nodes=self.settings.fractal_max_total_nodes,
             bypass_classifier=bypass_classifier,
+            output_classifier=output_classifier,  # TD-197: per-node artifact routing
             skip_gate2_for_terminal_success=True,  # TD-168: ~30s savings per node
             parallel_node_execution=True,  # TD-169: asyncio.gather for batches
             skip_reflection_for_single_success=True,  # TD-171: ~30s savings

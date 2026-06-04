@@ -14,6 +14,16 @@ from domain.entities.cognitive import AgentAffinityScore
 from domain.services.agent_affinity import AgentAffinityScorer
 from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.model_tier import TaskType
+from domain.value_objects.output_requirement import OutputRequirement
+
+# OutputRequirement → capable engine (TD-197). Artifact-producing subtasks
+# must land on an engine that can actually create the artifact, NOT Ollama.
+# TEXT is intentionally absent — it delegates to the task-type router.
+_OUTPUT_TO_ENGINE: dict[OutputRequirement, AgentEngineType] = {
+    OutputRequirement.FILE_ARTIFACT: AgentEngineType.OPENHANDS,
+    OutputRequirement.CODE_ARTIFACT: AgentEngineType.CODEX_CLI,
+    OutputRequirement.DATA_ARTIFACT: AgentEngineType.GEMINI_CLI,
+}
 
 # TaskType → primary engine mapping (matches CLAUDE.md AGENT_ROUTING_MAP)
 _PRIMARY_ENGINE_MAP: dict[TaskType, AgentEngineType] = {
@@ -90,6 +100,29 @@ class AgentEngineRouter:
 
         # Priority 4: Primary map lookup (default: CLAUDE_CODE)
         return _PRIMARY_ENGINE_MAP.get(task_type, AgentEngineType.CLAUDE_CODE)
+
+    @staticmethod
+    def select_for_output(
+        output_requirement: OutputRequirement | None,
+        *,
+        budget: float = 0.0,
+        task_type: TaskType = TaskType.SIMPLE_QA,
+    ) -> AgentEngineType:
+        """Select an engine from the LLM-derived output requirement (TD-197).
+
+        Artifact-producing subtasks (file/code/data) route to a capable
+        engine instead of Ollama. TEXT / None delegate to the task-type
+        router (``select``) so existing behaviour is preserved. The
+        ``budget <= 0`` LOCAL_FIRST guard always wins first.
+        """
+        if budget <= 0:
+            return AgentEngineType.OLLAMA
+        if output_requirement is None or output_requirement == OutputRequirement.TEXT:
+            return AgentEngineRouter.select(task_type=task_type, budget=budget)
+        return _OUTPUT_TO_ENGINE.get(
+            output_requirement,
+            AgentEngineRouter.select(task_type=task_type, budget=budget),
+        )
 
     @staticmethod
     def get_fallback_chain(engine: AgentEngineType) -> list[AgentEngineType]:
