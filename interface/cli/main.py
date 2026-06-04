@@ -51,6 +51,7 @@ def _register_commands() -> None:
     from interface.cli.commands.cognitive import cognitive_app
     from interface.cli.commands.context import context_app
     from interface.cli.commands.cost import cost_app
+    from interface.cli.commands.council import council_app
     from interface.cli.commands.doctor import doctor_app
     from interface.cli.commands.engine import engine_app
     from interface.cli.commands.evolution import evolution_app
@@ -70,6 +71,11 @@ def _register_commands() -> None:
     app.add_typer(cost_app, name="cost", help="View cost tracking and budget.")
     app.add_typer(mcp_app, name="mcp", help="Manage MCP server.")
     app.add_typer(engine_app, name="engine", help="Manage agent execution engines.")
+    app.add_typer(
+        council_app,
+        name="council",
+        help="Run a two-engine council debate; a judge resolves with a rationale.",
+    )
     app.add_typer(
         fallback_app,
         name="fallback",

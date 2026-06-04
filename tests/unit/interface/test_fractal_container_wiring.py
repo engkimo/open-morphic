@@ -94,6 +94,7 @@ class _FakeSettings:
     # Council pilot (TD-194)
     council_debate_enabled = False
     council_resolver_model = "gemini/gemini-2.5-flash"
+    council_debate_timeout_seconds = 30.0
     # Planner router (TD-195)
     planner_router_mode = "disabled"
     planner_router_haiku_confidence_threshold = 0.7

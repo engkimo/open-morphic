@@ -230,6 +230,7 @@ class AppContainer:
         self.run_council_debate = RunCouncilDebateUseCase(
             debate_port=self.council_debate,
             event_bus=self.council_event_bus,
+            timeout_seconds=self.settings.council_debate_timeout_seconds,
         )
 
         # Engine routing use case (Sprint 4.3, enhanced Sprint 7.4, BUG-002/003 Sprint 23.1)

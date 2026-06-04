@@ -182,6 +182,12 @@ class Settings(BaseSettings):
         default="gemini/gemini-2.5-flash",
         validation_alias="MORPHIC_COUNCIL_RESOLVER_MODEL",
     )
+    # Two local argument generations + one resolver call run sequentially; a
+    # cold Ollama needs headroom beyond the original 15s pilot budget.
+    council_debate_timeout_seconds: float = Field(
+        default=30.0,
+        validation_alias="MORPHIC_COUNCIL_TIMEOUT_SECONDS",
+    )
 
     # ── Evolution ──
     evolution_enabled: bool = True
