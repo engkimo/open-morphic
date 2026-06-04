@@ -24,7 +24,7 @@ export default function ExecutionResult({
       {/* Execution output */}
       {output && (
         <div className="rounded-lg border border-border overflow-hidden">
-          <div className="flex items-center gap-1.5 border-b border-border bg-[#12121A] px-3 py-1.5">
+          <div className="flex items-center gap-1.5 border-b border-border bg-muted px-3 py-1.5">
             {success ? (
               <CheckCircle2 size={11} className="text-success" />
             ) : (
@@ -35,8 +35,8 @@ export default function ExecutionResult({
               Output
             </span>
           </div>
-          <pre className="overflow-x-auto bg-[#0A0A0F] p-3 text-xs leading-relaxed">
-            <code className={`font-mono ${success ? "text-text" : "text-danger"}`}>
+          <pre className="overflow-x-auto bg-card p-3 text-xs leading-relaxed">
+            <code className={`font-mono ${success ? "text-foreground" : "text-danger"}`}>
               {output}
             </code>
           </pre>
