@@ -2,24 +2,24 @@
 
 export const theme = {
   colors: {
-    background: "#0A0A0F",
-    surface: "#12121A",
-    border: "#1E1E2E",
-    accent: "#6366F1",
-    success: "#10B981",
-    warning: "#F59E0B",
-    danger: "#EF4444",
-    info: "#38BDF8",
-    localFree: "#34D399",
-    text: "#E2E8F0",
-    textMuted: "#94A3B8",
+    background: "#F4F1EA",
+    surface: "#FBF9F3",
+    border: "#E3DED2",
+    accent: "#C15F3C",
+    success: "#4F7A52",
+    warning: "#B9821F",
+    danger: "#C0492F",
+    info: "#3B7A99",
+    localFree: "#4F7A52",
+    text: "#33312B",
+    textMuted: "#7A776E",
   },
 } as const;
 
 export const statusStyles: Record<string, { border: string; icon: string }> = {
-  pending: { border: "#2D2D42", icon: "\u23F3" },
-  running: { border: "#38BDF8", icon: "\u26A1" },
-  success: { border: "#10B981", icon: "\u2713" },
-  failed: { border: "#EF4444", icon: "\u2717" },
-  fallback: { border: "#F59E0B", icon: "\u21BB" },
+  pending: { border: "#C8C2B2", icon: "\u23F3" },
+  running: { border: "#3B7A99", icon: "\u26A1" },
+  success: { border: "#4F7A52", icon: "\u2713" },
+  failed: { border: "#C0492F", icon: "\u2717" },
+  fallback: { border: "#B9821F", icon: "\u21BB" },
 };

@@ -1,34 +1,34 @@
 @import "tailwindcss";
 
 :root {
-  /* ── Existing Morphic custom vars ── */
-  --background: #0a0a0f;
-  --foreground: #e2e8f0;
-  --surface: #12121a;
-  --border: #1e1e2e;
-  --accent: #6366f1;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --info: #38bdf8;
-  --local-free: #34d399;
-  --text-muted: #94a3b8;
+  /* ── Claude-like warm beige theme (light) ── */
+  --background: #f4f1ea; /* warm cream canvas */
+  --foreground: #33312b; /* warm near-black text (font) */
+  --surface: #fbf9f3; /* lighter cream for cards/panels */
+  --border: #e3ded2; /* warm light border */
+  --accent: #c15f3c; /* Claude terracotta */
+  --success: #4f7a52;
+  --warning: #b9821f;
+  --danger: #c0492f;
+  --info: #3b7a99;
+  --local-free: #4f7a52;
+  --text-muted: #7a776e; /* warm muted text */
 
-  /* ── shadcn semantic vars (mapped to existing theme) ── */
-  --card: #12121a;
-  --card-foreground: #e2e8f0;
-  --popover: #12121a;
-  --popover-foreground: #e2e8f0;
-  --primary: #6366f1;
+  /* ── shadcn semantic vars (mapped to the warm theme) ── */
+  --card: #fbf9f3;
+  --card-foreground: #33312b;
+  --popover: #fbf9f3;
+  --popover-foreground: #33312b;
+  --primary: #c15f3c;
   --primary-foreground: #ffffff;
-  --secondary: #1e1e2e;
-  --secondary-foreground: #e2e8f0;
-  --muted: #12121a;
-  --muted-foreground: #94a3b8;
-  --destructive: #ef4444;
+  --secondary: #eae5d9;
+  --secondary-foreground: #33312b;
+  --muted: #efeae0;
+  --muted-foreground: #7a776e;
+  --destructive: #c0492f;
   --destructive-foreground: #ffffff;
-  --input: #1e1e2e;
-  --ring: #6366f1;
+  --input: #e3ded2;
+  --ring: #c15f3c;
   --radius: 0.5rem;
 }
 

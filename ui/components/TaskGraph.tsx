@@ -107,9 +107,9 @@ function SubTaskNode({ data }: NodeProps) {
       className={classNames}
       style={{
         animationDelay: d.isNew ? `${d.enterDelay}ms` : undefined,
-        borderTop: d.selected ? `2px solid ${accentColor}` : `1px solid #1E1E2E`,
-        borderRight: d.selected ? `2px solid ${accentColor}` : `1px solid #1E1E2E`,
-        borderBottom: d.selected ? `2px solid ${accentColor}` : `1px solid #1E1E2E`,
+        borderTop: d.selected ? `2px solid ${accentColor}` : `1px solid #E3DED2`,
+        borderRight: d.selected ? `2px solid ${accentColor}` : `1px solid #E3DED2`,
+        borderBottom: d.selected ? `2px solid ${accentColor}` : `1px solid #E3DED2`,
         borderLeft: `4px solid ${accentColor}`,
         minWidth: 240,
         maxWidth: 320,
@@ -373,9 +373,9 @@ export default function TaskGraph({ task }: TaskGraphProps) {
       data: { label: truncateWithEllipsis(task.goal, 30) },
       className: isGoalNew ? "morphic-node-enter" : undefined,
       style: {
-        background: "#12121A",
-        color: "#E2E8F0",
-        border: `2px solid ${STATUS_COLORS[task.status] || "#6366F1"}`,
+        background: "#FBF9F3",
+        color: "#33312B",
+        border: `2px solid ${STATUS_COLORS[task.status] || "#C15F3C"}`,
         borderRadius: 8,
         padding: "8px 12px",
         fontWeight: 600,
@@ -485,12 +485,12 @@ export default function TaskGraph({ task }: TaskGraphProps) {
           nodeTypes={nodeTypes}
           fitView
           proOptions={{ hideAttribution: true }}
-          style={{ background: "#0A0A0F" }}
+          style={{ background: "#F4F1EA" }}
           onPaneClick={() => setSelectedId(null)}
         >
-          <Background color="#1E1E2E" gap={20} />
+          <Background color="#E3DED2" gap={20} />
           <Controls
-            style={{ background: "#12121A", borderColor: "#1E1E2E" }}
+            style={{ background: "#FBF9F3", borderColor: "#E3DED2" }}
           />
         </ReactFlow>
       </div>

@@ -130,18 +130,24 @@ async def get_health(request: Request) -> dict:
         db_ok = False
     checks.append({"name": "database", "status": "ok" if db_ok else "fail"})
 
-    # Engine availability summary
+    # Engine availability summary. Drivers live in container.agent_drivers,
+    # keyed by AgentEngineType (NOT a non-existent `engine_registry`).
+    from domain.value_objects.agent_engine import AgentEngineType
+
+    drivers = getattr(container, "agent_drivers", {}) or {}
     for engine_name in ["claude_code", "gemini_cli", "codex_cli", "openhands"]:
-        registry = getattr(container, "engine_registry", None)
-        driver = registry.get(engine_name) if registry else None
-        if driver:
-            try:
-                available = await driver.is_available()
-                checks.append({"name": engine_name, "status": "ok" if available else "warn"})
-            except Exception:
-                checks.append({"name": engine_name, "status": "fail"})
-        else:
+        try:
+            driver = drivers.get(AgentEngineType(engine_name))
+        except ValueError:
+            driver = None
+        if driver is None:
             checks.append({"name": engine_name, "status": "skip"})
+            continue
+        try:
+            available = await driver.is_available()
+            checks.append({"name": engine_name, "status": "ok" if available else "warn"})
+        except Exception:
+            checks.append({"name": engine_name, "status": "fail"})
 
     overall = "ok" if all(c["status"] in ("ok", "skip") for c in checks) else "degraded"
     return {"overall": overall, "checks": checks}
