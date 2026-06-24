@@ -131,6 +131,72 @@ def test_code_one_shot_runs_goal_without_repl() -> None:
         assert len(ledgers) == 1
 
 
+def test_code_route_council_flag_uses_routed_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    from interface.cli import chat_command
+
+    calls: list[bool] = []
+
+    def fake_council_runtime(*, route_council: bool = False) -> _FakeCouncilRuntime:
+        calls.append(route_council)
+        return _FakeCouncilRuntime()
+
+    monkeypatch.setattr(chat_command, "_chat_engine_registry", _FakeEngineRegistry)
+    monkeypatch.setattr(chat_command, "_chat_council_runtime", fake_council_runtime)
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            app,
+            ["code", "--route-council", "implement routed council"],
+        )
+
+        assert result.exit_code == 0
+        assert calls == [True]
+        assert "Routed response for: implement routed council" in result.output
+
+
+def test_code_defaults_to_local_council_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    from interface.cli import chat_command
+
+    calls: list[bool] = []
+
+    def fake_council_runtime(*, route_council: bool = False) -> _FakeCouncilRuntime:
+        calls.append(route_council)
+        return _FakeCouncilRuntime()
+
+    monkeypatch.setattr(chat_command, "_chat_engine_registry", _FakeEngineRegistry)
+    monkeypatch.setattr(chat_command, "_chat_council_runtime", fake_council_runtime)
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(app, ["code", "implement default council"])
+
+        assert result.exit_code == 0
+        assert calls == [False]
+
+
+def test_chat_route_council_flag_uses_routed_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    from interface.cli import chat_command
+
+    calls: list[bool] = []
+
+    def fake_council_runtime(*, route_council: bool = False) -> _FakeCouncilRuntime:
+        calls.append(route_council)
+        return _FakeCouncilRuntime()
+
+    monkeypatch.setattr(chat_command, "_chat_engine_registry", _FakeEngineRegistry)
+    monkeypatch.setattr(chat_command, "_chat_council_runtime", fake_council_runtime)
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            app,
+            ["chat", "--route-council"],
+            input="implement routed council\n/quit\n",
+        )
+
+        assert result.exit_code == 0
+        assert calls == [True]
+        assert "Routed response for: implement routed council" in result.output
+
+
 @pytest.mark.asyncio
 async def test_chat_repl_run_goal_uses_injected_council_runtime(tmp_path) -> None:
     output = await ChatRepl(

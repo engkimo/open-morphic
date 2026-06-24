@@ -1,9 +1,9 @@
 # Morphic-Agent — Continuation State
 
-> Last updated: 2026-06-24
-> Latest work: Morphic Chat CLI Phase 9 route-backed council runtime
+> Last updated: 2026-06-25
+> Latest work: Morphic Chat CLI Phase 10 routed council CLI opt-in
 
-## Latest Session Notes (2026-06-24)
+## Latest Session Notes (2026-06-25)
 
 User direction:
 - Build a first-party Morphic terminal chat CLI similar in UX to Claude Code, Gemini CLI, and Codex CLI.
@@ -68,6 +68,11 @@ Phase 9 implemented:
 - `ChatRepl` accepts an injected `CouncilRuntimePort`, and CLI wiring can create the route-backed runtime.
 - Live route-backed chat council execution is guarded by `MORPHIC_CHAT_ROUTE_COUNCIL=1` so unit tests and default CLI runs do not invoke external CLIs or databases unexpectedly.
 
+Phase 10 implemented:
+- Added explicit `morphic chat --route-council` and `morphic code --route-council` flags.
+- Default chat/code behavior remains local deterministic council unless the flag is present or `MORPHIC_CHAT_ROUTE_COUNCIL=1` is set.
+- Unit tests monkeypatch the council runtime factory and engine registry, confirming CLI flag plumbing without invoking real route engines, external CLIs, or databases.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -77,7 +82,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue external CLI integration by adding explicit CLI flags/config for routed council mode and role-to-engine preferences, or start hook validation from Deferred `D008`.
+- Continue external CLI integration by adding route council role-to-engine preferences/config, or start hook validation from Deferred `D008`.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

@@ -109,6 +109,14 @@
 - [x] T904 Allow `ChatRepl` to accept injected council runtimes for tests and future routing.
 - [x] T905 Gate live route-backed chat council execution behind `MORPHIC_CHAT_ROUTE_COUNCIL=1`.
 
+## Phase 10 - Routed Council CLI Opt-In
+
+- [x] T1001 Add `morphic chat --route-council`.
+- [x] T1002 Add `morphic code --route-council`.
+- [x] T1003 Preserve default local council behavior when the flag and env var are absent.
+- [x] T1004 Preserve `MORPHIC_CHAT_ROUTE_COUNCIL=1` env opt-in.
+- [x] T1005 Unit test route-council flags without invoking real route engines.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

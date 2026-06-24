@@ -32,6 +32,16 @@ _CODE_WORKSPACE_OPTION = typer.Option(
     "--workspace",
     help="Workspace root.",
 )
+_CHAT_ROUTE_COUNCIL_OPTION = typer.Option(
+    False,
+    "--route-council",
+    help="Use route-backed engines for chat council roles.",
+)
+_CODE_ROUTE_COUNCIL_OPTION = typer.Option(
+    False,
+    "--route-council",
+    help="Use route-backed engines for chat council roles.",
+)
 
 
 @contextmanager
@@ -64,6 +74,7 @@ def chat_cmd(
         "--json",
         help="Emit machine-readable JSON for diagnostics.",
     ),
+    route_council: bool = _CHAT_ROUTE_COUNCIL_OPTION,
     workspace: Path | None = _CHAT_WORKSPACE_OPTION,
 ) -> None:
     """Start the Morphic terminal chat REPL."""
@@ -79,7 +90,7 @@ def chat_cmd(
 
     with _disabled_logging(True):
         engine_registry = _chat_engine_registry()
-        council_runtime = _chat_council_runtime()
+        council_runtime = _chat_council_runtime(route_council=route_council)
     _run(
         ChatRepl(
             workspace_root=workspace or Path.cwd(),
@@ -91,12 +102,13 @@ def chat_cmd(
 
 def code_cmd(
     goal: str = typer.Argument(..., help="One-shot coding goal."),
+    route_council: bool = _CODE_ROUTE_COUNCIL_OPTION,
     workspace: Path | None = _CODE_WORKSPACE_OPTION,
 ) -> None:
     """Run one coding goal and persist the session ledger."""
     with _disabled_logging(True):
         engine_registry = _chat_engine_registry()
-        council_runtime = _chat_council_runtime()
+        council_runtime = _chat_council_runtime(route_council=route_council)
     _run(
         ChatRepl(
             workspace_root=workspace or Path.cwd(),
@@ -117,8 +129,8 @@ def _chat_engine_registry() -> EngineRegistryPort:
     return StaticEngineRegistry()
 
 
-def _chat_council_runtime() -> CouncilRuntimePort:
-    if os.getenv("MORPHIC_CHAT_ROUTE_COUNCIL") != "1":
+def _chat_council_runtime(*, route_council: bool = False) -> CouncilRuntimePort:
+    if not route_council and os.getenv("MORPHIC_CHAT_ROUTE_COUNCIL") != "1":
         return LocalChatCouncilRuntime()
     try:
         container = _get_container()
