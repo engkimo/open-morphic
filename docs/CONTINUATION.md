@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-06-24
-> Latest work: Morphic Chat CLI Phase 6 diagnostics and automation
+> Latest work: Morphic Chat CLI Phase 7 verification
 
 ## Latest Session Notes (2026-06-24)
 
@@ -48,6 +48,13 @@ Phase 6 implemented:
 - Switched chat/context/doctor JSON command output to `typer.echo` so machine-readable output is not wrapped by Rich console rendering.
 - Stable non-interactive exit code policy: FAIL exits 1; WARN remains exit 0.
 
+Phase 7 verified:
+- Ran full unit suite and ruff clean.
+- Ran `morphic chat` with `/status`, `/context`, and `/quit`; session `2849d812b79c` produced an 8-line append-only JSONL ledger with sequential event numbers.
+- Ran `morphic context scan --json`; `.morphic/context/index.json` includes both `AGENTS.md` and `CLAUDE.md`.
+- Verified `.claude/` file hashes stayed unchanged after scan.
+- Fixed `morphic doctor agents --json` to suppress container initialization logs during JSON diagnostics so stdout remains machine-readable.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -57,7 +64,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue Phase 7 from `specs/morphic-chat-cli/tasks.md`: full unit verification, ruff, and final CLI/manual validation before expanding external engine adapters.
+- Start the next implementation slice from the Deferred list in `specs/morphic-chat-cli/tasks.md`, likely external CLI adapters (`codex_cli`, `claude_code`, `gemini_cli`) or hook validation.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

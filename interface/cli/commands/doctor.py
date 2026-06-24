@@ -7,8 +7,11 @@ Provides a single-glance overview of system readiness.
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 import typer
 
@@ -16,6 +19,20 @@ from interface.cli._utils import _get_container, _run
 from interface.cli.formatters import console
 
 doctor_app = typer.Typer()
+
+
+@contextmanager
+def _disabled_logging(enabled: bool) -> Iterator[None]:
+    if not enabled:
+        yield
+        return
+
+    previous = logging.root.manager.disable
+    logging.disable(logging.CRITICAL)
+    try:
+        yield
+    finally:
+        logging.disable(previous)
 
 
 class _Check:
@@ -213,8 +230,9 @@ def agents(
     ),
 ) -> None:
     """Run agent engine and CLI diagnostics."""
-    container = _get_container()
-    checks = _run(_check_agents(container))
+    with _disabled_logging(json_output):
+        container = _get_container()
+        checks = _run(_check_agents(container))
     payload = _checks_payload(checks)
 
     if json_output:

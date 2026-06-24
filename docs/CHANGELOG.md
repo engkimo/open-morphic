@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **[FIX/CHAT-CLI]** `morphic doctor agents --json` の実CLI出力でcontainer初期化ログがJSON前に混入しないよう、JSON diagnostics実行中のみroot loggingを一時停止。Phase 7 manual validationで `morphic chat` `/status` `/context` `/quit`、append-only JSONL、context index、`.claude/`非破壊を確認。
 - **[FEAT/CHAT-CLI]** Phase 6 diagnostics/automationをTDDで追加: `morphic context scan`、`morphic context scan --json`、`morphic doctor agents`、`morphic doctor agents --json`。Machine-readable JSONはRich wrappingを避けるため`typer.echo`で出力し、non-interactive commandsはFAILのみexit 1、WARNはexit 0の安定exit codeに統一。
 - **[FEAT/CHAT-CLI]** Phase 5 approval/execution harnessをTDDで追加: read-only mutation blocking、diff proposal/tool requested/tool completed/verification result event sequencing、LAEE-compatible `LaeeToolExecutor` adapter、approval prompt renderer。Chat tool executionは`ToolExecutorPort`越しに行い、LAEE `Action`/`Observation`へ変換。
 - **[FEAT/CHAT-CLI]** Phase 4 CLI interfaceをTDDで追加: `morphic chat` line-oriented REPL、`morphic code "<goal>"` one-shot、slash command parser、`/help` `/status` `/context` `/engines` `/diff` `/quit`、`morphic chat --doctor --json` diagnostics。Session ledgerは`.morphic/sessions/*.jsonl`へ永続化。

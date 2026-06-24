@@ -88,10 +88,10 @@
 
 - [x] T701 Run `uv run --extra dev pytest tests/unit/ -v`.
 - [x] T702 Run `uv run --extra dev ruff check .`.
-- [ ] T703 Manually run `morphic chat`, `/status`, `/context`, `/quit`.
-- [ ] T704 Verify `.morphic/sessions/*.jsonl` is append-only.
-- [ ] T705 Verify `.morphic/context/index.json` includes `AGENTS.md` and `CLAUDE.md`.
-- [ ] T706 Verify existing `.claude/` files are not modified by scan.
+- [x] T703 Manually run `morphic chat`, `/status`, `/context`, `/quit`.
+- [x] T704 Verify `.morphic/sessions/*.jsonl` is append-only.
+- [x] T705 Verify `.morphic/context/index.json` includes `AGENTS.md` and `CLAUDE.md`.
+- [x] T706 Verify existing `.claude/` files are not modified by scan.
 
 ## Deferred
 
