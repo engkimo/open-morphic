@@ -53,18 +53,18 @@
 
 ## Phase 4 - CLI Interface
 
-- [ ] T401 Add `interface/cli/chat_command.py`.
-- [ ] T402 Add line-oriented `ChatRepl`.
-- [ ] T403 Add slash command parser.
-- [ ] T404 Implement `/help`.
-- [ ] T405 Implement `/status`.
-- [ ] T406 Implement `/context`.
-- [ ] T407 Implement `/engines`.
-- [ ] T408 Implement `/diff`.
-- [ ] T409 Implement `/quit`.
-- [ ] T410 Wire `morphic chat`.
-- [ ] T411 Wire `morphic chat --resume latest`.
-- [ ] T412 Wire `morphic code "<goal>"`.
+- [x] T401 Add `interface/cli/chat_command.py`.
+- [x] T402 Add line-oriented `ChatRepl`.
+- [x] T403 Add slash command parser.
+- [x] T404 Implement `/help`.
+- [x] T405 Implement `/status`.
+- [x] T406 Implement `/context`.
+- [x] T407 Implement `/engines`.
+- [x] T408 Implement `/diff`.
+- [x] T409 Implement `/quit`.
+- [x] T410 Wire `morphic chat`.
+- [x] T411 Wire `morphic chat --resume latest`.
+- [x] T412 Wire `morphic code "<goal>"`.
 
 ## Phase 5 - Approval and Execution Harness
 

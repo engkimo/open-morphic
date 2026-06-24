@@ -46,6 +46,7 @@ def main(
 
 # Import and register sub-commands (deferred to avoid circular imports)
 def _register_commands() -> None:
+    from interface.cli.chat_command import chat_cmd, code_cmd
     from interface.cli.commands.a2a import a2a_app
     from interface.cli.commands.benchmark import benchmark_app
     from interface.cli.commands.cognitive import cognitive_app
@@ -65,6 +66,8 @@ def _register_commands() -> None:
     from interface.cli.commands.serve import serve_app
     from interface.cli.commands.task import task_app
 
+    app.command("chat")(chat_cmd)
+    app.command("code")(code_cmd)
     app.add_typer(task_app, name="task", help="Create, list, show, and cancel tasks.")
     app.add_typer(plan_app, name="plan", help="Create, review, approve, and reject plans.")
     app.add_typer(model_app, name="model", help="Manage LLM models.")

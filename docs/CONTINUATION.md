@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-06-24
-> Latest work: Morphic Chat CLI Phase 3 infrastructure adapters
+> Latest work: Morphic Chat CLI Phase 4 CLI interface
 
 ## Latest Session Notes (2026-06-24)
 
@@ -32,6 +32,11 @@ Phase 3 implemented:
 - Added `WorkspaceContextDiscovery` for read-only discovery of `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.claude/*`, `.morphic/context`, `.morphic/memory`, `.cursor/rules`, and GitHub Copilot instructions, plus `.morphic/context/index.json` generation.
 - Added deterministic `LocalChatCouncilRuntime` and `StaticEngineRegistry` for MVP wiring before external CLI adapters are connected.
 
+Phase 4 implemented:
+- Added top-level `morphic chat` line-oriented REPL and `morphic code "<goal>"` one-shot command.
+- Added slash command parser plus `/help`, `/status`, `/context`, `/engines`, `/diff`, and `/quit` handling through application use cases.
+- Added `morphic chat --doctor --json` diagnostics and CLI tests that verify session JSONL ledgers are created.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -41,7 +46,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue Phase 4 from `specs/morphic-chat-cli/tasks.md`: line-oriented CLI REPL, slash command parser/rendering, and `morphic chat` wiring.
+- Continue Phase 5 from `specs/morphic-chat-cli/tasks.md`: approval prompt rendering, read-only mutation blocking, LAEE-compatible executor routing, tool call events, diff proposal events, and verification events.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`
