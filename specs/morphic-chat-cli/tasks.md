@@ -40,16 +40,16 @@
 
 ## Phase 3 - Infrastructure
 
-- [ ] T301 Add `infrastructure/chat/jsonl_session_store.py`.
-- [ ] T302 Add `infrastructure/context/workspace_context_discovery.py`.
-- [ ] T303 Add context discovery support for root `AGENTS.md`.
-- [ ] T304 Add context discovery support for `CLAUDE.md`.
-- [ ] T305 Add context discovery support for `.claude/agents`, `.claude/skills`, `.claude/commands`, `.claude/rules`.
-- [ ] T306 Add context discovery support for `GEMINI.md`.
-- [ ] T307 Add context discovery support for `.morphic/context`.
-- [ ] T308 Write `.morphic/context/index.json` without editing source files.
-- [ ] T309 Add fake/local council runtime adapter for MVP.
-- [ ] T310 Add engine registry skeleton.
+- [x] T301 Add `infrastructure/chat/jsonl_session_store.py`.
+- [x] T302 Add `infrastructure/context/workspace_context_discovery.py`.
+- [x] T303 Add context discovery support for root `AGENTS.md`.
+- [x] T304 Add context discovery support for `CLAUDE.md`.
+- [x] T305 Add context discovery support for `.claude/agents`, `.claude/skills`, `.claude/commands`, `.claude/rules`.
+- [x] T306 Add context discovery support for `GEMINI.md`.
+- [x] T307 Add context discovery support for `.morphic/context`.
+- [x] T308 Write `.morphic/context/index.json` without editing source files.
+- [x] T309 Add fake/local council runtime adapter for MVP.
+- [x] T310 Add engine registry skeleton.
 
 ## Phase 4 - CLI Interface
 

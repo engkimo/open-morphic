@@ -1,0 +1,1 @@
+"""Workspace context discovery adapters."""

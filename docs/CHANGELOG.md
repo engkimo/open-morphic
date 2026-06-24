@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **[FEAT/CHAT-CLI]** Phase 3 infrastructure adaptersをTDDで追加: append-only JSONL session store、read-only workspace context discovery + `.morphic/context/index.json` writer、deterministic local council runtime、static engine registry skeleton。Unit testsは`tmp_path`に閉じ、既存instruction files非破壊を検証。
 - **[FEAT/CHAT-CLI]** Phase 2 application use casesをTDDで追加: start/resume/send message/context discovery/slash command/approval/session summary。Use case層はdomain entities + portsのみへ依存し、session ledger event appendをapplication orchestrationとして固定。
 - **[FEAT/CHAT-CLI]** Phase 1 domain layerをTDDで追加: append-only `ChatEvent`、immutable `ChatSession` sequencing、workspace `ContextIndex`、approval request/decision、council role/decision primitives、chat session/context/council/tool executor/engine registry ports。`tests/unit/domain/test_chat_cli_domain.py` と import-boundary test でClean Architecture境界を固定。
 - **[SPEC/CHAT-CLI]** Morphic Chat CLI のspec-driven設計を追加: `specs/morphic-chat-cli/{spec,plan,tasks,operational-catalog}.md`。Claude Code / Gemini CLI / Codex CLI 風のterminal chat体験をMorphic独自のmulti-engine council runtimeとcanonical `.morphic/` metadataで統合する方針を定義。`claw-code` は実装供給元ではなく「良いagent CLIが備えるべき運用面の仕様カタログ」として扱うclean-room方針を明記。
