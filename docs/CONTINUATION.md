@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-06-24
-> Latest work: Morphic Chat CLI Phase 8 route-backed engine registry
+> Latest work: Morphic Chat CLI Phase 9 route-backed council runtime
 
 ## Latest Session Notes (2026-06-24)
 
@@ -61,6 +61,13 @@ Phase 8 implemented:
 - `morphic chat --doctor` and the Chat REPL can now use a live route-backed registry when the app container exposes `route_to_engine`; `StaticEngineRegistry` remains the fallback.
 - Unit tests use fake route statuses only; no test calls real external CLIs or LLMs.
 
+Phase 9 implemented:
+- Added `RouteChatCouncilRuntime`, an infrastructure adapter that implements `CouncilRuntimePort` and delegates planner, critic, and leader prompts to existing `RouteToEngineUseCase`.
+- Route results are normalized into `CouncilTurn` cost, latency, engine id, and evidence fields; the leader output becomes the chat response through `CouncilDecision`.
+- Route failure, empty output, and exceptions fall back to `LocalChatCouncilRuntime`.
+- `ChatRepl` accepts an injected `CouncilRuntimePort`, and CLI wiring can create the route-backed runtime.
+- Live route-backed chat council execution is guarded by `MORPHIC_CHAT_ROUTE_COUNCIL=1` so unit tests and default CLI runs do not invoke external CLIs or databases unexpectedly.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -70,7 +77,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue external CLI integration by delegating selected chat/council roles to the route-backed engines, or start hook validation from Deferred `D008`.
+- Continue external CLI integration by adding explicit CLI flags/config for routed council mode and role-to-engine preferences, or start hook validation from Deferred `D008`.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

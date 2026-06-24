@@ -12,6 +12,7 @@ from application.use_cases.send_chat_message import SendChatMessageUseCase
 from application.use_cases.start_chat_session import StartChatSessionUseCase
 from domain.entities.chat_session import ChatSession, PermissionMode
 from domain.entities.workspace_context import ContextIndex
+from domain.ports.council_runtime import CouncilRuntimePort
 from domain.ports.engine_registry import EngineRegistryPort
 from infrastructure.chat.jsonl_session_store import JsonlChatSessionStore
 from infrastructure.context.workspace_context_discovery import WorkspaceContextDiscovery
@@ -27,12 +28,13 @@ class ChatRepl:
         self,
         *,
         workspace_root: Path,
+        council_runtime: CouncilRuntimePort | None = None,
         engine_registry: EngineRegistryPort | None = None,
     ) -> None:
         self._workspace_root = workspace_root
         self._session_store = JsonlChatSessionStore(workspace_root=workspace_root)
         self._context_discovery = WorkspaceContextDiscovery()
-        self._council_runtime = LocalChatCouncilRuntime()
+        self._council_runtime = council_runtime or LocalChatCouncilRuntime()
         self._engine_registry = engine_registry or StaticEngineRegistry()
 
     async def run(

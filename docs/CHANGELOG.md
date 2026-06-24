@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **[FEAT/CHAT-CLI]** Phase 9 route-backed council runtimeをTDDで追加: `RouteChatCouncilRuntime` が既存 `RouteToEngineUseCase` 経由で planner/critic/leader role prompt を実行し、`CouncilTurn`/`CouncilDecision` へ正規化。route失敗・空出力・例外時は `LocalChatCouncilRuntime` へfallback。Chat CLIのlive route council実行はunit/通常利用で外部CLIを誤起動しないよう `MORPHIC_CHAT_ROUTE_COUNCIL=1` で明示opt-in。
 - **[FEAT/CHAT-CLI]** Phase 8 route-backed engine registryをTDDで追加: 既存 `RouteToEngineUseCase` / agent CLI drivers の availability/capabilities を Chat CLI `EngineRegistryPort` へ変換する `RouteEngineRegistry` adapterを追加。`morphic chat --doctor` と Chat REPL `/engines` は live route registry を使えるようにし、container利用不可時は従来の `StaticEngineRegistry` にfallback。
 - **[FIX/CHAT-CLI]** `morphic doctor agents --json` の実CLI出力でcontainer初期化ログがJSON前に混入しないよう、JSON diagnostics実行中のみroot loggingを一時停止。Phase 7 manual validationで `morphic chat` `/status` `/context` `/quit`、append-only JSONL、context index、`.claude/`非破壊を確認。
 - **[FEAT/CHAT-CLI]** Phase 6 diagnostics/automationをTDDで追加: `morphic context scan`、`morphic context scan --json`、`morphic doctor agents`、`morphic doctor agents --json`。Machine-readable JSONはRich wrappingを避けるため`typer.echo`で出力し、non-interactive commandsはFAILのみexit 1、WARNはexit 0の安定exit codeに統一。

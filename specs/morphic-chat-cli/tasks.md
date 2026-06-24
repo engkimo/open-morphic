@@ -101,6 +101,14 @@
 - [x] T804 Allow `ChatRepl` slash commands to use an injected or live engine registry.
 - [x] T805 Preserve `StaticEngineRegistry` fallback when the live route container is unavailable.
 
+## Phase 9 - Route-backed Council Runtime
+
+- [x] T901 Add `RouteChatCouncilRuntime` adapter from `RouteToEngineUseCase` to `CouncilRuntimePort`.
+- [x] T902 Delegate planner, critic, and leader role prompts through route execution with normalized `CouncilTurn` output.
+- [x] T903 Preserve local deterministic council fallback on route failure, empty output, exceptions, or missing opt-in.
+- [x] T904 Allow `ChatRepl` to accept injected council runtimes for tests and future routing.
+- [x] T905 Gate live route-backed chat council execution behind `MORPHIC_CHAT_ROUTE_COUNCIL=1`.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

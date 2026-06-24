@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -11,7 +12,10 @@ from pathlib import Path
 import typer
 
 from domain.entities.chat_session import PermissionMode
+from domain.ports.council_runtime import CouncilRuntimePort
 from domain.ports.engine_registry import EngineRegistryPort
+from infrastructure.council.local_chat_council_runtime import LocalChatCouncilRuntime
+from infrastructure.council.route_chat_council_runtime import RouteChatCouncilRuntime
 from infrastructure.engines.route_engine_registry import RouteEngineRegistry
 from infrastructure.engines.static_engine_registry import StaticEngineRegistry
 from interface.cli._utils import _get_container, _run
@@ -75,9 +79,11 @@ def chat_cmd(
 
     with _disabled_logging(True):
         engine_registry = _chat_engine_registry()
+        council_runtime = _chat_council_runtime()
     _run(
         ChatRepl(
             workspace_root=workspace or Path.cwd(),
+            council_runtime=council_runtime,
             engine_registry=engine_registry,
         ).run(resume=resume)
     )
@@ -90,9 +96,11 @@ def code_cmd(
     """Run one coding goal and persist the session ledger."""
     with _disabled_logging(True):
         engine_registry = _chat_engine_registry()
+        council_runtime = _chat_council_runtime()
     _run(
         ChatRepl(
             workspace_root=workspace or Path.cwd(),
+            council_runtime=council_runtime,
             engine_registry=engine_registry,
         ).run_goal(goal=goal)
     )
@@ -107,6 +115,19 @@ def _chat_engine_registry() -> EngineRegistryPort:
     except Exception:
         return StaticEngineRegistry()
     return StaticEngineRegistry()
+
+
+def _chat_council_runtime() -> CouncilRuntimePort:
+    if os.getenv("MORPHIC_CHAT_ROUTE_COUNCIL") != "1":
+        return LocalChatCouncilRuntime()
+    try:
+        container = _get_container()
+        route_to_engine = getattr(container, "route_to_engine", None)
+        if route_to_engine is not None:
+            return RouteChatCouncilRuntime(route_to_engine)
+    except Exception:
+        return LocalChatCouncilRuntime()
+    return LocalChatCouncilRuntime()
 
 
 async def _chat_doctor_payload(

@@ -9,9 +9,13 @@ import pytest
 from typer.testing import CliRunner
 
 from domain.entities.approval import ApprovalRequest
+from domain.entities.chat_session import ChatSession
+from domain.entities.council_runtime import CouncilDecision, CouncilRole, CouncilTurn
+from domain.entities.workspace_context import ContextIndex
 from domain.ports.engine_registry import EngineProfile, EngineRuntimeKind
 from domain.value_objects import RiskLevel
 from interface.cli.chat_command import _chat_doctor_payload
+from interface.cli.chat_repl import ChatRepl
 from interface.cli.main import app
 from interface.cli.renderers import render_approval_request
 from interface.cli.slash_commands import parse_slash_command
@@ -33,6 +37,29 @@ class _FakeEngineRegistry:
 
     async def get_engine(self, engine_id: str) -> EngineProfile | None:
         return (await self.list_engines())[0] if engine_id == "codex_cli" else None
+
+
+class _FakeCouncilRuntime:
+    async def deliberate(
+        self,
+        session: ChatSession,
+        context: ContextIndex,
+        user_message: str,
+    ) -> tuple[list[CouncilTurn], CouncilDecision]:
+        turn = CouncilTurn(
+            role=CouncilRole.LEADER,
+            engine_id="codex_cli",
+            content=f"Routed response for: {user_message}",
+            evidence=[f"context_sources={len(context.sources)}"],
+        )
+        decision = CouncilDecision(
+            leader_engine_id="codex_cli",
+            selected_role=CouncilRole.LEADER,
+            selected_content=turn.content,
+            rationale="fake route-backed runtime",
+            evidence=turn.evidence,
+        )
+        return [turn], decision
 
 
 def test_parse_slash_command_name_and_args() -> None:
@@ -102,6 +129,18 @@ def test_code_one_shot_runs_goal_without_repl() -> None:
         assert "Plan next step for: implement Phase 4" in result.output
         ledgers = list(Path(".morphic/sessions").glob("*.jsonl"))
         assert len(ledgers) == 1
+
+
+@pytest.mark.asyncio
+async def test_chat_repl_run_goal_uses_injected_council_runtime(tmp_path) -> None:
+    output = await ChatRepl(
+        workspace_root=tmp_path,
+        council_runtime=_FakeCouncilRuntime(),
+    ).run_goal(goal="implement routed council")
+
+    assert output == "Routed response for: implement routed council"
+    ledger = next((tmp_path / ".morphic" / "sessions").glob("*.jsonl"))
+    assert "codex_cli" in ledger.read_text(encoding="utf-8")
 
 
 def test_render_approval_request_includes_risk_and_action() -> None:
