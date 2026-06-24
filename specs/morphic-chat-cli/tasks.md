@@ -68,13 +68,13 @@
 
 ## Phase 5 - Approval and Execution Harness
 
-- [ ] T501 Add approval prompt rendering.
-- [ ] T502 Block edits in `read-only` mode.
-- [ ] T503 Route mutation through LAEE-compatible executor.
-- [ ] T504 Record `approval_requested` and `approval_resolved` events.
-- [ ] T505 Record `tool_call_requested` and `tool_call_completed` events.
-- [ ] T506 Add diff proposal event before edits.
-- [ ] T507 Add verification command event for tests/lint.
+- [x] T501 Add approval prompt rendering.
+- [x] T502 Block edits in `read-only` mode.
+- [x] T503 Route mutation through LAEE-compatible executor.
+- [x] T504 Record `approval_requested` and `approval_resolved` events.
+- [x] T505 Record `tool_call_requested` and `tool_call_completed` events.
+- [x] T506 Add diff proposal event before edits.
+- [x] T507 Add verification command event for tests/lint.
 
 ## Phase 6 - Diagnostics and Automation
 

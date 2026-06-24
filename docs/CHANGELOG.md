@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **[FEAT/CHAT-CLI]** Phase 5 approval/execution harnessをTDDで追加: read-only mutation blocking、diff proposal/tool requested/tool completed/verification result event sequencing、LAEE-compatible `LaeeToolExecutor` adapter、approval prompt renderer。Chat tool executionは`ToolExecutorPort`越しに行い、LAEE `Action`/`Observation`へ変換。
 - **[FEAT/CHAT-CLI]** Phase 4 CLI interfaceをTDDで追加: `morphic chat` line-oriented REPL、`morphic code "<goal>"` one-shot、slash command parser、`/help` `/status` `/context` `/engines` `/diff` `/quit`、`morphic chat --doctor --json` diagnostics。Session ledgerは`.morphic/sessions/*.jsonl`へ永続化。
 - **[FEAT/CHAT-CLI]** Phase 3 infrastructure adaptersをTDDで追加: append-only JSONL session store、read-only workspace context discovery + `.morphic/context/index.json` writer、deterministic local council runtime、static engine registry skeleton。Unit testsは`tmp_path`に閉じ、既存instruction files非破壊を検証。
 - **[FEAT/CHAT-CLI]** Phase 2 application use casesをTDDで追加: start/resume/send message/context discovery/slash command/approval/session summary。Use case層はdomain entities + portsのみへ依存し、session ledger event appendをapplication orchestrationとして固定。

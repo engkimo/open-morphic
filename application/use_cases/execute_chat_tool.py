@@ -1,0 +1,113 @@
+"""ExecuteChatToolUseCase — record and execute chat tool requests."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from domain.entities.chat_event import ChatEvent, ChatEventType
+from domain.entities.chat_session import ChatSession, PermissionMode
+from domain.ports.chat_session_store import ChatSessionStorePort
+from domain.ports.tool_executor import (
+    ToolExecutionRequest,
+    ToolExecutionResult,
+    ToolExecutorPort,
+)
+from domain.value_objects import RiskLevel
+
+_READ_ONLY_TOOLS = {"fs_read", "fs_list", "grep", "search", "git_status", "git_diff"}
+
+
+@dataclass(frozen=True)
+class ExecuteChatToolResult:
+    session: ChatSession
+    request: ToolExecutionRequest
+    tool_result: ToolExecutionResult
+    events: list[ChatEvent]
+
+
+class ExecuteChatToolUseCase:
+    def __init__(
+        self,
+        *,
+        session_store: ChatSessionStorePort,
+        tool_executor: ToolExecutorPort,
+    ) -> None:
+        self._session_store = session_store
+        self._tool_executor = tool_executor
+
+    async def execute(
+        self,
+        *,
+        session: ChatSession,
+        tool_name: str,
+        arguments: dict[str, Any],
+        risk_level: RiskLevel,
+        requires_approval: bool = False,
+        approval_id: str | None = None,
+        diff_summary: str | None = None,
+        verification_label: str | None = None,
+    ) -> ExecuteChatToolResult:
+        if self._blocked_by_read_only(session, tool_name, risk_level):
+            raise PermissionError(f"read-only session cannot execute mutating tool: {tool_name}")
+
+        current = session
+        events: list[ChatEvent] = []
+        if diff_summary:
+            current, diff_event = current.record_event(
+                ChatEventType.DIFF_PROPOSED,
+                {"summary": diff_summary, "tool_name": tool_name},
+            )
+            events.append(diff_event)
+
+        request = ToolExecutionRequest(
+            session_id=session.id,
+            tool_name=tool_name,
+            arguments=arguments,
+            risk_level=risk_level,
+            requires_approval=requires_approval,
+            approval_id=approval_id,
+        )
+        current, requested_event = current.record_event(
+            ChatEventType.TOOL_CALL_REQUESTED,
+            request.model_dump(mode="json"),
+        )
+        events.append(requested_event)
+
+        tool_result = await self._tool_executor.execute(request)
+        current, completed_event = current.record_event(
+            ChatEventType.TOOL_CALL_COMPLETED,
+            tool_result.model_dump(mode="json"),
+        )
+        events.append(completed_event)
+
+        if verification_label:
+            current, verification_event = current.record_event(
+                ChatEventType.VERIFICATION_RESULT,
+                {
+                    "label": verification_label,
+                    "success": tool_result.success,
+                    "request_id": request.id,
+                },
+            )
+            events.append(verification_event)
+
+        for event in events:
+            await self._session_store.append_event(event)
+
+        return ExecuteChatToolResult(
+            session=current,
+            request=request,
+            tool_result=tool_result,
+            events=events,
+        )
+
+    def _blocked_by_read_only(
+        self,
+        session: ChatSession,
+        tool_name: str,
+        risk_level: RiskLevel,
+    ) -> bool:
+        if session.permission_mode is not PermissionMode.READ_ONLY:
+            return False
+        return risk_level > RiskLevel.SAFE or tool_name not in _READ_ONLY_TOOLS
