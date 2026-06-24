@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **[FEAT/CHAT-CLI]** Phase 8 route-backed engine registryをTDDで追加: 既存 `RouteToEngineUseCase` / agent CLI drivers の availability/capabilities を Chat CLI `EngineRegistryPort` へ変換する `RouteEngineRegistry` adapterを追加。`morphic chat --doctor` と Chat REPL `/engines` は live route registry を使えるようにし、container利用不可時は従来の `StaticEngineRegistry` にfallback。
 - **[FIX/CHAT-CLI]** `morphic doctor agents --json` の実CLI出力でcontainer初期化ログがJSON前に混入しないよう、JSON diagnostics実行中のみroot loggingを一時停止。Phase 7 manual validationで `morphic chat` `/status` `/context` `/quit`、append-only JSONL、context index、`.claude/`非破壊を確認。
 - **[FEAT/CHAT-CLI]** Phase 6 diagnostics/automationをTDDで追加: `morphic context scan`、`morphic context scan --json`、`morphic doctor agents`、`morphic doctor agents --json`。Machine-readable JSONはRich wrappingを避けるため`typer.echo`で出力し、non-interactive commandsはFAILのみexit 1、WARNはexit 0の安定exit codeに統一。
 - **[FEAT/CHAT-CLI]** Phase 5 approval/execution harnessをTDDで追加: read-only mutation blocking、diff proposal/tool requested/tool completed/verification result event sequencing、LAEE-compatible `LaeeToolExecutor` adapter、approval prompt renderer。Chat tool executionは`ToolExecutorPort`越しに行い、LAEE `Action`/`Observation`へ変換。

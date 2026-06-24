@@ -93,6 +93,14 @@
 - [x] T705 Verify `.morphic/context/index.json` includes `AGENTS.md` and `CLAUDE.md`.
 - [x] T706 Verify existing `.claude/` files are not modified by scan.
 
+## Phase 8 - Route-backed Engine Registry
+
+- [x] T801 Add `RouteEngineRegistry` adapter from `RouteToEngineUseCase` statuses to chat `EngineProfile`.
+- [x] T802 Map agent engine runtime kind, availability, context window, sandbox, streaming, editing, JSON output, and cost profile.
+- [x] T803 Allow `morphic chat --doctor` payloads to use an injected or live engine registry.
+- [x] T804 Allow `ChatRepl` slash commands to use an injected or live engine registry.
+- [x] T805 Preserve `StaticEngineRegistry` fallback when the live route container is unavailable.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

@@ -5,15 +5,34 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from domain.entities.approval import ApprovalRequest
+from domain.ports.engine_registry import EngineProfile, EngineRuntimeKind
 from domain.value_objects import RiskLevel
+from interface.cli.chat_command import _chat_doctor_payload
 from interface.cli.main import app
 from interface.cli.renderers import render_approval_request
 from interface.cli.slash_commands import parse_slash_command
 
 runner = CliRunner()
+
+
+class _FakeEngineRegistry:
+    async def list_engines(self) -> list[EngineProfile]:
+        return [
+            EngineProfile(
+                id="codex_cli",
+                display_name="Codex CLI",
+                kind=EngineRuntimeKind.EXTERNAL_CLI,
+                available=True,
+                supports_editing=True,
+            )
+        ]
+
+    async def get_engine(self, engine_id: str) -> EngineProfile | None:
+        return (await self.list_engines())[0] if engine_id == "codex_cli" else None
 
 
 def test_parse_slash_command_name_and_args() -> None:
@@ -39,6 +58,28 @@ def test_chat_doctor_json_lists_engines() -> None:
     payload = json.loads(result.output)
     assert "engines" in payload
     assert any(engine["id"] == "ollama" for engine in payload["engines"])
+
+
+@pytest.mark.asyncio
+async def test_chat_doctor_payload_uses_injected_engine_registry() -> None:
+    payload = await _chat_doctor_payload(engine_registry=_FakeEngineRegistry())
+
+    assert payload["engines"] == [
+        {
+            "available": True,
+            "capabilities": [],
+            "context_window": 0,
+            "cost_profile": None,
+            "display_name": "Codex CLI",
+            "id": "codex_cli",
+            "kind": "external_cli",
+            "latency_profile": None,
+            "supports_editing": True,
+            "supports_json_output": False,
+            "supports_sandbox": False,
+            "supports_streaming": False,
+        }
+    ]
 
 
 def test_chat_repl_status_and_quit_creates_session_ledger() -> None:
