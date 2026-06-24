@@ -27,16 +27,16 @@
 
 ## Phase 2 - Application Use Cases
 
-- [ ] T201 Add `StartChatSessionUseCase`.
-- [ ] T202 Add `ResumeChatSessionUseCase`.
-- [ ] T203 Add `SendChatMessageUseCase`.
-- [ ] T204 Add `ExecuteSlashCommandUseCase`.
-- [ ] T205 Add `DiscoverWorkspaceContextUseCase`.
-- [ ] T206 Add `RequestToolApprovalUseCase`.
-- [ ] T207 Add `SummarizeChatSessionUseCase`.
-- [ ] T208 Unit test event sequencing and append-only behavior.
-- [ ] T209 Unit test slash command handling.
-- [ ] T210 Unit test read-only permission behavior.
+- [x] T201 Add `StartChatSessionUseCase`.
+- [x] T202 Add `ResumeChatSessionUseCase`.
+- [x] T203 Add `SendChatMessageUseCase`.
+- [x] T204 Add `ExecuteSlashCommandUseCase`.
+- [x] T205 Add `DiscoverWorkspaceContextUseCase`.
+- [x] T206 Add `RequestToolApprovalUseCase`.
+- [x] T207 Add `SummarizeChatSessionUseCase`.
+- [x] T208 Unit test event sequencing and append-only behavior.
+- [x] T209 Unit test slash command handling.
+- [x] T210 Unit test read-only permission behavior.
 
 ## Phase 3 - Infrastructure
 

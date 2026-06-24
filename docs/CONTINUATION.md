@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-06-24
-> Latest work: Morphic Chat CLI Phase 1 domain implementation
+> Latest work: Morphic Chat CLI Phase 2 application use cases
 
 ## Latest Session Notes (2026-06-24)
 
@@ -22,6 +22,11 @@ Phase 1 implemented:
 - Added chat domain ports: `ChatSessionStorePort`, `ContextDiscoveryPort`, `CouncilRuntimePort`, `ToolExecutorPort`, and `EngineRegistryPort`.
 - Added unit tests for strict Pydantic validation, append-only event sequencing, role/engine separation, tool risk classification, engine profiles, and Clean Architecture import boundaries.
 
+Phase 2 implemented:
+- Added application use cases for start/resume/send message/context discovery/slash commands/tool approval/session summary.
+- Use cases append normalized `ChatEvent`s through `ChatSessionStorePort` and keep infrastructure concerns out of application code.
+- Added unit tests with fake ports for event sequencing, resume reconstruction, council-to-event conversion, slash command handling, read-only status output, approvals, and summaries.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -31,7 +36,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue Phase 2 from `specs/morphic-chat-cli/tasks.md`: `StartChatSessionUseCase`, `ResumeChatSessionUseCase`, `SendChatMessageUseCase`, and related unit tests before JSONL session store/context discovery adapters.
+- Continue Phase 3 from `specs/morphic-chat-cli/tasks.md`: JSONL session store, read-only workspace context discovery, fake/local council runtime adapter, and engine registry skeleton.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`
