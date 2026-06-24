@@ -6,7 +6,9 @@ commands correctly call context_bridge methods and format output.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 from typer.testing import CliRunner
@@ -184,6 +186,38 @@ class TestPlatformsCommand:
         result = _invoke("context", "platforms", container=c)
         assert result.exit_code == 0
         assert "CLAUDE.md" in result.output or "markdown" in result.output
+
+
+# ---------------------------------------------------------------------------
+# morphic context scan
+# ---------------------------------------------------------------------------
+
+
+class TestScanCommand:
+    def test_scan_writes_context_index(self):
+        with runner.isolated_filesystem():
+            Path("AGENTS.md").write_text("# Root Rules\n", encoding="utf-8")
+
+            result = _invoke("context", "scan")
+
+            assert result.exit_code == 0
+            assert "sources=1" in result.output
+            assert Path(".morphic/context/index.json").exists()
+
+    def test_scan_json_outputs_index_payload(self):
+        with runner.isolated_filesystem():
+            Path("AGENTS.md").write_text("# Root Rules\n", encoding="utf-8")
+            Path("CLAUDE.md").write_text("# Router\n", encoding="utf-8")
+
+            result = _invoke("context", "scan", "--json")
+
+            assert result.exit_code == 0
+            payload = json.loads(result.output)
+            assert payload["source_count"] == 2
+            assert {source["source_path"] for source in payload["sources"]} == {
+                "AGENTS.md",
+                "CLAUDE.md",
+            }
 
 
 # ---------------------------------------------------------------------------

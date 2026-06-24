@@ -6,6 +6,7 @@ Provides a single-glance overview of system readiness.
 
 from __future__ import annotations
 
+import json
 import shutil
 import time
 
@@ -31,6 +32,50 @@ class _Check:
 
 def _style(status: str) -> str:
     return {"OK": "green", "WARN": "yellow", "FAIL": "red"}.get(status, "dim")
+
+
+def _check_payload(check: _Check) -> dict[str, object]:
+    return {
+        "duration_ms": check.duration_ms,
+        "message": check.message,
+        "name": check.name,
+        "status": check.status,
+    }
+
+
+def _checks_payload(checks: list[_Check]) -> dict[str, object]:
+    ok = sum(1 for check in checks if check.status == "OK")
+    warn = sum(1 for check in checks if check.status == "WARN")
+    fail = sum(1 for check in checks if check.status == "FAIL")
+    status = "FAIL" if fail else "WARN" if warn else "OK"
+    return {
+        "checks": [_check_payload(check) for check in checks],
+        "status": status,
+        "summary": {"fail": fail, "ok": ok, "warn": warn},
+    }
+
+
+def _render_checks_table(title: str, checks: list[_Check]) -> None:
+    from rich.table import Table
+
+    console.print(f"[bold]{title}[/bold]\n")
+    table = Table()
+    table.add_column("Component", min_width=20)
+    table.add_column("Status", justify="center", min_width=6)
+    table.add_column("Details")
+
+    for check in checks:
+        style = _style(check.status)
+        table.add_row(check.name, f"[{style}]{check.status}[/]", check.message)
+
+    console.print(table)
+    payload = _checks_payload(checks)
+    summary = payload["summary"]
+    console.print(
+        f"\n[green]{summary['ok']} OK[/]  "
+        f"[yellow]{summary['warn']} WARN[/]  "
+        f"[red]{summary['fail']} FAIL[/]"
+    )
 
 
 async def _check_ollama(container) -> _Check:  # type: ignore[type-arg]
@@ -149,13 +194,42 @@ async def _check_openhands(container) -> _Check:  # type: ignore[type-arg]
         return _Check("OpenHands", "WARN", str(exc), (time.monotonic() - t0) * 1000)
 
 
+async def _check_agents(container) -> list[_Check]:  # type: ignore[type-arg]
+    checks = [
+        _check_cli_binary("CLI: claude", container.settings.claude_code_cli_path),
+        _check_cli_binary("CLI: gemini", container.settings.gemini_cli_path),
+        _check_cli_binary("CLI: codex", container.settings.codex_cli_path),
+    ]
+    checks.extend(await _check_engines(container))
+    return checks
+
+
+@doctor_app.command("agents")
+def agents(
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit machine-readable JSON.",
+    ),
+) -> None:
+    """Run agent engine and CLI diagnostics."""
+    container = _get_container()
+    checks = _run(_check_agents(container))
+    payload = _checks_payload(checks)
+
+    if json_output:
+        typer.echo(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    else:
+        _render_checks_table("Morphic-Agent Agent Diagnostics", checks)
+
+    summary = payload["summary"]
+    if summary["fail"] > 0:
+        raise typer.Exit(code=1)
+
+
 @doctor_app.command("check")
 def check() -> None:
     """Run comprehensive system health diagnostics."""
-    from rich.table import Table
-
-    console.print("[bold]Morphic-Agent System Diagnostics[/bold]\n")
-
     container = _get_container()
     results: list[_Check] = []
 
@@ -180,22 +254,8 @@ def check() -> None:
     # Database
     results.append(_check_database(container))
 
-    # Render table
-    table = Table()
-    table.add_column("Component", min_width=20)
-    table.add_column("Status", justify="center", min_width=6)
-    table.add_column("Details")
+    _render_checks_table("Morphic-Agent System Diagnostics", results)
 
-    for r in results:
-        style = _style(r.status)
-        table.add_row(r.name, f"[{style}]{r.status}[/]", r.message)
-
-    console.print(table)
-
-    ok = sum(1 for r in results if r.status == "OK")
-    warn = sum(1 for r in results if r.status == "WARN")
-    fail = sum(1 for r in results if r.status == "FAIL")
-    console.print(f"\n[green]{ok} OK[/]  [yellow]{warn} WARN[/]  [red]{fail} FAIL[/]")
-
+    fail = _checks_payload(results)["summary"]["fail"]
     if fail > 0:
         raise typer.Exit(code=1)

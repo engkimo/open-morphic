@@ -78,16 +78,16 @@
 
 ## Phase 6 - Diagnostics and Automation
 
-- [ ] T601 Add `morphic context scan`.
-- [ ] T602 Add `morphic doctor agents`.
-- [ ] T603 Add JSON output for context scan.
-- [ ] T604 Add JSON output for doctor.
-- [ ] T605 Add stable exit codes for non-interactive commands.
+- [x] T601 Add `morphic context scan`.
+- [x] T602 Add `morphic doctor agents`.
+- [x] T603 Add JSON output for context scan.
+- [x] T604 Add JSON output for doctor.
+- [x] T605 Add stable exit codes for non-interactive commands.
 
 ## Phase 7 - Verification
 
-- [ ] T701 Run `uv run --extra dev pytest tests/unit/ -v`.
-- [ ] T702 Run `uv run --extra dev ruff check .`.
+- [x] T701 Run `uv run --extra dev pytest tests/unit/ -v`.
+- [x] T702 Run `uv run --extra dev ruff check .`.
 - [ ] T703 Manually run `morphic chat`, `/status`, `/context`, `/quit`.
 - [ ] T704 Verify `.morphic/sessions/*.jsonl` is append-only.
 - [ ] T705 Verify `.morphic/context/index.json` includes `AGENTS.md` and `CLAUDE.md`.

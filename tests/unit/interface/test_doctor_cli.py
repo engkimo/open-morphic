@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess as real_subprocess
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -133,6 +134,31 @@ class TestDoctorCheck:
         assert result.exit_code == 0
         assert "WARN" in result.output
         assert "optional" in result.output
+
+
+class TestDoctorAgents:
+    def test_agents_json_reports_engine_checks(self) -> None:
+        result = runner.invoke(app, ["doctor", "agents", "--json"])
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["status"] == "WARN"
+        assert payload["summary"]["fail"] == 0
+        assert any(
+            check["name"] == "Engine: ollama" and check["status"] == "OK"
+            for check in payload["checks"]
+        )
+        assert any(
+            check["name"] == "Engine: claude_code" and check["status"] == "WARN"
+            for check in payload["checks"]
+        )
+
+    def test_agents_text_uses_stable_warning_exit_code(self) -> None:
+        result = runner.invoke(app, ["doctor", "agents"])
+
+        assert result.exit_code == 0
+        assert "Agent Diagnostics" in result.output
+        assert "WARN" in result.output
 
 
 # ── Docker check unit tests ──

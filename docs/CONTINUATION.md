@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-06-24
-> Latest work: Morphic Chat CLI Phase 5 approval/execution harness
+> Latest work: Morphic Chat CLI Phase 6 diagnostics and automation
 
 ## Latest Session Notes (2026-06-24)
 
@@ -42,6 +42,12 @@ Phase 5 implemented:
 - Added LAEE-compatible `LaeeToolExecutor` adapter that converts chat `ToolExecutionRequest` values into LAEE `Action`s and normalizes `Observation`s back into chat tool results.
 - Added approval prompt rendering for pending approval requests.
 
+Phase 6 implemented:
+- Added `morphic context scan` and `morphic context scan --json` to generate `.morphic/context/index.json` through the application context discovery use case.
+- Added `morphic doctor agents` and `morphic doctor agents --json` for agent engine and optional CLI diagnostics.
+- Switched chat/context/doctor JSON command output to `typer.echo` so machine-readable output is not wrapped by Rich console rendering.
+- Stable non-interactive exit code policy: FAIL exits 1; WARN remains exit 0.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -51,7 +57,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue Phase 6 from `specs/morphic-chat-cli/tasks.md`: `morphic context scan`, `morphic doctor agents`, JSON diagnostics output, and stable exit codes.
+- Continue Phase 7 from `specs/morphic-chat-cli/tasks.md`: full unit verification, ruff, and final CLI/manual validation before expanding external engine adapters.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

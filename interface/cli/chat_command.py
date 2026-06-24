@@ -47,7 +47,7 @@ def chat_cmd(
     if doctor:
         payload = _run(_chat_doctor_payload())
         if json_output:
-            console.print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            typer.echo(json.dumps(payload, ensure_ascii=False, sort_keys=True))
         else:
             console.print(f"engines={len(payload['engines'])}")
         return

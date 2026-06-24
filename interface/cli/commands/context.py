@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import typer
 
+from application.use_cases.discover_workspace_context import (
+    DiscoverWorkspaceContextUseCase,
+)
+from infrastructure.context.workspace_context_discovery import WorkspaceContextDiscovery
 from interface.cli._utils import _get_container, _run
 from interface.cli.formatters import (
     console,
@@ -15,6 +20,31 @@ from interface.cli.formatters import (
 )
 
 context_app = typer.Typer()
+_SCAN_WORKSPACE_OPTION = typer.Option(
+    None,
+    "--workspace",
+    help="Workspace root.",
+)
+
+
+def _context_scan_payload(index) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    return {
+        "indexed_at": index.indexed_at.isoformat(),
+        "source_count": len(index.sources),
+        "sources": [
+            {
+                "content_hash": source.content_hash,
+                "precedence": source.precedence,
+                "scope": source.scope,
+                "sections": source.sections,
+                "source_path": source.source_path,
+                "source_type": source.source_type.value,
+                "warnings": source.warnings,
+            }
+            for source in index.sources
+        ],
+        "workspace_root": index.workspace_root,
+    }
 
 
 @context_app.command("export")
@@ -91,3 +121,32 @@ def platforms_cmd() -> None:
     for p in SUPPORTED_PLATFORMS:
         desc = descriptions.get(p, "")
         console.print(f"  [cyan]{p}[/]  {desc}")
+
+
+@context_app.command("scan")
+def scan_cmd(
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit machine-readable JSON.",
+    ),
+    workspace: Path | None = _SCAN_WORKSPACE_OPTION,
+) -> None:
+    """Scan workspace instruction sources into .morphic/context/index.json."""
+    root = workspace or Path.cwd()
+    use_case = DiscoverWorkspaceContextUseCase(
+        context_discovery=WorkspaceContextDiscovery()
+    )
+    try:
+        result = _run(use_case.execute(workspace_root=str(root)))
+    except OSError as exc:
+        print_error(str(exc))
+        raise typer.Exit(code=1) from None
+
+    payload = _context_scan_payload(result.index)
+    if json_output:
+        typer.echo(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        return
+
+    index_path = root / ".morphic" / "context" / "index.json"
+    console.print(f"sources={payload['source_count']} index={index_path}")
