@@ -1,5 +1,38 @@
 # Morphic-Agent — Continuation State
 
+> Last updated: 2026-06-24
+> Latest work: Morphic Chat CLI Phase 1 domain implementation
+
+## Latest Session Notes (2026-06-24)
+
+User direction:
+- Build a first-party Morphic terminal chat CLI similar in UX to Claude Code, Gemini CLI, and Codex CLI.
+- Do not make it just another single-engine CLI. Morphic should be the multi-engine, multi-agent control plane.
+- Solve the real pain: users manually switch CLIs and manually sync memory, markdown instructions, hooks, harnesses, sessions, and metadata across `.claude/`, `AGENTS.md`, `GEMINI.md`, Codex config, etc.
+- Use `claw-code` only as an operational feature catalog for good agent CLI behavior, not as an implementation source.
+
+Artifacts added:
+- `specs/morphic-chat-cli/spec.md`
+- `specs/morphic-chat-cli/plan.md`
+- `specs/morphic-chat-cli/tasks.md`
+- `specs/morphic-chat-cli/operational-catalog.md`
+
+Phase 1 implemented:
+- Added chat domain entities: `ChatEvent`, `ChatSession`, `ContextIndex`, `ApprovalRequest` / `ApprovalDecision`, and council role/decision primitives.
+- Added chat domain ports: `ChatSessionStorePort`, `ContextDiscoveryPort`, `CouncilRuntimePort`, `ToolExecutorPort`, and `EngineRegistryPort`.
+- Added unit tests for strict Pydantic validation, append-only event sequencing, role/engine separation, tool risk classification, engine profiles, and Clean Architecture import boundaries.
+
+Key design decisions:
+- Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
+- `.morphic/` becomes the canonical workspace metadata layer over time.
+- `.claude/`, `AGENTS.md`, `GEMINI.md`, Codex metadata are discovery/import sources first, export/projection targets later.
+- Roles and engines are distinct: planner/critic/leader are council responsibilities; Claude/Gemini/Codex/OpenHands/Ollama are runtime backends.
+- Morphic owns session ledger, approval policy, tool normalization, context index, memory writes, and final decisions.
+- Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
+
+Recommended next implementation step:
+- Continue Phase 2 from `specs/morphic-chat-cli/tasks.md`: `StartChatSessionUseCase`, `ResumeChatSessionUseCase`, `SendChatMessageUseCase`, and related unit tests before JSONL session store/context discovery adapters.
+
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`
 > Branch: `feature/goal-classifier-router` (HEAD `e49499c`)

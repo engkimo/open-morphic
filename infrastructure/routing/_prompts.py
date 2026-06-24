@@ -13,6 +13,8 @@ Anything that cannot be coerced to a valid ``GoalClassification`` raises
 ``ClassificationParseError`` — callers map it to the Sonnet fallback path.
 """
 
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import json

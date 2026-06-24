@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **[FEAT/CHAT-CLI]** Phase 1 domain layerをTDDで追加: append-only `ChatEvent`、immutable `ChatSession` sequencing、workspace `ContextIndex`、approval request/decision、council role/decision primitives、chat session/context/council/tool executor/engine registry ports。`tests/unit/domain/test_chat_cli_domain.py` と import-boundary test でClean Architecture境界を固定。
+- **[SPEC/CHAT-CLI]** Morphic Chat CLI のspec-driven設計を追加: `specs/morphic-chat-cli/{spec,plan,tasks,operational-catalog}.md`。Claude Code / Gemini CLI / Codex CLI 風のterminal chat体験をMorphic独自のmulti-engine council runtimeとcanonical `.morphic/` metadataで統合する方針を定義。`claw-code` は実装供給元ではなく「良いagent CLIが備えるべき運用面の仕様カタログ」として扱うclean-room方針を明記。
+
 ---
 
 ## v0.6.2 → v0.6.3 (2026-05-22) — **Planner cost work + Goal Classifier Router (SDD pilot #3)**

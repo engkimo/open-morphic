@@ -1,0 +1,107 @@
+# Tasks - Morphic Chat CLI
+
+> **Spec:** [`spec.md`](spec.md)
+> **Plan:** [`plan.md`](plan.md)
+> **Status:** draft
+
+## Phase 0 - Design Lock
+
+- [ ] T001 Confirm MVP command names: `morphic chat`, `morphic code`, `morphic context scan`.
+- [ ] T002 Confirm whether the first UI is line-oriented REPL or Textual. Recommended: line-oriented REPL.
+- [ ] T003 Confirm `.morphic/` layout and no-overwrite rule for existing `.claude/`, `AGENTS.md`, `GEMINI.md`.
+- [ ] T004 Confirm MVP roles: planner, critic, leader.
+- [ ] T005 Confirm permission modes and default. Recommended: `confirm-destructive`.
+
+## Phase 1 - Domain and Ports
+
+- [x] T101 Add `domain/entities/chat_event.py` with append-only session event models.
+- [x] T102 Add `domain/entities/chat_session.py` with session id, status, goal, permission mode, and event sequence.
+- [x] T103 Add `domain/entities/workspace_context.py` with context source and context index models.
+- [x] T104 Add `domain/entities/approval.py` with approval request/decision models.
+- [x] T105 Add `domain/ports/chat_session_store.py`.
+- [x] T106 Add `domain/ports/context_discovery.py`.
+- [x] T107 Add `domain/ports/council_runtime.py`.
+- [x] T108 Add `domain/ports/tool_executor.py` or reuse an existing LAEE-compatible port if present.
+- [x] T109 Add import-boundary tests for new domain files.
+- [x] T110 Add `domain/ports/engine_registry.py` skeleton for chat engine profiles.
+
+## Phase 2 - Application Use Cases
+
+- [ ] T201 Add `StartChatSessionUseCase`.
+- [ ] T202 Add `ResumeChatSessionUseCase`.
+- [ ] T203 Add `SendChatMessageUseCase`.
+- [ ] T204 Add `ExecuteSlashCommandUseCase`.
+- [ ] T205 Add `DiscoverWorkspaceContextUseCase`.
+- [ ] T206 Add `RequestToolApprovalUseCase`.
+- [ ] T207 Add `SummarizeChatSessionUseCase`.
+- [ ] T208 Unit test event sequencing and append-only behavior.
+- [ ] T209 Unit test slash command handling.
+- [ ] T210 Unit test read-only permission behavior.
+
+## Phase 3 - Infrastructure
+
+- [ ] T301 Add `infrastructure/chat/jsonl_session_store.py`.
+- [ ] T302 Add `infrastructure/context/workspace_context_discovery.py`.
+- [ ] T303 Add context discovery support for root `AGENTS.md`.
+- [ ] T304 Add context discovery support for `CLAUDE.md`.
+- [ ] T305 Add context discovery support for `.claude/agents`, `.claude/skills`, `.claude/commands`, `.claude/rules`.
+- [ ] T306 Add context discovery support for `GEMINI.md`.
+- [ ] T307 Add context discovery support for `.morphic/context`.
+- [ ] T308 Write `.morphic/context/index.json` without editing source files.
+- [ ] T309 Add fake/local council runtime adapter for MVP.
+- [ ] T310 Add engine registry skeleton.
+
+## Phase 4 - CLI Interface
+
+- [ ] T401 Add `interface/cli/chat_command.py`.
+- [ ] T402 Add line-oriented `ChatRepl`.
+- [ ] T403 Add slash command parser.
+- [ ] T404 Implement `/help`.
+- [ ] T405 Implement `/status`.
+- [ ] T406 Implement `/context`.
+- [ ] T407 Implement `/engines`.
+- [ ] T408 Implement `/diff`.
+- [ ] T409 Implement `/quit`.
+- [ ] T410 Wire `morphic chat`.
+- [ ] T411 Wire `morphic chat --resume latest`.
+- [ ] T412 Wire `morphic code "<goal>"`.
+
+## Phase 5 - Approval and Execution Harness
+
+- [ ] T501 Add approval prompt rendering.
+- [ ] T502 Block edits in `read-only` mode.
+- [ ] T503 Route mutation through LAEE-compatible executor.
+- [ ] T504 Record `approval_requested` and `approval_resolved` events.
+- [ ] T505 Record `tool_call_requested` and `tool_call_completed` events.
+- [ ] T506 Add diff proposal event before edits.
+- [ ] T507 Add verification command event for tests/lint.
+
+## Phase 6 - Diagnostics and Automation
+
+- [ ] T601 Add `morphic context scan`.
+- [ ] T602 Add `morphic doctor agents`.
+- [ ] T603 Add JSON output for context scan.
+- [ ] T604 Add JSON output for doctor.
+- [ ] T605 Add stable exit codes for non-interactive commands.
+
+## Phase 7 - Verification
+
+- [ ] T701 Run `uv run --extra dev pytest tests/unit/ -v`.
+- [ ] T702 Run `uv run --extra dev ruff check .`.
+- [ ] T703 Manually run `morphic chat`, `/status`, `/context`, `/quit`.
+- [ ] T704 Verify `.morphic/sessions/*.jsonl` is append-only.
+- [ ] T705 Verify `.morphic/context/index.json` includes `AGENTS.md` and `CLAUDE.md`.
+- [ ] T706 Verify existing `.claude/` files are not modified by scan.
+
+## Deferred
+
+- [ ] D001 Textual full-screen TUI.
+- [ ] D002 Claude Code adapter.
+- [ ] D003 Gemini CLI adapter.
+- [ ] D004 Codex CLI adapter.
+- [ ] D005 OpenHands adapter.
+- [ ] D006 `.morphic` to `.claude` export.
+- [ ] D007 `.morphic` to Gemini/Codex metadata export.
+- [ ] D008 Hook validation and execution.
+- [ ] D009 Council event visualization.
+- [ ] D010 Memory candidate approval UI.
