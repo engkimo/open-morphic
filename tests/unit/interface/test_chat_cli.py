@@ -15,7 +15,7 @@ from domain.entities.workspace_context import ContextIndex
 from domain.ports.engine_registry import EngineProfile, EngineRuntimeKind
 from domain.value_objects import RiskLevel
 from domain.value_objects.agent_engine import AgentEngineType
-from interface.cli.chat_command import _chat_doctor_payload
+from interface.cli.chat_command import _chat_doctor_payload, _role_engine_preferences
 from interface.cli.chat_repl import ChatRepl
 from interface.cli.main import app
 from interface.cli.renderers import render_approval_request
@@ -295,6 +295,37 @@ def test_chat_council_runtime_builds_role_engine_preferences(
         CouncilRole.CRITIC: AgentEngineType.CLAUDE_CODE,
         CouncilRole.LEADER: AgentEngineType.GEMINI_CLI,
     }
+
+
+def test_role_engine_preferences_reject_invalid_engine_id() -> None:
+    with pytest.raises(ValueError) as exc_info:
+        _role_engine_preferences(
+            planner_engine="missing_engine",
+            critic_engine=None,
+            leader_engine=None,
+        )
+
+    message = str(exc_info.value)
+    assert "Invalid planner engine" in message
+    assert "codex_cli" in message
+
+
+def test_code_invalid_role_engine_exits_with_diagnostic() -> None:
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            app,
+            [
+                "code",
+                "--route-council",
+                "--planner-engine",
+                "missing_engine",
+                "implement preferred routing",
+            ],
+        )
+
+        assert result.exit_code == 2
+        assert "Invalid planner engine" in result.output
+        assert "missing_engine" in result.output
 
 
 @pytest.mark.asyncio

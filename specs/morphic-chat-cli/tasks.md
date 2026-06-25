@@ -125,6 +125,13 @@
 - [x] T1104 Add `--planner-engine`, `--critic-engine`, and `--leader-engine` CLI options for `morphic code`.
 - [x] T1105 Unit test role preferences without invoking real route engines.
 
+## Phase 12 - Routed Council Diagnostics
+
+- [x] T1201 Validate routed council role engine ids before constructing route runtime.
+- [x] T1202 Return user-facing CLI diagnostics for invalid planner, critic, or leader engine ids.
+- [x] T1203 Preserve exit code 2 for invalid non-interactive routed council options.
+- [x] T1204 Ensure invalid role engine ids are not hidden by local council fallback.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

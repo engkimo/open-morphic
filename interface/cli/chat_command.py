@@ -110,12 +110,16 @@ def chat_cmd(
 
     with _disabled_logging(True):
         engine_registry = _chat_engine_registry()
-        council_runtime = _chat_council_runtime(
-            route_council=route_council,
-            planner_engine=planner_engine,
-            critic_engine=critic_engine,
-            leader_engine=leader_engine,
-        )
+        try:
+            council_runtime = _chat_council_runtime(
+                route_council=route_council,
+                planner_engine=planner_engine,
+                critic_engine=critic_engine,
+                leader_engine=leader_engine,
+            )
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=2) from None
     _run(
         ChatRepl(
             workspace_root=workspace or Path.cwd(),
@@ -136,12 +140,16 @@ def code_cmd(
     """Run one coding goal and persist the session ledger."""
     with _disabled_logging(True):
         engine_registry = _chat_engine_registry()
-        council_runtime = _chat_council_runtime(
-            route_council=route_council,
-            planner_engine=planner_engine,
-            critic_engine=critic_engine,
-            leader_engine=leader_engine,
-        )
+        try:
+            council_runtime = _chat_council_runtime(
+                route_council=route_council,
+                planner_engine=planner_engine,
+                critic_engine=critic_engine,
+                leader_engine=leader_engine,
+            )
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=2) from None
     _run(
         ChatRepl(
             workspace_root=workspace or Path.cwd(),
@@ -169,6 +177,11 @@ def _chat_council_runtime(
     critic_engine: str | None = None,
     leader_engine: str | None = None,
 ) -> CouncilRuntimePort:
+    role_engines = _role_engine_preferences(
+        planner_engine=planner_engine,
+        critic_engine=critic_engine,
+        leader_engine=leader_engine,
+    )
     if not route_council and os.getenv("MORPHIC_CHAT_ROUTE_COUNCIL") != "1":
         return LocalChatCouncilRuntime()
     try:
@@ -177,11 +190,7 @@ def _chat_council_runtime(
         if route_to_engine is not None:
             return RouteChatCouncilRuntime(
                 route_to_engine,
-                role_engines=_role_engine_preferences(
-                    planner_engine=planner_engine,
-                    critic_engine=critic_engine,
-                    leader_engine=leader_engine,
-                ),
+                role_engines=role_engines,
             )
     except Exception:
         return LocalChatCouncilRuntime()
@@ -195,13 +204,20 @@ def _role_engine_preferences(
     leader_engine: str | None,
 ) -> dict[CouncilRole, AgentEngineType]:
     preferences: dict[CouncilRole, AgentEngineType] = {}
-    for role, engine_id in [
-        (CouncilRole.PLANNER, planner_engine),
-        (CouncilRole.CRITIC, critic_engine),
-        (CouncilRole.LEADER, leader_engine),
+    for role, engine_id, label in [
+        (CouncilRole.PLANNER, planner_engine, "planner"),
+        (CouncilRole.CRITIC, critic_engine, "critic"),
+        (CouncilRole.LEADER, leader_engine, "leader"),
     ]:
         if engine_id:
-            preferences[role] = AgentEngineType(engine_id)
+            try:
+                preferences[role] = AgentEngineType(engine_id)
+            except ValueError as exc:
+                valid = ", ".join(engine.value for engine in AgentEngineType)
+                raise ValueError(
+                    f"Invalid {label} engine '{engine_id}'. "
+                    f"Expected one of: {valid}"
+                ) from exc
     return preferences
 
 

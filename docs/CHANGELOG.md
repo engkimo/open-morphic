@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **[FIX/CHAT-CLI]** Phase 12 routed council diagnosticsをTDDで追加: `--planner-engine` / `--critic-engine` / `--leader-engine` の未知engine idをlocal fallbackで隠さず、valid engine一覧付きの user-facing diagnostic と exit code 2 を返すよう修正。
 - **[FEAT/CHAT-CLI]** Phase 11 routed council role preferencesをTDDで追加: `RouteChatCouncilRuntime` が planner/critic/leader ごとの preferred engine を `RouteToEngineUseCase.execute(preferred_engine=...)` に渡せるようにし、`morphic chat` / `morphic code` に `--planner-engine` `--critic-engine` `--leader-engine` を追加。Unit testsはfake route/factoryのみで外部CLI/DBを呼ばない。
 - **[FEAT/CHAT-CLI]** Phase 10 route council opt-inをTDDで追加: `morphic chat --route-council` と `morphic code --route-council` を追加し、明示flagまたは `MORPHIC_CHAT_ROUTE_COUNCIL=1` のときだけ route-backed council runtime を使うよう整理。defaultはlocal deterministic councilのまま維持し、unit testsはfake runtime injectionで外部CLI/DBを呼ばないことを固定。
 - **[FEAT/CHAT-CLI]** Phase 9 route-backed council runtimeをTDDで追加: `RouteChatCouncilRuntime` が既存 `RouteToEngineUseCase` 経由で planner/critic/leader role prompt を実行し、`CouncilTurn`/`CouncilDecision` へ正規化。route失敗・空出力・例外時は `LocalChatCouncilRuntime` へfallback。Chat CLIのlive route council実行はunit/通常利用で外部CLIを誤起動しないよう `MORPHIC_CHAT_ROUTE_COUNCIL=1` で明示opt-in。

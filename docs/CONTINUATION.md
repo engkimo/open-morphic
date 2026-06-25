@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-06-25
-> Latest work: Morphic Chat CLI Phase 11 routed council role preferences
+> Latest work: Morphic Chat CLI Phase 12 routed council diagnostics
 
 ## Latest Session Notes (2026-06-25)
 
@@ -79,6 +79,11 @@ Phase 11 implemented:
 - Added `--planner-engine`, `--critic-engine`, and `--leader-engine` to both `morphic chat` and `morphic code`.
 - Unit tests use fake route calls/factories only; no test invokes real route engines, external CLIs, or databases.
 
+Phase 12 implemented:
+- Routed council role engine ids are validated before route runtime construction.
+- Invalid `--planner-engine`, `--critic-engine`, or `--leader-engine` values now return a user-facing diagnostic listing valid engine ids and exit code 2.
+- Invalid role engine ids are no longer hidden by the local deterministic fallback.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -88,7 +93,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue external CLI integration by validating engine id errors/user-facing diagnostics, or start hook validation from Deferred `D008`.
+- Continue external CLI integration with richer route diagnostics/status events, or start hook validation from Deferred `D008`.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`
