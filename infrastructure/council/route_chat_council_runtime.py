@@ -9,6 +9,7 @@ from domain.entities.council_runtime import CouncilDecision, CouncilRole, Counci
 from domain.entities.workspace_context import ContextIndex
 from domain.ports.agent_engine import AgentEngineResult
 from domain.ports.council_runtime import CouncilRuntimePort
+from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.model_tier import TaskType
 from infrastructure.council.local_chat_council_runtime import LocalChatCouncilRuntime
 
@@ -22,6 +23,7 @@ class _RouteExecutor(Protocol):
         budget: float = 1.0,
         estimated_hours: float = 0.0,
         context_tokens: int = 0,
+        preferred_engine: AgentEngineType | None = None,
         timeout_seconds: float = 300.0,
         context: str | None = None,
     ) -> AgentEngineResult: ...
@@ -35,11 +37,13 @@ class RouteChatCouncilRuntime(CouncilRuntimePort):
         route_to_engine: _RouteExecutor,
         *,
         fallback: CouncilRuntimePort | None = None,
+        role_engines: dict[CouncilRole, AgentEngineType] | None = None,
         budget: float = 1.0,
         timeout_seconds: float = 300.0,
     ) -> None:
         self._route_to_engine = route_to_engine
         self._fallback = fallback or LocalChatCouncilRuntime()
+        self._role_engines = role_engines or {}
         self._budget = budget
         self._timeout_seconds = timeout_seconds
 
@@ -114,6 +118,7 @@ class RouteChatCouncilRuntime(CouncilRuntimePort):
             task_type=task_type,
             budget=self._budget,
             context_tokens=self._context_tokens(context),
+            preferred_engine=self._role_engines.get(role),
             timeout_seconds=self._timeout_seconds,
             context=self._context_summary(context),
         )

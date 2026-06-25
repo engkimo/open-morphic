@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-06-25
-> Latest work: Morphic Chat CLI Phase 10 routed council CLI opt-in
+> Latest work: Morphic Chat CLI Phase 11 routed council role preferences
 
 ## Latest Session Notes (2026-06-25)
 
@@ -73,6 +73,12 @@ Phase 10 implemented:
 - Default chat/code behavior remains local deterministic council unless the flag is present or `MORPHIC_CHAT_ROUTE_COUNCIL=1` is set.
 - Unit tests monkeypatch the council runtime factory and engine registry, confirming CLI flag plumbing without invoking real route engines, external CLIs, or databases.
 
+Phase 11 implemented:
+- Added role-to-engine preferences for route-backed council execution.
+- `RouteChatCouncilRuntime` now passes planner, critic, and leader preferred engines into `RouteToEngineUseCase.execute(preferred_engine=...)`.
+- Added `--planner-engine`, `--critic-engine`, and `--leader-engine` to both `morphic chat` and `morphic code`.
+- Unit tests use fake route calls/factories only; no test invokes real route engines, external CLIs, or databases.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -82,7 +88,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue external CLI integration by adding route council role-to-engine preferences/config, or start hook validation from Deferred `D008`.
+- Continue external CLI integration by validating engine id errors/user-facing diagnostics, or start hook validation from Deferred `D008`.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

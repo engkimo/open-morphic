@@ -148,3 +148,32 @@ async def test_route_chat_council_runtime_falls_back_to_local_runtime_on_failure
     assert [turn.engine_id for turn in turns] == ["local", "local", "local"]
     assert decision.leader_engine_id == "local"
     assert "Plan next step for: Plan safely" in decision.selected_content
+
+
+async def test_route_chat_council_runtime_passes_role_preferred_engines() -> None:
+    route = _FakeRouteToEngine(
+        [
+            _result(AgentEngineType.CODEX_CLI, "Plan"),
+            _result(AgentEngineType.CLAUDE_CODE, "Critique"),
+            _result(AgentEngineType.GEMINI_CLI, "Lead"),
+        ]
+    )
+
+    await RouteChatCouncilRuntime(
+        route,
+        role_engines={
+            CouncilRole.PLANNER: AgentEngineType.CODEX_CLI,
+            CouncilRole.CRITIC: AgentEngineType.CLAUDE_CODE,
+            CouncilRole.LEADER: AgentEngineType.GEMINI_CLI,
+        },
+    ).deliberate(
+        session=_session(),
+        context=_context(),
+        user_message="Route by role preference",
+    )
+
+    assert [call["preferred_engine"] for call in route.calls] == [
+        AgentEngineType.CODEX_CLI,
+        AgentEngineType.CLAUDE_CODE,
+        AgentEngineType.GEMINI_CLI,
+    ]

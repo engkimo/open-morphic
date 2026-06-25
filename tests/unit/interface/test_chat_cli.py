@@ -14,6 +14,7 @@ from domain.entities.council_runtime import CouncilDecision, CouncilRole, Counci
 from domain.entities.workspace_context import ContextIndex
 from domain.ports.engine_registry import EngineProfile, EngineRuntimeKind
 from domain.value_objects import RiskLevel
+from domain.value_objects.agent_engine import AgentEngineType
 from interface.cli.chat_command import _chat_doctor_payload
 from interface.cli.chat_repl import ChatRepl
 from interface.cli.main import app
@@ -136,7 +137,9 @@ def test_code_route_council_flag_uses_routed_runtime(monkeypatch: pytest.MonkeyP
 
     calls: list[bool] = []
 
-    def fake_council_runtime(*, route_council: bool = False) -> _FakeCouncilRuntime:
+    def fake_council_runtime(
+        *, route_council: bool = False, **_kwargs: object
+    ) -> _FakeCouncilRuntime:
         calls.append(route_council)
         return _FakeCouncilRuntime()
 
@@ -159,7 +162,9 @@ def test_code_defaults_to_local_council_mode(monkeypatch: pytest.MonkeyPatch) ->
 
     calls: list[bool] = []
 
-    def fake_council_runtime(*, route_council: bool = False) -> _FakeCouncilRuntime:
+    def fake_council_runtime(
+        *, route_council: bool = False, **_kwargs: object
+    ) -> _FakeCouncilRuntime:
         calls.append(route_council)
         return _FakeCouncilRuntime()
 
@@ -178,7 +183,9 @@ def test_chat_route_council_flag_uses_routed_runtime(monkeypatch: pytest.MonkeyP
 
     calls: list[bool] = []
 
-    def fake_council_runtime(*, route_council: bool = False) -> _FakeCouncilRuntime:
+    def fake_council_runtime(
+        *, route_council: bool = False, **_kwargs: object
+    ) -> _FakeCouncilRuntime:
         calls.append(route_council)
         return _FakeCouncilRuntime()
 
@@ -195,6 +202,99 @@ def test_chat_route_council_flag_uses_routed_runtime(monkeypatch: pytest.MonkeyP
         assert result.exit_code == 0
         assert calls == [True]
         assert "Routed response for: implement routed council" in result.output
+
+
+def test_code_route_council_role_flags_are_parsed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from interface.cli import chat_command
+
+    calls: list[dict[str, object]] = []
+
+    def fake_council_runtime(
+        *,
+        route_council: bool = False,
+        planner_engine: str | None = None,
+        critic_engine: str | None = None,
+        leader_engine: str | None = None,
+    ) -> _FakeCouncilRuntime:
+        calls.append(
+            {
+                "critic_engine": critic_engine,
+                "leader_engine": leader_engine,
+                "planner_engine": planner_engine,
+                "route_council": route_council,
+            }
+        )
+        return _FakeCouncilRuntime()
+
+    monkeypatch.setattr(chat_command, "_chat_engine_registry", _FakeEngineRegistry)
+    monkeypatch.setattr(chat_command, "_chat_council_runtime", fake_council_runtime)
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            app,
+            [
+                "code",
+                "--route-council",
+                "--planner-engine",
+                "codex_cli",
+                "--critic-engine",
+                "claude_code",
+                "--leader-engine",
+                "gemini_cli",
+                "implement preferred routing",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert calls == [
+            {
+                "critic_engine": "claude_code",
+                "leader_engine": "gemini_cli",
+                "planner_engine": "codex_cli",
+                "route_council": True,
+            }
+        ]
+
+
+def test_chat_council_runtime_builds_role_engine_preferences(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from interface.cli import chat_command
+
+    class _Container:
+        route_to_engine = object()
+
+    captured: dict[str, object] = {}
+
+    class _FakeRouteRuntime(_FakeCouncilRuntime):
+        def __init__(
+            self,
+            route_to_engine: object,
+            *,
+            role_engines: dict[CouncilRole, AgentEngineType] | None = None,
+        ) -> None:
+            captured["role_engines"] = role_engines
+            captured["route_to_engine"] = route_to_engine
+
+    monkeypatch.setenv("MORPHIC_CHAT_ROUTE_COUNCIL", "0")
+    monkeypatch.setattr(chat_command, "_get_container", lambda: _Container())
+    monkeypatch.setattr(chat_command, "RouteChatCouncilRuntime", _FakeRouteRuntime)
+
+    runtime = chat_command._chat_council_runtime(
+        route_council=True,
+        planner_engine="codex_cli",
+        critic_engine="claude_code",
+        leader_engine="gemini_cli",
+    )
+
+    assert isinstance(runtime, _FakeRouteRuntime)
+    assert captured["role_engines"] == {
+        CouncilRole.PLANNER: AgentEngineType.CODEX_CLI,
+        CouncilRole.CRITIC: AgentEngineType.CLAUDE_CODE,
+        CouncilRole.LEADER: AgentEngineType.GEMINI_CLI,
+    }
 
 
 @pytest.mark.asyncio

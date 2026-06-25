@@ -117,6 +117,14 @@
 - [x] T1004 Preserve `MORPHIC_CHAT_ROUTE_COUNCIL=1` env opt-in.
 - [x] T1005 Unit test route-council flags without invoking real route engines.
 
+## Phase 11 - Routed Council Role Preferences
+
+- [x] T1101 Add role-to-engine preferences to `RouteChatCouncilRuntime`.
+- [x] T1102 Pass planner, critic, and leader preferred engines to `RouteToEngineUseCase.execute`.
+- [x] T1103 Add `--planner-engine`, `--critic-engine`, and `--leader-engine` CLI options for `morphic chat`.
+- [x] T1104 Add `--planner-engine`, `--critic-engine`, and `--leader-engine` CLI options for `morphic code`.
+- [x] T1105 Unit test role preferences without invoking real route engines.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
