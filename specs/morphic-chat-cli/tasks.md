@@ -132,6 +132,14 @@
 - [x] T1203 Preserve exit code 2 for invalid non-interactive routed council options.
 - [x] T1204 Ensure invalid role engine ids are not hidden by local council fallback.
 
+## Phase 13 - Hook Diagnostics
+
+- [x] T1301 Add read-only `.morphic/hooks/*.json` hook validation.
+- [x] T1302 Validate hook type, command, enabled flag, and secret-path risk posture.
+- [x] T1303 Add `morphic doctor hooks`.
+- [x] T1304 Add `morphic doctor hooks --json`.
+- [x] T1305 Preserve stable exit codes: FAIL exits 1, WARN exits 0.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

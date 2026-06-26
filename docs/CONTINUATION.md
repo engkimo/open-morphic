@@ -1,9 +1,9 @@
 # Morphic-Agent — Continuation State
 
-> Last updated: 2026-06-25
-> Latest work: Morphic Chat CLI Phase 12 routed council diagnostics
+> Last updated: 2026-06-26
+> Latest work: Morphic Chat CLI Phase 13 hook diagnostics
 
-## Latest Session Notes (2026-06-25)
+## Latest Session Notes (2026-06-26)
 
 User direction:
 - Build a first-party Morphic terminal chat CLI similar in UX to Claude Code, Gemini CLI, and Codex CLI.
@@ -84,6 +84,12 @@ Phase 12 implemented:
 - Invalid `--planner-engine`, `--critic-engine`, or `--leader-engine` values now return a user-facing diagnostic listing valid engine ids and exit code 2.
 - Invalid role engine ids are no longer hidden by the local deterministic fallback.
 
+Phase 13 implemented:
+- Added read-only `.morphic/hooks/*.json` hook validation.
+- Hook diagnostics validate hook type, command, enabled flag, and secret-path risk posture without executing commands.
+- Added `morphic doctor hooks` and `morphic doctor hooks --json`.
+- Invalid hooks are isolated in diagnostics; FAIL exits 1 and WARN exits 0.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -93,7 +99,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue external CLI integration with richer route diagnostics/status events, or start hook validation from Deferred `D008`.
+- Continue Deferred `D008` by adding hook execution planning/events, or add richer hook schemas and config export.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

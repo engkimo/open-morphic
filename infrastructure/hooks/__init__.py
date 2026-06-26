@@ -1,0 +1,2 @@
+"""Hook validation adapters."""
+

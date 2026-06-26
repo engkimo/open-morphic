@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess as real_subprocess
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -159,6 +160,83 @@ class TestDoctorAgents:
         assert result.exit_code == 0
         assert "Agent Diagnostics" in result.output
         assert "WARN" in result.output
+
+
+class TestDoctorHooks:
+    def test_hooks_json_reports_valid_hooks(self) -> None:
+        with runner.isolated_filesystem():
+            hook_dir = Path(".morphic/hooks")
+            hook_dir.mkdir(parents=True)
+            (hook_dir / "lint.json").write_text(
+                json.dumps(
+                    {
+                        "command": "uv run --extra dev ruff check .",
+                        "enabled": True,
+                        "name": "lint",
+                        "type": "pre_commit",
+                    },
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+
+            result = runner.invoke(app, ["doctor", "hooks", "--json"])
+
+            assert result.exit_code == 0
+            payload = json.loads(result.output)
+            assert payload["status"] == "OK"
+            assert payload["summary"]["ok"] == 1
+            assert payload["checks"][0]["name"] == "Hook: lint"
+
+    def test_hooks_json_fails_for_invalid_hook(self) -> None:
+        with runner.isolated_filesystem():
+            hook_dir = Path(".morphic/hooks")
+            hook_dir.mkdir(parents=True)
+            (hook_dir / "secret.json").write_text(
+                json.dumps(
+                    {
+                        "command": "cat .env",
+                        "enabled": True,
+                        "name": "secret",
+                        "type": "pre_shell",
+                    },
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+
+            result = runner.invoke(app, ["doctor", "hooks", "--json"])
+
+            assert result.exit_code == 1
+            payload = json.loads(result.output)
+            assert payload["status"] == "FAIL"
+            assert payload["summary"]["fail"] == 1
+            assert "secret path" in payload["checks"][0]["message"]
+
+    def test_hooks_text_uses_workspace_option(self, tmp_path) -> None:
+        hook_dir = tmp_path / ".morphic" / "hooks"
+        hook_dir.mkdir(parents=True)
+        (hook_dir / "unit.json").write_text(
+            json.dumps(
+                {
+                    "command": "uv run pytest tests/unit/ -q",
+                    "enabled": True,
+                    "name": "unit",
+                    "type": "post_shell",
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            app,
+            ["doctor", "hooks", "--workspace", str(tmp_path)],
+        )
+
+        assert result.exit_code == 0
+        assert "Hook Diagnostics" in result.output
+        assert "Hook: unit" in result.output
 
 
 # ── Docker check unit tests ──

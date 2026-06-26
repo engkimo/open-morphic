@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **[FEAT/CHAT-CLI]** Phase 13 hook diagnosticsをTDDで追加: `.morphic/hooks/*.json` を実行せずread-only validationし、hook type / command / enabled flag / secret-path risk を診断する `morphic doctor hooks` と `morphic doctor hooks --json` を追加。Invalid hooksはisolated reportされ、FAILのみexit 1、WARNはexit 0。
 - **[FIX/CHAT-CLI]** Phase 12 routed council diagnosticsをTDDで追加: `--planner-engine` / `--critic-engine` / `--leader-engine` の未知engine idをlocal fallbackで隠さず、valid engine一覧付きの user-facing diagnostic と exit code 2 を返すよう修正。
 - **[FEAT/CHAT-CLI]** Phase 11 routed council role preferencesをTDDで追加: `RouteChatCouncilRuntime` が planner/critic/leader ごとの preferred engine を `RouteToEngineUseCase.execute(preferred_engine=...)` に渡せるようにし、`morphic chat` / `morphic code` に `--planner-engine` `--critic-engine` `--leader-engine` を追加。Unit testsはfake route/factoryのみで外部CLI/DBを呼ばない。
 - **[FEAT/CHAT-CLI]** Phase 10 route council opt-inをTDDで追加: `morphic chat --route-council` と `morphic code --route-council` を追加し、明示flagまたは `MORPHIC_CHAT_ROUTE_COUNCIL=1` のときだけ route-backed council runtime を使うよう整理。defaultはlocal deterministic councilのまま維持し、unit testsはfake runtime injectionで外部CLI/DBを呼ばないことを固定。

@@ -12,13 +12,20 @@ import shutil
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 
 import typer
 
+from infrastructure.hooks.workspace_hook_registry import HookDiagnostic, WorkspaceHookRegistry
 from interface.cli._utils import _get_container, _run
 from interface.cli.formatters import console
 
 doctor_app = typer.Typer()
+_HOOKS_WORKSPACE_OPTION = typer.Option(
+    None,
+    "--workspace",
+    help="Workspace root.",
+)
 
 
 @contextmanager
@@ -45,6 +52,15 @@ class _Check:
         self.status = status  # "OK" | "WARN" | "FAIL"
         self.message = message
         self.duration_ms = duration_ms
+
+
+def _check_from_hook(diagnostic: HookDiagnostic) -> _Check:
+    return _Check(
+        diagnostic.name,
+        diagnostic.status,
+        diagnostic.message,
+        diagnostic.duration_ms,
+    )
 
 
 def _style(status: str) -> str:
@@ -239,6 +255,32 @@ def agents(
         typer.echo(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     else:
         _render_checks_table("Morphic-Agent Agent Diagnostics", checks)
+
+    summary = payload["summary"]
+    if summary["fail"] > 0:
+        raise typer.Exit(code=1)
+
+
+@doctor_app.command("hooks")
+def hooks(
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit machine-readable JSON.",
+    ),
+    workspace: Path | None = _HOOKS_WORKSPACE_OPTION,
+) -> None:
+    """Validate workspace hook definitions without executing them."""
+    checks = [
+        _check_from_hook(diagnostic)
+        for diagnostic in WorkspaceHookRegistry(workspace or Path.cwd()).validate()
+    ]
+    payload = _checks_payload(checks)
+
+    if json_output:
+        typer.echo(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    else:
+        _render_checks_table("Morphic-Agent Hook Diagnostics", checks)
 
     summary = payload["summary"]
     if summary["fail"] > 0:
