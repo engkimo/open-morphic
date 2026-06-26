@@ -140,6 +140,14 @@
 - [x] T1304 Add `morphic doctor hooks --json`.
 - [x] T1305 Preserve stable exit codes: FAIL exits 1, WARN exits 0.
 
+## Phase 14 - Hook Execution Planning
+
+- [x] T1401 Add hook domain definitions and a hook registry port for validated hook metadata.
+- [x] T1402 Add chat event types for hook execution planned/skipped ledger entries.
+- [x] T1403 Add `PlanChatHooksUseCase` that records hook plans without executing commands.
+- [x] T1404 Extend `WorkspaceHookRegistry` with `hooks_for()` domain definitions.
+- [x] T1405 Block hook planning when hook diagnostics contain FAIL results.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
@@ -149,6 +157,6 @@
 - [ ] D005 OpenHands adapter.
 - [ ] D006 `.morphic` to `.claude` export.
 - [ ] D007 `.morphic` to Gemini/Codex metadata export.
-- [ ] D008 Hook validation and execution.
+- [ ] D008 Hook command execution.
 - [ ] D009 Council event visualization.
 - [ ] D010 Memory candidate approval UI.

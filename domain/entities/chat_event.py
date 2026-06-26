@@ -28,6 +28,8 @@ class ChatEventType(str, Enum):
     DIFF_PROPOSED = "diff_proposed"
     VERIFICATION_STARTED = "verification_started"
     VERIFICATION_RESULT = "verification_result"
+    HOOK_EXECUTION_PLANNED = "hook_execution_planned"
+    HOOK_EXECUTION_SKIPPED = "hook_execution_skipped"
     MEMORY_CANDIDATE = "memory_candidate"
     SESSION_SUMMARY = "session_summary"
     SESSION_ENDED = "session_ended"

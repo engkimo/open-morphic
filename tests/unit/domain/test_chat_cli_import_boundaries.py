@@ -10,11 +10,13 @@ CHAT_CLI_DOMAIN_FILES = [
     Path("domain/entities/chat_event.py"),
     Path("domain/entities/chat_session.py"),
     Path("domain/entities/council_runtime.py"),
+    Path("domain/entities/hook.py"),
     Path("domain/entities/workspace_context.py"),
     Path("domain/ports/chat_session_store.py"),
     Path("domain/ports/context_discovery.py"),
     Path("domain/ports/council_runtime.py"),
     Path("domain/ports/engine_registry.py"),
+    Path("domain/ports/hook_registry.py"),
     Path("domain/ports/tool_executor.py"),
 ]
 

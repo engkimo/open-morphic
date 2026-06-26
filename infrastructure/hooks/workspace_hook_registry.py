@@ -3,34 +3,16 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-
-@dataclass(frozen=True)
-class HookDiagnostic:
-    """Validation result for one hook source."""
-
-    name: str
-    status: str
-    message: str
-    duration_ms: float = 0.0
+from domain.entities.hook import HookDefinition, HookDiagnostic, HookType
+from domain.ports.hook_registry import HookRegistryPort
 
 
-class WorkspaceHookRegistry:
+class WorkspaceHookRegistry(HookRegistryPort):
     """Validate `.morphic/hooks/*.json` hook definitions without executing them."""
 
-    _VALID_TYPES = {
-        "post_edit",
-        "post_shell",
-        "post_tool",
-        "pre_commit",
-        "pre_edit",
-        "pre_shell",
-        "pre_tool",
-        "session_end",
-    }
     _SECRET_PATTERNS = ("~/.aws", "~/.ssh", ".env")
 
     def __init__(self, workspace_root: str | Path) -> None:
@@ -60,6 +42,17 @@ class WorkspaceHookRegistry:
             ]
         return diagnostics
 
+    def hooks_for(self, hook_type: HookType) -> list[HookDefinition]:
+        hooks: list[HookDefinition] = []
+        hook_dir = self._workspace_root / ".morphic" / "hooks"
+        if not hook_dir.is_dir():
+            return hooks
+        for path in sorted(hook_dir.glob("*.json")):
+            hook = self._definition_for(path)
+            if hook is not None and hook.hook_type is hook_type:
+                hooks.append(hook)
+        return hooks
+
     def _validate_file(self, path: Path) -> HookDiagnostic:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
@@ -82,7 +75,7 @@ class WorkspaceHookRegistry:
         command = payload.get("command")
         enabled = payload.get("enabled", True)
 
-        if hook_type not in self._VALID_TYPES:
+        if self._hook_type_for(hook_type) is None:
             return HookDiagnostic(
                 name=hook_name,
                 status="FAIL",
@@ -111,6 +104,37 @@ class WorkspaceHookRegistry:
             status="OK",
             message=f"{hook_type} hook is valid",
         )
+
+    def _definition_for(self, path: Path) -> HookDefinition | None:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+
+        hook_type = self._hook_type_for(payload.get("type"))
+        command = payload.get("command")
+        if hook_type is None or not isinstance(command, str) or not command.strip():
+            return None
+        if self._touches_secret_path(command):
+            return None
+
+        return HookDefinition(
+            name=self._hook_name(path, payload).removeprefix("Hook: "),
+            hook_type=hook_type,
+            command=command.strip(),
+            enabled=payload.get("enabled", True) is True,
+            source_path=str(path.relative_to(self._workspace_root)),
+        )
+
+    def _hook_type_for(self, value: object) -> HookType | None:
+        if not isinstance(value, str):
+            return None
+        try:
+            return HookType(value)
+        except ValueError:
+            return None
 
     def _hook_name(self, path: Path, payload: dict[str, Any]) -> str:
         name = payload.get("name")
