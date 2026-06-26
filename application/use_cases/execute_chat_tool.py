@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from application.use_cases.plan_chat_hooks import PlanChatHooksUseCase
 from domain.entities.chat_event import ChatEvent, ChatEventType
 from domain.entities.chat_session import ChatSession, PermissionMode
+from domain.entities.hook import HookType
 from domain.ports.chat_session_store import ChatSessionStorePort
 from domain.ports.tool_executor import (
     ToolExecutionRequest,
@@ -32,9 +34,11 @@ class ExecuteChatToolUseCase:
         *,
         session_store: ChatSessionStorePort,
         tool_executor: ToolExecutorPort,
+        hook_planner: PlanChatHooksUseCase | None = None,
     ) -> None:
         self._session_store = session_store
         self._tool_executor = tool_executor
+        self._hook_planner = hook_planner
 
     async def execute(
         self,
@@ -53,12 +57,21 @@ class ExecuteChatToolUseCase:
 
         current = session
         events: list[ChatEvent] = []
+        if self._hook_planner is not None:
+            hook_result = await self._hook_planner.execute(
+                session=current,
+                hook_type=HookType.PRE_TOOL,
+            )
+            current = hook_result.session
+            events.extend(hook_result.events)
+
+        tool_events: list[ChatEvent] = []
         if diff_summary:
             current, diff_event = current.record_event(
                 ChatEventType.DIFF_PROPOSED,
                 {"summary": diff_summary, "tool_name": tool_name},
             )
-            events.append(diff_event)
+            tool_events.append(diff_event)
 
         request = ToolExecutionRequest(
             session_id=session.id,
@@ -72,14 +85,14 @@ class ExecuteChatToolUseCase:
             ChatEventType.TOOL_CALL_REQUESTED,
             request.model_dump(mode="json"),
         )
-        events.append(requested_event)
+        tool_events.append(requested_event)
 
         tool_result = await self._tool_executor.execute(request)
         current, completed_event = current.record_event(
             ChatEventType.TOOL_CALL_COMPLETED,
             tool_result.model_dump(mode="json"),
         )
-        events.append(completed_event)
+        tool_events.append(completed_event)
 
         if verification_label:
             current, verification_event = current.record_event(
@@ -90,10 +103,22 @@ class ExecuteChatToolUseCase:
                     "request_id": request.id,
                 },
             )
-            events.append(verification_event)
+            tool_events.append(verification_event)
 
-        for event in events:
-            await self._session_store.append_event(event)
+        if self._hook_planner is not None:
+            for event in tool_events:
+                await self._session_store.append_event(event)
+            events.extend(tool_events)
+            hook_result = await self._hook_planner.execute(
+                session=current,
+                hook_type=HookType.POST_TOOL,
+            )
+            current = hook_result.session
+            events.extend(hook_result.events)
+        else:
+            events.extend(tool_events)
+            for event in events:
+                await self._session_store.append_event(event)
 
         return ExecuteChatToolResult(
             session=current,

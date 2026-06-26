@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-06-26
-> Latest work: Morphic Chat CLI Phase 14 hook execution planning
+> Latest work: Morphic Chat CLI Phase 15 hook planning in tool harness
 
 ## Latest Session Notes (2026-06-26)
 
@@ -96,6 +96,12 @@ Phase 14 implemented:
 - Added `PlanChatHooksUseCase`, which validates hooks, records enabled hooks as planned, records disabled hooks as skipped, and refuses planning when diagnostics include FAIL results.
 - Extended `WorkspaceHookRegistry` with `hooks_for()` while keeping actual hook command execution deferred.
 
+Phase 15 implemented:
+- `ExecuteChatToolUseCase` now accepts an optional `PlanChatHooksUseCase`.
+- When injected, `pre_tool` hook plans are recorded before tool execution and `post_tool` hook plans are recorded after tool execution.
+- Existing tool execution behavior is unchanged when no hook planner is injected.
+- Session ledger ordering is preserved across hook plan, diff, tool requested/completed, verification, and post hook plan events.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -105,7 +111,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue Deferred `D008` by wiring hook planning into the chat execution harness or by adding the actual approved hook command executor.
+- Continue Deferred `D008` by adding an approved hook command executor or wiring hook planner construction into future CLI tool execution paths.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

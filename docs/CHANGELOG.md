@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **[FEAT/CHAT-CLI]** Phase 15 hook planningをtool harnessへ接続: `ExecuteChatToolUseCase` がoptional `PlanChatHooksUseCase` を受け取り、`pre_tool` hook plan eventsをtool execution前に、`post_tool` hook plan eventsをexecution後にsession ledgerへ記録。hook planner未注入時の既存tool execution挙動は維持し、actual hook command executionは引き続きdeferred。
 - **[FEAT/CHAT-CLI]** Phase 14 hook execution planningをTDDで追加: `.morphic/hooks/*.json` のvalidated metadataを `HookRegistryPort` 経由で取得し、`PlanChatHooksUseCase` が `hook_execution_planned` / `hook_execution_skipped` eventsをsession ledgerへ記録。FAIL diagnosticsがある場合はplanningを拒否し、actual shell command executionは未実装のままdeferred。
 - **[FEAT/CHAT-CLI]** Phase 13 hook diagnosticsをTDDで追加: `.morphic/hooks/*.json` を実行せずread-only validationし、hook type / command / enabled flag / secret-path risk を診断する `morphic doctor hooks` と `morphic doctor hooks --json` を追加。Invalid hooksはisolated reportされ、FAILのみexit 1、WARNはexit 0。
 - **[FIX/CHAT-CLI]** Phase 12 routed council diagnosticsをTDDで追加: `--planner-engine` / `--critic-engine` / `--leader-engine` の未知engine idをlocal fallbackで隠さず、valid engine一覧付きの user-facing diagnostic と exit code 2 を返すよう修正。

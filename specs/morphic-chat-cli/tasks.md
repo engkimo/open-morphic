@@ -148,6 +148,14 @@
 - [x] T1404 Extend `WorkspaceHookRegistry` with `hooks_for()` domain definitions.
 - [x] T1405 Block hook planning when hook diagnostics contain FAIL results.
 
+## Phase 15 - Hook Planning in Tool Harness
+
+- [x] T1501 Allow `ExecuteChatToolUseCase` to accept an optional hook planner.
+- [x] T1502 Record `pre_tool` hook plan events before tool execution.
+- [x] T1503 Record `post_tool` hook plan events after tool execution.
+- [x] T1504 Preserve existing tool execution behavior when no hook planner is injected.
+- [x] T1505 Preserve append-only session ledger ordering across hook/tool/verification events.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
