@@ -156,6 +156,16 @@
 - [x] T1504 Preserve existing tool execution behavior when no hook planner is injected.
 - [x] T1505 Preserve append-only session ledger ordering across hook/tool/verification events.
 
+## Phase 16 - Hook Execution Use Case
+
+- [x] T1601 Add hook execution request/result domain models.
+- [x] T1602 Add `HookExecutorPort` for approved hook command execution.
+- [x] T1603 Add `hook_execution_requested` and `hook_execution_completed` ledger events.
+- [x] T1604 Add `ExecuteChatHookUseCase` that executes enabled hooks through the port.
+- [x] T1605 Record disabled hooks as skipped without calling the executor.
+- [x] T1606 Block hook execution when hook diagnostics contain FAIL results.
+- [x] T1607 Keep shell-backed hook execution infrastructure deferred until approval/risk policy is wired.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
@@ -165,6 +175,6 @@
 - [ ] D005 OpenHands adapter.
 - [ ] D006 `.morphic` to `.claude` export.
 - [ ] D007 `.morphic` to Gemini/Codex metadata export.
-- [ ] D008 Hook command execution.
+- [ ] D008 Shell-backed approved hook command execution.
 - [ ] D009 Council event visualization.
 - [ ] D010 Memory candidate approval UI.

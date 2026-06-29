@@ -30,6 +30,8 @@ class ChatEventType(str, Enum):
     VERIFICATION_RESULT = "verification_result"
     HOOK_EXECUTION_PLANNED = "hook_execution_planned"
     HOOK_EXECUTION_SKIPPED = "hook_execution_skipped"
+    HOOK_EXECUTION_REQUESTED = "hook_execution_requested"
+    HOOK_EXECUTION_COMPLETED = "hook_execution_completed"
     MEMORY_CANDIDATE = "memory_candidate"
     SESSION_SUMMARY = "session_summary"
     SESSION_ENDED = "session_ended"

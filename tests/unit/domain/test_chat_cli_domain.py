@@ -17,6 +17,13 @@ from domain.entities.approval import (
 from domain.entities.chat_event import ChatEvent, ChatEventType
 from domain.entities.chat_session import ChatSession, ChatSessionStatus, PermissionMode
 from domain.entities.council_runtime import CouncilDecision, CouncilRole, CouncilTurn
+from domain.entities.hook import (
+    HookDefinition,
+    HookDiagnostic,
+    HookExecutionRequest,
+    HookExecutionResult,
+    HookType,
+)
 from domain.entities.workspace_context import (
     ContextIndex,
     ContextSourceType,
@@ -26,6 +33,8 @@ from domain.ports.chat_session_store import ChatSessionStorePort
 from domain.ports.context_discovery import ContextDiscoveryPort
 from domain.ports.council_runtime import CouncilRuntimePort
 from domain.ports.engine_registry import EngineProfile, EngineRegistryPort, EngineRuntimeKind
+from domain.ports.hook_executor import HookExecutorPort
+from domain.ports.hook_registry import HookRegistryPort
 from domain.ports.tool_executor import ToolExecutionRequest, ToolExecutionResult, ToolExecutorPort
 from domain.value_objects import RiskLevel
 
@@ -187,6 +196,8 @@ def test_phase_1_ports_are_abstract_contracts() -> None:
     assert inspect.isabstract(CouncilRuntimePort)
     assert inspect.isabstract(ToolExecutorPort)
     assert inspect.isabstract(EngineRegistryPort)
+    assert inspect.isabstract(HookRegistryPort)
+    assert inspect.isabstract(HookExecutorPort)
 
 
 def test_tool_executor_contract_uses_risk_classification() -> None:
@@ -225,3 +236,56 @@ def test_engine_registry_profile_models_runtime_capabilities() -> None:
     assert profile.id == "ollama"
     assert profile.kind is EngineRuntimeKind.LOCAL_MODEL
     assert "planning" in profile.capabilities
+
+
+def test_hook_definition_tracks_type_and_source() -> None:
+    hook = HookDefinition(
+        name="lint",
+        hook_type=HookType.PRE_COMMIT,
+        command="uv run --extra dev ruff check .",
+        enabled=True,
+        source_path=".morphic/hooks/lint.json",
+    )
+    diagnostic = HookDiagnostic(
+        name="Hook: lint",
+        status="OK",
+        message="pre_commit hook is valid",
+        source_path=hook.source_path,
+    )
+
+    assert hook.hook_type is HookType.PRE_COMMIT
+    assert hook.enabled
+    assert diagnostic.status == "OK"
+
+
+def test_hook_execution_contract_tracks_request_and_result() -> None:
+    request = HookExecutionRequest(
+        session_id="chat-1",
+        hook_name="lint",
+        hook_type=HookType.PRE_COMMIT,
+        command="uv run --extra dev ruff check .",
+        source_path=".morphic/hooks/lint.json",
+    )
+    result = HookExecutionResult(
+        request_id=request.id,
+        success=True,
+        stdout_summary="All checks passed",
+        stderr_summary="",
+        exit_code=0,
+    )
+
+    assert request.hook_name == "lint"
+    assert request.hook_type is HookType.PRE_COMMIT
+    assert result.request_id == request.id
+    assert result.success
+
+
+def test_hook_execution_request_rejects_empty_command() -> None:
+    with pytest.raises(ValidationError):
+        HookExecutionRequest(
+            session_id="chat-1",
+            hook_name="lint",
+            hook_type=HookType.PRE_COMMIT,
+            command="",
+            source_path=".morphic/hooks/lint.json",
+        )
