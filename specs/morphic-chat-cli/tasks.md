@@ -166,6 +166,16 @@
 - [x] T1606 Block hook execution when hook diagnostics contain FAIL results.
 - [x] T1607 Keep shell-backed hook execution infrastructure deferred until approval/risk policy is wired.
 
+## Phase 17 - Hook Runner Wiring
+
+- [x] T1701 Add a no-op `HookExecutorPort` infrastructure adapter for safe wiring.
+- [x] T1702 Allow `ExecuteChatToolUseCase` to accept an optional `ExecuteChatHookUseCase`.
+- [x] T1703 Execute `pre_tool` hooks before tool execution when a hook runner is injected.
+- [x] T1704 Execute `post_tool` hooks after tool execution when a hook runner is injected.
+- [x] T1705 Preserve existing hook planning behavior when only a hook planner is injected.
+- [x] T1706 Preserve append-only session ledger ordering across hook execution/tool/verification events.
+- [x] T1707 Keep real shell-backed hook command execution deferred.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

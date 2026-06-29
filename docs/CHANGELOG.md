@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **[FEAT/CHAT-CLI]** Phase 17 hook runner wiringをTDDで追加: safe wiring用の `NoopHookExecutor` adapterを追加し、`ExecuteChatToolUseCase` がoptional `ExecuteChatHookUseCase` を受け取れるようにした。hook runner注入時は `pre_tool` hook execution eventsをtool execution前に、`post_tool` hook execution eventsをexecution後にsession ledgerへ記録。既存のhook planner注入時のplanning挙動は維持し、real shell-backed hook executionは引き続きdeferred。
 - **[FEAT/CHAT-CLI]** Phase 16 hook execution use caseをTDDで追加: `HookExecutionRequest` / `HookExecutionResult` と `HookExecutorPort` を追加し、`ExecuteChatHookUseCase` が enabled hook をport越しに実行して `hook_execution_requested` / `hook_execution_completed` eventsをsession ledgerへ記録。disabled hookはexecutorを呼ばず `hook_execution_skipped` として記録し、FAIL diagnosticsがある場合は実行を拒否。shell-backed hook executorとapproval/risk wiringは引き続きdeferred。
 - **[FEAT/CHAT-CLI]** Phase 15 hook planningをtool harnessへ接続: `ExecuteChatToolUseCase` がoptional `PlanChatHooksUseCase` を受け取り、`pre_tool` hook plan eventsをtool execution前に、`post_tool` hook plan eventsをexecution後にsession ledgerへ記録。hook planner未注入時の既存tool execution挙動は維持し、actual hook command executionは引き続きdeferred。
 - **[FEAT/CHAT-CLI]** Phase 14 hook execution planningをTDDで追加: `.morphic/hooks/*.json` のvalidated metadataを `HookRegistryPort` 経由で取得し、`PlanChatHooksUseCase` が `hook_execution_planned` / `hook_execution_skipped` eventsをsession ledgerへ記録。FAIL diagnosticsがある場合はplanningを拒否し、actual shell command executionは未実装のままdeferred。

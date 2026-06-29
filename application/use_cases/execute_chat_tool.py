@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from application.use_cases.execute_chat_hook import ExecuteChatHookUseCase
 from application.use_cases.plan_chat_hooks import PlanChatHooksUseCase
 from domain.entities.chat_event import ChatEvent, ChatEventType
 from domain.entities.chat_session import ChatSession, PermissionMode
@@ -35,10 +36,12 @@ class ExecuteChatToolUseCase:
         session_store: ChatSessionStorePort,
         tool_executor: ToolExecutorPort,
         hook_planner: PlanChatHooksUseCase | None = None,
+        hook_runner: ExecuteChatHookUseCase | None = None,
     ) -> None:
         self._session_store = session_store
         self._tool_executor = tool_executor
         self._hook_planner = hook_planner
+        self._hook_runner = hook_runner
 
     async def execute(
         self,
@@ -57,7 +60,14 @@ class ExecuteChatToolUseCase:
 
         current = session
         events: list[ChatEvent] = []
-        if self._hook_planner is not None:
+        if self._hook_runner is not None:
+            hook_result = await self._hook_runner.execute(
+                session=current,
+                hook_type=HookType.PRE_TOOL,
+            )
+            current = hook_result.session
+            events.extend(hook_result.events)
+        elif self._hook_planner is not None:
             hook_result = await self._hook_planner.execute(
                 session=current,
                 hook_type=HookType.PRE_TOOL,
@@ -105,7 +115,17 @@ class ExecuteChatToolUseCase:
             )
             tool_events.append(verification_event)
 
-        if self._hook_planner is not None:
+        if self._hook_runner is not None:
+            for event in tool_events:
+                await self._session_store.append_event(event)
+            events.extend(tool_events)
+            hook_result = await self._hook_runner.execute(
+                session=current,
+                hook_type=HookType.POST_TOOL,
+            )
+            current = hook_result.session
+            events.extend(hook_result.events)
+        elif self._hook_planner is not None:
             for event in tool_events:
                 await self._session_store.append_event(event)
             events.extend(tool_events)

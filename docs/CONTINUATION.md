@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-06-30
-> Latest work: Morphic Chat CLI Phase 16 hook execution use case
+> Latest work: Morphic Chat CLI Phase 17 hook runner wiring
 
 ## Latest Session Notes (2026-06-26)
 
@@ -109,6 +109,14 @@ Phase 16 implemented:
 - FAIL hook diagnostics now block both planning and execution at the application layer.
 - Shell-backed hook command execution and approval/risk policy wiring remain deferred; unit tests use a fake executor only.
 
+Phase 17 implemented:
+- Added `NoopHookExecutor`, a safe infrastructure adapter for `HookExecutorPort` that records successful hook execution results without invoking shell commands.
+- `ExecuteChatToolUseCase` now accepts an optional `ExecuteChatHookUseCase` as `hook_runner`.
+- When a hook runner is injected, `pre_tool` hook execution events are recorded before tool execution and `post_tool` hook execution events are recorded after tool execution.
+- Existing `PlanChatHooksUseCase` injection behavior remains unchanged for planning-only paths.
+- Session ledger ordering is preserved across hook execution request/completion events, diff/tool events, verification events, and post-hook execution events.
+- Real shell-backed hook command execution remains deferred until explicit approval/risk policy is wired.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -118,7 +126,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue Deferred `D008` by adding shell-backed approved hook command execution behind explicit approval/risk policy, or first wire `ExecuteChatHookUseCase` into tool harness paths with a no-op/fake infrastructure adapter.
+- Continue Deferred `D008` by adding shell-backed approved hook command execution behind explicit approval/risk policy, then wire that adapter only for permission modes where hook command execution is allowed.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`
