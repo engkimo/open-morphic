@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-06-30
-> Latest work: Morphic Chat CLI Phase 18 shell-backed hook executor
+> Latest work: Morphic Chat CLI Phase 19 hook execution mode wiring
 
 ## Latest Session Notes (2026-06-26)
 
@@ -124,6 +124,13 @@ Phase 18 implemented:
 - `ExecuteChatToolUseCase` now stops before the tool body when an injected `pre_tool` hook runner records a failed hook result.
 - Post-tool hook failure is intentionally recorded as ledger data only; no rollback behavior was added.
 
+Phase 19 implemented:
+- Added a Chat CLI hook executor factory with safe no-op default.
+- `MORPHIC_CHAT_HOOK_EXECUTION=shell` explicitly opts into `ShellHookExecutor`; unset, empty, or `noop` uses `NoopHookExecutor`.
+- Shell hook executor construction reuses LAEE approval mode, audit log path, and undo settings from the app container when available, with conservative local defaults otherwise.
+- Unknown hook execution modes raise a validation error.
+- `morphic chat --doctor --json` now reports `hook_execution_mode`.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -133,7 +140,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue Deferred `D008` by adding CLI/container wiring that selects `NoopHookExecutor` by default and `ShellHookExecutor` only behind explicit opt-in permission/config, then validate one manual hook run.
+- Continue Deferred `D008` by wiring the hook runner factory into any future Chat CLI tool execution path and validating one manual shell hook run with `MORPHIC_CHAT_HOOK_EXECUTION=shell`.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

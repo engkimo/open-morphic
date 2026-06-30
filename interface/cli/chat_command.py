@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -15,11 +15,15 @@ from domain.entities.chat_session import PermissionMode
 from domain.entities.council_runtime import CouncilRole
 from domain.ports.council_runtime import CouncilRuntimePort
 from domain.ports.engine_registry import EngineRegistryPort
+from domain.ports.hook_executor import HookExecutorPort
+from domain.ports.local_executor import LocalExecutorPort
 from domain.value_objects.agent_engine import AgentEngineType
 from infrastructure.council.local_chat_council_runtime import LocalChatCouncilRuntime
 from infrastructure.council.route_chat_council_runtime import RouteChatCouncilRuntime
 from infrastructure.engines.route_engine_registry import RouteEngineRegistry
 from infrastructure.engines.static_engine_registry import StaticEngineRegistry
+from infrastructure.hooks.noop_hook_executor import NoopHookExecutor
+from infrastructure.hooks.shell_hook_executor import ShellHookExecutor
 from interface.cli._utils import _get_container, _run
 from interface.cli.chat_repl import ChatRepl
 from interface.cli.formatters import console
@@ -99,9 +103,13 @@ def chat_cmd(
 ) -> None:
     """Start the Morphic terminal chat REPL."""
     if doctor:
-        with _disabled_logging(json_output):
-            engine_registry = _chat_engine_registry()
-            payload = _run(_chat_doctor_payload(engine_registry=engine_registry))
+        try:
+            with _disabled_logging(json_output):
+                engine_registry = _chat_engine_registry()
+                payload = _run(_chat_doctor_payload(engine_registry=engine_registry))
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=2) from None
         if json_output:
             typer.echo(json.dumps(payload, ensure_ascii=False, sort_keys=True))
         else:
@@ -170,6 +178,64 @@ def _chat_engine_registry() -> EngineRegistryPort:
     return StaticEngineRegistry()
 
 
+def _chat_hook_executor(
+    *,
+    workspace_root: Path,
+    local_executor_factory: Callable[[], LocalExecutorPort] | None = None,
+) -> HookExecutorPort:
+    mode = _chat_hook_execution_mode()
+    if mode == "noop":
+        return NoopHookExecutor()
+    factory = local_executor_factory or _chat_local_executor
+    return ShellHookExecutor(
+        local_executor=factory(),
+        workspace_root=workspace_root,
+    )
+
+
+def _chat_hook_execution_mode() -> str:
+    mode = os.getenv("MORPHIC_CHAT_HOOK_EXECUTION", "noop").strip().lower()
+    if mode == "":
+        return "noop"
+    if mode in {"noop", "shell"}:
+        return mode
+    raise ValueError(
+        "Invalid hook execution mode "
+        f"'{mode}'. Expected one of: noop, shell"
+    )
+
+
+def _chat_local_executor() -> LocalExecutorPort:
+    from domain.value_objects.approval_mode import ApprovalMode
+    from infrastructure.local_execution.audit_log import JsonlAuditLogger
+    from infrastructure.local_execution.executor import LocalExecutor
+
+    try:
+        settings = _get_container().settings
+        approval_mode_value = settings.laee_approval_mode
+        audit_log_path = settings.laee_audit_log_path
+        undo_enabled = settings.laee_undo_enabled
+    except Exception:
+        approval_mode_value = "confirm-destructive"
+        audit_log_path = Path(".morphic/audit_log.jsonl")
+        undo_enabled = True
+
+    mode_map = {
+        "full-auto": ApprovalMode.FULL_AUTO,
+        "confirm-destructive": ApprovalMode.CONFIRM_DESTRUCTIVE,
+        "confirm-all": ApprovalMode.CONFIRM_ALL,
+    }
+    approval_mode = mode_map.get(
+        approval_mode_value,
+        ApprovalMode.CONFIRM_DESTRUCTIVE,
+    )
+    return LocalExecutor(
+        approval_mode=approval_mode,
+        audit_logger=JsonlAuditLogger(log_path=audit_log_path),
+        undo_enabled=undo_enabled,
+    )
+
+
 def _chat_council_runtime(
     *,
     route_council: bool = False,
@@ -228,5 +294,6 @@ async def _chat_doctor_payload(
     engines = await registry.list_engines()
     return {
         "engines": [engine.model_dump(mode="json") for engine in engines],
+        "hook_execution_mode": _chat_hook_execution_mode(),
         "permission_modes": [mode.value for mode in PermissionMode],
     }

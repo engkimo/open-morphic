@@ -11,11 +11,18 @@ from typer.testing import CliRunner
 from domain.entities.approval import ApprovalRequest
 from domain.entities.chat_session import ChatSession
 from domain.entities.council_runtime import CouncilDecision, CouncilRole, CouncilTurn
+from domain.entities.execution import Action, Observation
 from domain.entities.workspace_context import ContextIndex
 from domain.ports.engine_registry import EngineProfile, EngineRuntimeKind
+from domain.ports.local_executor import LocalExecutorPort
 from domain.value_objects import RiskLevel
 from domain.value_objects.agent_engine import AgentEngineType
-from interface.cli.chat_command import _chat_doctor_payload, _role_engine_preferences
+from domain.value_objects.status import ObservationStatus
+from interface.cli.chat_command import (
+    _chat_doctor_payload,
+    _chat_hook_executor,
+    _role_engine_preferences,
+)
 from interface.cli.chat_repl import ChatRepl
 from interface.cli.main import app
 from interface.cli.renderers import render_approval_request
@@ -63,6 +70,17 @@ class _FakeCouncilRuntime:
         return [turn], decision
 
 
+class _FakeLocalExecutor(LocalExecutorPort):
+    async def execute(self, action: Action) -> Observation:
+        return Observation(status=ObservationStatus.SUCCESS, result="ok")
+
+    async def undo_last(self) -> Observation:
+        return Observation(status=ObservationStatus.SUCCESS, result="undone")
+
+    async def get_undo_stack_size(self) -> int:
+        return 0
+
+
 def test_parse_slash_command_name_and_args() -> None:
     command = parse_slash_command("/resume latest")
 
@@ -85,7 +103,75 @@ def test_chat_doctor_json_lists_engines() -> None:
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert "engines" in payload
+    assert payload["hook_execution_mode"] == "noop"
     assert any(engine["id"] == "ollama" for engine in payload["engines"])
+
+
+def test_chat_hook_executor_defaults_to_noop(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    from infrastructure.hooks.noop_hook_executor import NoopHookExecutor
+
+    monkeypatch.delenv("MORPHIC_CHAT_HOOK_EXECUTION", raising=False)
+
+    executor = _chat_hook_executor(
+        workspace_root=tmp_path,
+        local_executor_factory=lambda: _FakeLocalExecutor(),
+    )
+
+    assert isinstance(executor, NoopHookExecutor)
+
+
+@pytest.mark.asyncio
+async def test_chat_doctor_payload_reports_shell_hook_execution_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MORPHIC_CHAT_HOOK_EXECUTION", "shell")
+
+    payload = await _chat_doctor_payload(engine_registry=_FakeEngineRegistry())
+
+    assert payload["hook_execution_mode"] == "shell"
+
+
+def test_chat_hook_executor_uses_shell_only_with_explicit_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    from infrastructure.hooks.shell_hook_executor import ShellHookExecutor
+
+    monkeypatch.setenv("MORPHIC_CHAT_HOOK_EXECUTION", "shell")
+
+    executor = _chat_hook_executor(
+        workspace_root=tmp_path,
+        local_executor_factory=lambda: _FakeLocalExecutor(),
+    )
+
+    assert isinstance(executor, ShellHookExecutor)
+
+
+def test_chat_hook_executor_rejects_unknown_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("MORPHIC_CHAT_HOOK_EXECUTION", "always")
+
+    with pytest.raises(ValueError) as exc_info:
+        _chat_hook_executor(
+            workspace_root=tmp_path,
+            local_executor_factory=lambda: _FakeLocalExecutor(),
+        )
+
+    assert "Invalid hook execution mode" in str(exc_info.value)
+
+
+def test_chat_doctor_invalid_hook_execution_mode_exits_with_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MORPHIC_CHAT_HOOK_EXECUTION", "always")
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(app, ["chat", "--doctor", "--json"])
+
+    assert result.exit_code == 2
+    assert "Invalid hook execution mode" in result.output
 
 
 @pytest.mark.asyncio

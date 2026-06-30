@@ -185,6 +185,14 @@
 - [x] T1805 Stop tool execution when an injected `pre_tool` hook runner records a failed hook result.
 - [x] T1806 Preserve post-tool hook failure as ledger data without adding rollback behavior.
 
+## Phase 19 - Hook Execution Mode Wiring
+
+- [x] T1901 Add chat hook executor factory with safe no-op default.
+- [x] T1902 Select shell-backed hook execution only when `MORPHIC_CHAT_HOOK_EXECUTION=shell`.
+- [x] T1903 Reject unknown hook execution modes with user-facing validation.
+- [x] T1904 Build shell hook executor with LAEE local executor settings when opt-in is enabled.
+- [x] T1905 Surface hook execution mode in `morphic chat --doctor --json`.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
