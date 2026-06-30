@@ -58,17 +58,18 @@ class FakeToolExecutor(ToolExecutorPort):
 
 
 class FakeHookExecutor(HookExecutorPort):
-    def __init__(self) -> None:
+    def __init__(self, *, success: bool = True) -> None:
         self.requests: list[HookExecutionRequest] = []
+        self._success = success
 
     async def execute(self, request: HookExecutionRequest) -> HookExecutionResult:
         self.requests.append(request)
         return HookExecutionResult(
             request_id=request.id,
-            success=True,
-            stdout_summary=f"ran {request.hook_name}",
-            stderr_summary="",
-            exit_code=0,
+            success=self._success,
+            stdout_summary=f"ran {request.hook_name}" if self._success else "",
+            stderr_summary="" if self._success else f"failed {request.hook_name}",
+            exit_code=0 if self._success else 1,
         )
 
 
@@ -275,3 +276,51 @@ async def test_execute_tool_runs_pre_and_post_hooks_when_hook_runner_is_injected
     assert [event.sequence for event in store.appended] == list(range(8))
     assert store.appended == result.events
     assert result.session.next_sequence == 8
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_stops_when_pre_hook_execution_fails() -> None:
+    store = InMemoryChatSessionStore()
+    executor = FakeToolExecutor()
+    hook_executor = FakeHookExecutor(success=False)
+    hook_runner = ExecuteChatHookUseCase(
+        session_store=store,
+        hook_registry=FakeHookRegistry(
+            [
+                HookDefinition(
+                    name="pre-log",
+                    hook_type=HookType.PRE_TOOL,
+                    command="false",
+                    enabled=True,
+                    source_path=".morphic/hooks/pre-log.json",
+                )
+            ]
+        ),
+        hook_executor=hook_executor,
+    )
+    session = ChatSession.start(
+        session_id="chat-1",
+        goal="write file",
+        permission_mode=PermissionMode.WORKSPACE_WRITE,
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await ExecuteChatToolUseCase(
+            session_store=store,
+            tool_executor=executor,
+            hook_runner=hook_runner,
+        ).execute(
+            session=session,
+            tool_name="fs_write",
+            arguments={"path": "x.txt", "content": "x"},
+            risk_level=RiskLevel.MEDIUM,
+            diff_summary="create x.txt",
+        )
+
+    assert "pre_tool hook failed" in str(exc_info.value)
+    assert executor.requests == []
+    assert [event.type for event in store.appended] == [
+        ChatEventType.HOOK_EXECUTION_REQUESTED,
+        ChatEventType.HOOK_EXECUTION_COMPLETED,
+    ]
+    assert store.appended[-1].payload["success"] is False

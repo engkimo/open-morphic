@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-06-30
-> Latest work: Morphic Chat CLI Phase 17 hook runner wiring
+> Latest work: Morphic Chat CLI Phase 18 shell-backed hook executor
 
 ## Latest Session Notes (2026-06-26)
 
@@ -117,6 +117,13 @@ Phase 17 implemented:
 - Session ledger ordering is preserved across hook execution request/completion events, diff/tool events, verification events, and post-hook execution events.
 - Real shell-backed hook command execution remains deferred until explicit approval/risk policy is wired.
 
+Phase 18 implemented:
+- Added `ShellHookExecutor`, which implements `HookExecutorPort` by delegating hook commands to LAEE `LocalExecutorPort` as `shell_exec` actions.
+- Hook shell execution uses the workspace root as `cwd` and includes a configurable timeout.
+- LAEE `SUCCESS` observations are normalized to successful `HookExecutionResult` values; `DENIED` / `ERROR` observations become failed hook results with stderr summaries.
+- `ExecuteChatToolUseCase` now stops before the tool body when an injected `pre_tool` hook runner records a failed hook result.
+- Post-tool hook failure is intentionally recorded as ledger data only; no rollback behavior was added.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -126,7 +133,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue Deferred `D008` by adding shell-backed approved hook command execution behind explicit approval/risk policy, then wire that adapter only for permission modes where hook command execution is allowed.
+- Continue Deferred `D008` by adding CLI/container wiring that selects `NoopHookExecutor` by default and `ShellHookExecutor` only behind explicit opt-in permission/config, then validate one manual hook run.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

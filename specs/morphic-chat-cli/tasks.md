@@ -176,6 +176,15 @@
 - [x] T1706 Preserve append-only session ledger ordering across hook execution/tool/verification events.
 - [x] T1707 Keep real shell-backed hook command execution deferred.
 
+## Phase 18 - Shell-backed Hook Executor
+
+- [x] T1801 Add `ShellHookExecutor` that maps hook commands to LAEE `shell_exec` actions.
+- [x] T1802 Run hook shell commands with workspace root as `cwd` and configurable timeout.
+- [x] T1803 Normalize LAEE success observations into successful hook execution results.
+- [x] T1804 Normalize LAEE denied/error observations into failed hook execution results.
+- [x] T1805 Stop tool execution when an injected `pre_tool` hook runner records a failed hook result.
+- [x] T1806 Preserve post-tool hook failure as ledger data without adding rollback behavior.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

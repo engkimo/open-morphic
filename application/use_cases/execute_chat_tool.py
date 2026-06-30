@@ -9,7 +9,7 @@ from application.use_cases.execute_chat_hook import ExecuteChatHookUseCase
 from application.use_cases.plan_chat_hooks import PlanChatHooksUseCase
 from domain.entities.chat_event import ChatEvent, ChatEventType
 from domain.entities.chat_session import ChatSession, PermissionMode
-from domain.entities.hook import HookType
+from domain.entities.hook import HookExecutionResult, HookType
 from domain.ports.chat_session_store import ChatSessionStorePort
 from domain.ports.tool_executor import (
     ToolExecutionRequest,
@@ -67,6 +67,7 @@ class ExecuteChatToolUseCase:
             )
             current = hook_result.session
             events.extend(hook_result.events)
+            self._raise_if_hook_failed(hook_result.hook_results, HookType.PRE_TOOL)
         elif self._hook_planner is not None:
             hook_result = await self._hook_planner.execute(
                 session=current,
@@ -156,3 +157,12 @@ class ExecuteChatToolUseCase:
         if session.permission_mode is not PermissionMode.READ_ONLY:
             return False
         return risk_level > RiskLevel.SAFE or tool_name not in _READ_ONLY_TOOLS
+
+    def _raise_if_hook_failed(
+        self,
+        hook_results: list[HookExecutionResult],
+        hook_type: HookType,
+    ) -> None:
+        failed = [result for result in hook_results if not result.success]
+        if failed:
+            raise RuntimeError(f"{hook_type.value} hook failed")
