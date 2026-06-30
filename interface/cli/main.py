@@ -57,6 +57,7 @@ def _register_commands() -> None:
     from interface.cli.commands.engine import engine_app
     from interface.cli.commands.evolution import evolution_app
     from interface.cli.commands.fallback import fallback_app
+    from interface.cli.commands.hooks import hooks_app
     from interface.cli.commands.learning import learning_app
     from interface.cli.commands.marketplace import marketplace_app
     from interface.cli.commands.mcp import mcp_app
@@ -74,6 +75,7 @@ def _register_commands() -> None:
     app.add_typer(cost_app, name="cost", help="View cost tracking and budget.")
     app.add_typer(mcp_app, name="mcp", help="Manage MCP server.")
     app.add_typer(engine_app, name="engine", help="Manage agent execution engines.")
+    app.add_typer(hooks_app, name="hooks", help="Validate and run Morphic Chat hooks.")
     app.add_typer(
         council_app,
         name="council",

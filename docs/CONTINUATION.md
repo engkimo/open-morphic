@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-06-30
-> Latest work: Morphic Chat CLI Phase 19 hook execution mode wiring
+> Latest work: Morphic Chat CLI Phase 20 manual hook run CLI
 
 ## Latest Session Notes (2026-06-26)
 
@@ -131,6 +131,13 @@ Phase 19 implemented:
 - Unknown hook execution modes raise a validation error.
 - `morphic chat --doctor --json` now reports `hook_execution_mode`.
 
+Phase 20 implemented:
+- Added `morphic hooks run <hook_type>` for explicit manual hook execution.
+- Manual hook runs create a chat session ledger under `.morphic/sessions/*.jsonl` and record hook execution events.
+- `morphic hooks run <hook_type> --json` emits session id, hook execution mode, diagnostics, events, results, and summary counts.
+- Default manual hook execution remains no-op unless the user explicitly sets `MORPHIC_CHAT_HOOK_EXECUTION=shell`.
+- Shell opt-in manual validation is covered by a test that runs `echo hook-ok` through LAEE `shell_exec` and verifies `.morphic/audit_log.jsonl`.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -140,7 +147,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue Deferred `D008` by wiring the hook runner factory into any future Chat CLI tool execution path and validating one manual shell hook run with `MORPHIC_CHAT_HOOK_EXECUTION=shell`.
+- Continue Deferred `D008` by designing the REPL/tool execution UX that lets chat sessions trigger `ExecuteChatToolUseCase` with the hook runner factory; manual hook execution is now available for validation.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

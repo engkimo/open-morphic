@@ -193,6 +193,15 @@
 - [x] T1904 Build shell hook executor with LAEE local executor settings when opt-in is enabled.
 - [x] T1905 Surface hook execution mode in `morphic chat --doctor --json`.
 
+## Phase 20 - Manual Hook Run CLI
+
+- [x] T2001 Add `morphic hooks run <hook_type>` for explicit hook execution.
+- [x] T2002 Persist manual hook execution events to `.morphic/sessions/*.jsonl`.
+- [x] T2003 Emit JSON output for automation via `morphic hooks run <hook_type> --json`.
+- [x] T2004 Preserve safe no-op default for manual hook runs.
+- [x] T2005 Validate shell opt-in execution with `MORPHIC_CHAT_HOOK_EXECUTION=shell`.
+- [x] T2006 Confirm shell opt-in writes LAEE audit log entries.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
@@ -202,6 +211,6 @@
 - [ ] D005 OpenHands adapter.
 - [ ] D006 `.morphic` to `.claude` export.
 - [ ] D007 `.morphic` to Gemini/Codex metadata export.
-- [ ] D008 Shell-backed approved hook command execution.
+- [ ] D008 REPL/tool-path shell hook execution UX.
 - [ ] D009 Council event visualization.
 - [ ] D010 Memory candidate approval UI.
