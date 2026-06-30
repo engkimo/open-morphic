@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-06-30
-> Latest work: Morphic Chat CLI Phase 20 manual hook run CLI
+> Latest work: Morphic Chat CLI Phase 21 REPL hook run UX
 
 ## Latest Session Notes (2026-06-26)
 
@@ -138,6 +138,13 @@ Phase 20 implemented:
 - Default manual hook execution remains no-op unless the user explicitly sets `MORPHIC_CHAT_HOOK_EXECUTION=shell`.
 - Shell opt-in manual validation is covered by a test that runs `echo hook-ok` through LAEE `shell_exec` and verifies `.morphic/audit_log.jsonl`.
 
+Phase 21 implemented:
+- Added `/hooks run <hook_type>` handling inside `morphic chat`.
+- REPL hook runs record both the slash command and hook execution events in the current chat session ledger.
+- REPL hook execution preserves the no-op default and respects `MORPHIC_CHAT_HOOK_EXECUTION=shell`.
+- Shell opt-in REPL validation is covered by a test that runs `echo repl-hook-ok` through LAEE and verifies the audit log exists.
+- Deferred `D008 Hook command execution` is now complete; broader chat tool execution UX is split into a separate follow-up.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -147,7 +154,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue Deferred `D008` by designing the REPL/tool execution UX that lets chat sessions trigger `ExecuteChatToolUseCase` with the hook runner factory; manual hook execution is now available for validation.
+- Next recommended slice: design the general chat tool execution UX beyond explicit hook commands, so future chat turns can route proposed tool calls through `ExecuteChatToolUseCase` with the hook runner factory.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

@@ -133,6 +133,7 @@ def chat_cmd(
             workspace_root=workspace or Path.cwd(),
             council_runtime=council_runtime,
             engine_registry=engine_registry,
+            hook_executor_factory=lambda root: _chat_hook_executor(workspace_root=root),
         ).run(resume=resume)
     )
 
@@ -163,6 +164,7 @@ def code_cmd(
             workspace_root=workspace or Path.cwd(),
             council_runtime=council_runtime,
             engine_registry=engine_registry,
+            hook_executor_factory=lambda root: _chat_hook_executor(workspace_root=root),
         ).run_goal(goal=goal)
     )
 

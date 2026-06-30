@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **[FEAT/CHAT-CLI]** Phase 21 REPL hook run UXをTDDで追加: `morphic chat` 内で `/hooks run <hook_type>` を実行できるようにし、slash command eventとhook execution eventsを同一chat session ledgerへ記録。defaultはno-op、`MORPHIC_CHAT_HOOK_EXECUTION=shell` opt-in時はLAEE `shell_exec` 経由で実行しaudit logへ記録されることを検証。これによりDeferred `D008 Hook command execution` を完了扱いに更新。
 - **[FEAT/CHAT-CLI]** Phase 20 manual hook run CLIをTDDで追加: `morphic hooks run <hook_type>` を追加し、hook execution eventsを `.morphic/sessions/*.jsonl` に永続化。`--json` はsession id / hook execution mode / diagnostics / events / results / summaryを返す。defaultはsafeなno-opのまま維持し、`MORPHIC_CHAT_HOOK_EXECUTION=shell` opt-in時はLAEE `shell_exec` 経由で実行しaudit logへ記録されることを検証。
 - **[FEAT/CHAT-CLI]** Phase 19 hook execution mode wiringをTDDで追加: Chat CLI hook executor factoryを追加し、defaultはsafeな `NoopHookExecutor`、`MORPHIC_CHAT_HOOK_EXECUTION=shell` の明示opt-in時のみ `ShellHookExecutor` を選択するようにした。shell modeはLAEE local executor settingsからapproval/audit/undo設定を引き継ぐ。未知modeはvalidation errorにし、`morphic chat --doctor --json` に `hook_execution_mode` を出力。
 - **[FEAT/CHAT-CLI]** Phase 18 shell-backed hook executorをTDDで追加: `ShellHookExecutor` が hook command を LAEE `LocalExecutorPort` の `shell_exec` actionへ変換し、workspace root `cwd` と timeout を付与して実行する。LAEE successはhook successへ、DENIED/ERRORはfailed hook resultへ正規化。`ExecuteChatToolUseCase` は injected `pre_tool` hook runner がfailed resultを返した場合、tool本体を実行せず停止する。post-tool hook failureはrollbackせずledger dataとして残す。

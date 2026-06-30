@@ -3,22 +3,30 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 from application.use_cases.discover_workspace_context import DiscoverWorkspaceContextUseCase
+from application.use_cases.execute_chat_hook import ExecuteChatHookUseCase
 from application.use_cases.execute_slash_command import ExecuteSlashCommandUseCase
 from application.use_cases.resume_chat_session import ResumeChatSessionUseCase
 from application.use_cases.send_chat_message import SendChatMessageUseCase
 from application.use_cases.start_chat_session import StartChatSessionUseCase
+from domain.entities.chat_event import ChatEventType
 from domain.entities.chat_session import ChatSession, PermissionMode
+from domain.entities.hook import HookType
 from domain.entities.workspace_context import ContextIndex
 from domain.ports.council_runtime import CouncilRuntimePort
 from domain.ports.engine_registry import EngineRegistryPort
+from domain.ports.hook_executor import HookExecutorPort
 from infrastructure.chat.jsonl_session_store import JsonlChatSessionStore
 from infrastructure.context.workspace_context_discovery import WorkspaceContextDiscovery
 from infrastructure.council.local_chat_council_runtime import LocalChatCouncilRuntime
 from infrastructure.engines.static_engine_registry import StaticEngineRegistry
+from infrastructure.hooks.noop_hook_executor import NoopHookExecutor
+from infrastructure.hooks.workspace_hook_registry import WorkspaceHookRegistry
 from interface.cli.formatters import console
+from interface.cli.slash_commands import parse_slash_command
 
 
 class ChatRepl:
@@ -30,12 +38,14 @@ class ChatRepl:
         workspace_root: Path,
         council_runtime: CouncilRuntimePort | None = None,
         engine_registry: EngineRegistryPort | None = None,
+        hook_executor_factory: Callable[[Path], HookExecutorPort] | None = None,
     ) -> None:
         self._workspace_root = workspace_root
         self._session_store = JsonlChatSessionStore(workspace_root=workspace_root)
         self._context_discovery = WorkspaceContextDiscovery()
         self._council_runtime = council_runtime or LocalChatCouncilRuntime()
         self._engine_registry = engine_registry or StaticEngineRegistry()
+        self._hook_executor_factory = hook_executor_factory or (lambda _root: NoopHookExecutor())
 
     async def run(
         self,
@@ -59,6 +69,10 @@ class ChatRepl:
             if not line.strip():
                 continue
             if line.strip().startswith("/"):
+                if line.strip().startswith("/hooks "):
+                    session, output = await self._execute_hooks_command(session, line)
+                    console.print(output)
+                    continue
                 result = await ExecuteSlashCommandUseCase(
                     session_store=self._session_store,
                     engine_registry=self._engine_registry,
@@ -126,3 +140,50 @@ class ChatRepl:
 
     def _new_session_id(self) -> str:
         return uuid.uuid4().hex[:12]
+
+    async def _execute_hooks_command(
+        self,
+        session: ChatSession,
+        line: str,
+    ) -> tuple[ChatSession, str]:
+        command = parse_slash_command(line)
+        verb, _, raw_hook_type = command.args.partition(" ")
+        if verb != "run" or not raw_hook_type:
+            return session, "usage: /hooks run <hook_type>"
+
+        try:
+            hook_type = HookType(raw_hook_type)
+        except ValueError:
+            valid = ", ".join(item.value for item in HookType)
+            return session, f"invalid hook type: {raw_hook_type} expected one of: {valid}"
+
+        current, command_event = session.record_event(
+            ChatEventType.SLASH_COMMAND,
+            {"command": line},
+        )
+        await self._session_store.append_event(command_event)
+
+        hook_executor = self._hook_executor_factory(self._workspace_root)
+        hook_result = await ExecuteChatHookUseCase(
+            session_store=self._session_store,
+            hook_registry=WorkspaceHookRegistry(self._workspace_root),
+            hook_executor=hook_executor,
+        ).execute(session=current, hook_type=hook_type)
+        current = hook_result.session
+
+        skipped = sum(
+            1 for event in hook_result.events if event.type is ChatEventType.HOOK_EXECUTION_SKIPPED
+        )
+        failed = sum(1 for result in hook_result.hook_results if not result.success)
+        succeeded = sum(1 for result in hook_result.hook_results if result.success)
+        mode = "shell" if hook_executor.__class__.__name__ == "ShellHookExecutor" else "noop"
+        output = (
+            f"hooks type={hook_type.value} mode={mode} "
+            f"succeeded={succeeded} failed={failed} skipped={skipped}"
+        )
+        current, assistant_event = current.record_event(
+            ChatEventType.ASSISTANT_MESSAGE,
+            {"text": output, "source": "/hooks"},
+        )
+        await self._session_store.append_event(assistant_event)
+        return current, output

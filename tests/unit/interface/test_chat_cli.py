@@ -208,6 +208,67 @@ def test_chat_repl_status_and_quit_creates_session_ledger() -> None:
         assert len(ledgers) == 1
 
 
+def test_chat_repl_hooks_run_records_hook_events_in_current_session() -> None:
+    with runner.isolated_filesystem():
+        hook_dir = Path(".morphic/hooks")
+        hook_dir.mkdir(parents=True)
+        (hook_dir / "pre.json").write_text(
+            json.dumps(
+                {
+                    "command": "exit 99",
+                    "enabled": True,
+                    "name": "pre-log",
+                    "type": "pre_tool",
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(app, ["chat"], input="/hooks run pre_tool\n/quit\n")
+
+        assert result.exit_code == 0
+        assert "hooks type=pre_tool mode=noop succeeded=1 failed=0 skipped=0" in result.output
+        ledgers = list(Path(".morphic/sessions").glob("*.jsonl"))
+        assert len(ledgers) == 1
+        events = [
+            json.loads(line)
+            for line in ledgers[0].read_text(encoding="utf-8").splitlines()
+        ]
+        assert any(
+            event["type"] == "slash_command"
+            and event["payload"]["command"] == "/hooks run pre_tool"
+            for event in events
+        )
+        assert any(event["type"] == "hook_execution_completed" for event in events)
+        assert any(event["payload"].get("hook_name") == "pre-log" for event in events)
+
+
+def test_chat_repl_hooks_run_respects_shell_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MORPHIC_CHAT_HOOK_EXECUTION", "shell")
+    with runner.isolated_filesystem():
+        hook_dir = Path(".morphic/hooks")
+        hook_dir.mkdir(parents=True)
+        (hook_dir / "pre.json").write_text(
+            json.dumps(
+                {
+                    "command": "echo repl-hook-ok",
+                    "enabled": True,
+                    "name": "pre-log",
+                    "type": "pre_tool",
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(app, ["chat"], input="/hooks run pre_tool\n/quit\n")
+
+        assert result.exit_code == 0
+        assert "hooks type=pre_tool mode=shell succeeded=1 failed=0 skipped=0" in result.output
+        assert Path(".morphic/audit_log.jsonl").exists()
+
+
 def test_code_one_shot_runs_goal_without_repl() -> None:
     with runner.isolated_filesystem():
         result = runner.invoke(app, ["code", "implement Phase 4"])

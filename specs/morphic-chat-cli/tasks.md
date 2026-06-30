@@ -202,6 +202,15 @@
 - [x] T2005 Validate shell opt-in execution with `MORPHIC_CHAT_HOOK_EXECUTION=shell`.
 - [x] T2006 Confirm shell opt-in writes LAEE audit log entries.
 
+## Phase 21 - REPL Hook Run UX
+
+- [x] T2101 Add `/hooks run <hook_type>` handling inside `morphic chat`.
+- [x] T2102 Record REPL hook run slash commands in the current chat session ledger.
+- [x] T2103 Record REPL hook execution events in the current chat session ledger.
+- [x] T2104 Preserve no-op default for REPL hook runs.
+- [x] T2105 Respect `MORPHIC_CHAT_HOOK_EXECUTION=shell` for REPL hook runs.
+- [x] T2106 Validate shell opt-in REPL hook execution writes LAEE audit log entries.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
@@ -211,6 +220,7 @@
 - [ ] D005 OpenHands adapter.
 - [ ] D006 `.morphic` to `.claude` export.
 - [ ] D007 `.morphic` to Gemini/Codex metadata export.
-- [ ] D008 REPL/tool-path shell hook execution UX.
+- [x] D008 Hook command execution.
 - [ ] D009 Council event visualization.
 - [ ] D010 Memory candidate approval UI.
+- [ ] D011 General chat tool execution UX beyond explicit hook commands.
