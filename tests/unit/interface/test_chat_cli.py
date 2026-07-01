@@ -393,6 +393,30 @@ def test_chat_repl_tools_run_respects_laee_opt_in(monkeypatch: pytest.MonkeyPatc
         assert "shell_exec" in audit_log.read_text(encoding="utf-8")
 
 
+def test_chat_repl_tools_run_reports_laee_denied_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MORPHIC_CHAT_TOOL_EXECUTION", "laee")
+    with runner.isolated_filesystem():
+        target = Path("delete-me.txt")
+        target.write_text("keep", encoding="utf-8")
+
+        result = runner.invoke(
+            app,
+            ["chat"],
+            input=f'/tools run fs_delete {{"path":"{target}"}}\n/quit\n',
+        )
+
+        assert result.exit_code == 0
+        assert "tools tool=fs_delete mode=laee success=False exit_code=1" in result.output
+        assert "Action requires" in result.output
+        assert "approval (risk=HIGH, mode=confirm-destructive)" in result.output
+        assert target.exists()
+        audit_log = Path(".morphic/audit_log.jsonl")
+        assert audit_log.exists()
+        assert "fs_delete" in audit_log.read_text(encoding="utf-8")
+
+
 def test_code_one_shot_runs_goal_without_repl() -> None:
     with runner.isolated_filesystem():
         result = runner.invoke(app, ["code", "implement Phase 4"])

@@ -17,13 +17,14 @@ from application.use_cases.send_chat_message import SendChatMessageUseCase
 from application.use_cases.start_chat_session import StartChatSessionUseCase
 from domain.entities.chat_event import ChatEventType
 from domain.entities.chat_session import ChatSession, PermissionMode
+from domain.entities.execution import Action
 from domain.entities.hook import HookType
 from domain.entities.workspace_context import ContextIndex
 from domain.ports.council_runtime import CouncilRuntimePort
 from domain.ports.engine_registry import EngineRegistryPort
 from domain.ports.hook_executor import HookExecutorPort
 from domain.ports.tool_executor import ToolExecutorPort
-from domain.value_objects import RiskLevel
+from domain.services.risk_assessor import RiskAssessor
 from infrastructure.chat.jsonl_session_store import JsonlChatSessionStore
 from infrastructure.context.workspace_context_discovery import WorkspaceContextDiscovery
 from infrastructure.council.local_chat_council_runtime import LocalChatCouncilRuntime
@@ -54,6 +55,7 @@ class ChatRepl:
         self._engine_registry = engine_registry or StaticEngineRegistry()
         self._hook_executor_factory = hook_executor_factory or (lambda _root: NoopHookExecutor())
         self._tool_executor_factory = tool_executor_factory or (lambda _root: NoopToolExecutor())
+        self._risk_assessor = RiskAssessor()
 
     async def run(
         self,
@@ -237,18 +239,42 @@ class ChatRepl:
             session=current,
             tool_name=tool_name,
             arguments=arguments,
-            risk_level=RiskLevel.SAFE,
+            risk_level=self._risk_assessor.assess(
+                Action(tool=tool_name, args=arguments)
+            ),
         )
         current = result.session
 
         mode = "laee" if tool_executor.__class__.__name__ == "LaeeToolExecutor" else "noop"
-        output = f"tools tool={tool_name} mode={mode} success={result.tool_result.success}"
+        output = self._format_tool_output(
+            tool_name=tool_name,
+            mode=mode,
+            success=result.tool_result.success,
+            exit_code=result.tool_result.exit_code,
+            stderr_summary=result.tool_result.stderr_summary,
+        )
         current, assistant_event = current.record_event(
             ChatEventType.ASSISTANT_MESSAGE,
             {"text": output, "source": "/tools"},
         )
         await self._session_store.append_event(assistant_event)
         return current, output
+
+    def _format_tool_output(
+        self,
+        *,
+        tool_name: str,
+        mode: str,
+        success: bool,
+        exit_code: int | None,
+        stderr_summary: str,
+    ) -> str:
+        output = f"tools tool={tool_name} mode={mode} success={success}"
+        if exit_code is not None:
+            output = f"{output} exit_code={exit_code}"
+        if not success and stderr_summary:
+            output = f"{output} error={stderr_summary}"
+        return output
 
     def _parse_tool_arguments(self, raw_arguments: str) -> dict[str, Any]:
         if not raw_arguments:

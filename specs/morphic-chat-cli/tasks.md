@@ -230,6 +230,13 @@
 - [x] T2305 Surface tool execution mode in `morphic chat --doctor --json`.
 - [x] T2306 Validate REPL `/tools run shell_exec ...` writes LAEE audit log entries when opted in.
 
+## Phase 24 - REPL Tool Run Failure Reporting
+
+- [x] T2401 Report LAEE denied/error tool results with `success=False` and `exit_code`.
+- [x] T2402 Surface LAEE failure stderr summaries in `/tools run` output.
+- [x] T2403 Assess `/tools run` risk from tool name and JSON arguments before execution.
+- [x] T2404 Validate denied destructive tools keep the target file intact and write audit logs.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
