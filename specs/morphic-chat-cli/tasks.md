@@ -211,6 +211,16 @@
 - [x] T2105 Respect `MORPHIC_CHAT_HOOK_EXECUTION=shell` for REPL hook runs.
 - [x] T2106 Validate shell opt-in REPL hook execution writes LAEE audit log entries.
 
+## Phase 22 - REPL Tool Run No-op UX
+
+- [x] T2201 Add `NoopToolExecutor` as a safe default chat tool executor.
+- [x] T2202 Add `/tools run <tool_name> [json_arguments]` handling inside `morphic chat`.
+- [x] T2203 Record REPL tool run slash commands in the current chat session ledger.
+- [x] T2204 Route REPL tool runs through `ExecuteChatToolUseCase`.
+- [x] T2205 Inject existing hook runner flow around REPL tool runs.
+- [x] T2206 Preserve no-op default so explicit `/tools run` does not mutate the workspace.
+- [x] T2207 Reject invalid JSON tool arguments with a user-facing message.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

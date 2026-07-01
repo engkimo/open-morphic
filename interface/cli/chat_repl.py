@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from application.use_cases.discover_workspace_context import DiscoverWorkspaceContextUseCase
 from application.use_cases.execute_chat_hook import ExecuteChatHookUseCase
+from application.use_cases.execute_chat_tool import ExecuteChatToolUseCase
 from application.use_cases.execute_slash_command import ExecuteSlashCommandUseCase
 from application.use_cases.resume_chat_session import ResumeChatSessionUseCase
 from application.use_cases.send_chat_message import SendChatMessageUseCase
@@ -19,12 +22,15 @@ from domain.entities.workspace_context import ContextIndex
 from domain.ports.council_runtime import CouncilRuntimePort
 from domain.ports.engine_registry import EngineRegistryPort
 from domain.ports.hook_executor import HookExecutorPort
+from domain.ports.tool_executor import ToolExecutorPort
+from domain.value_objects import RiskLevel
 from infrastructure.chat.jsonl_session_store import JsonlChatSessionStore
 from infrastructure.context.workspace_context_discovery import WorkspaceContextDiscovery
 from infrastructure.council.local_chat_council_runtime import LocalChatCouncilRuntime
 from infrastructure.engines.static_engine_registry import StaticEngineRegistry
 from infrastructure.hooks.noop_hook_executor import NoopHookExecutor
 from infrastructure.hooks.workspace_hook_registry import WorkspaceHookRegistry
+from infrastructure.tools.noop_tool_executor import NoopToolExecutor
 from interface.cli.formatters import console
 from interface.cli.slash_commands import parse_slash_command
 
@@ -39,6 +45,7 @@ class ChatRepl:
         council_runtime: CouncilRuntimePort | None = None,
         engine_registry: EngineRegistryPort | None = None,
         hook_executor_factory: Callable[[Path], HookExecutorPort] | None = None,
+        tool_executor_factory: Callable[[Path], ToolExecutorPort] | None = None,
     ) -> None:
         self._workspace_root = workspace_root
         self._session_store = JsonlChatSessionStore(workspace_root=workspace_root)
@@ -46,6 +53,7 @@ class ChatRepl:
         self._council_runtime = council_runtime or LocalChatCouncilRuntime()
         self._engine_registry = engine_registry or StaticEngineRegistry()
         self._hook_executor_factory = hook_executor_factory or (lambda _root: NoopHookExecutor())
+        self._tool_executor_factory = tool_executor_factory or (lambda _root: NoopToolExecutor())
 
     async def run(
         self,
@@ -71,6 +79,10 @@ class ChatRepl:
             if line.strip().startswith("/"):
                 if line.strip().startswith("/hooks "):
                     session, output = await self._execute_hooks_command(session, line)
+                    console.print(output)
+                    continue
+                if line.strip().startswith("/tools "):
+                    session, output = await self._execute_tools_command(session, line)
                     console.print(output)
                     continue
                 result = await ExecuteSlashCommandUseCase(
@@ -187,3 +199,63 @@ class ChatRepl:
         )
         await self._session_store.append_event(assistant_event)
         return current, output
+
+    async def _execute_tools_command(
+        self,
+        session: ChatSession,
+        line: str,
+    ) -> tuple[ChatSession, str]:
+        command = parse_slash_command(line)
+        verb, _, rest = command.args.partition(" ")
+        tool_name, _, raw_arguments = rest.partition(" ")
+        if verb != "run" or not tool_name:
+            return session, "usage: /tools run <tool_name> [json_arguments]"
+
+        try:
+            arguments = self._parse_tool_arguments(raw_arguments)
+        except ValueError as exc:
+            return session, str(exc)
+
+        current, command_event = session.record_event(
+            ChatEventType.SLASH_COMMAND,
+            {"command": line},
+        )
+        await self._session_store.append_event(command_event)
+
+        hook_executor = self._hook_executor_factory(self._workspace_root)
+        hook_runner = ExecuteChatHookUseCase(
+            session_store=self._session_store,
+            hook_registry=WorkspaceHookRegistry(self._workspace_root),
+            hook_executor=hook_executor,
+        )
+        result = await ExecuteChatToolUseCase(
+            session_store=self._session_store,
+            tool_executor=self._tool_executor_factory(self._workspace_root),
+            hook_runner=hook_runner,
+        ).execute(
+            session=current,
+            tool_name=tool_name,
+            arguments=arguments,
+            risk_level=RiskLevel.SAFE,
+        )
+        current = result.session
+
+        mode = "noop"
+        output = f"tools tool={tool_name} mode={mode} success={result.tool_result.success}"
+        current, assistant_event = current.record_event(
+            ChatEventType.ASSISTANT_MESSAGE,
+            {"text": output, "source": "/tools"},
+        )
+        await self._session_store.append_event(assistant_event)
+        return current, output
+
+    def _parse_tool_arguments(self, raw_arguments: str) -> dict[str, Any]:
+        if not raw_arguments:
+            return {}
+        try:
+            parsed = json.loads(raw_arguments)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"invalid JSON arguments: {exc.msg}") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("invalid JSON arguments: expected object")
+        return parsed

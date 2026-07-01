@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-06-30
-> Latest work: Morphic Chat CLI Phase 21 REPL hook run UX
+> Latest work: Morphic Chat CLI Phase 22 REPL tool run no-op UX
 
 ## Latest Session Notes (2026-06-26)
 
@@ -145,6 +145,14 @@ Phase 21 implemented:
 - Shell opt-in REPL validation is covered by a test that runs `echo repl-hook-ok` through LAEE and verifies the audit log exists.
 - Deferred `D008 Hook command execution` is now complete; broader chat tool execution UX is split into a separate follow-up.
 
+Phase 22 implemented:
+- Added `NoopToolExecutor`, a safe default `ToolExecutorPort` adapter that records successful tool results without invoking local tools.
+- Added `/tools run <tool_name> [json_arguments]` handling inside `morphic chat`.
+- REPL tool runs record the slash command and route through `ExecuteChatToolUseCase`, producing `tool_call_requested` / `tool_call_completed` events in the current session ledger.
+- Existing hook runner flow is injected around REPL tool runs, so configured `pre_tool` / `post_tool` hooks are recorded.
+- Invalid JSON tool arguments return a user-facing message without crashing the REPL.
+- This starts `D011 General chat tool execution UX beyond explicit hook commands`; LAEE-backed real tool execution remains a follow-up.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -154,7 +162,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Next recommended slice: design the general chat tool execution UX beyond explicit hook commands, so future chat turns can route proposed tool calls through `ExecuteChatToolUseCase` with the hook runner factory.
+- Next recommended slice: add explicit LAEE opt-in for `/tools run` using `LaeeToolExecutor`, mirroring the safe no-op default / env opt-in pattern used for hook execution.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

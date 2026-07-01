@@ -269,6 +269,58 @@ def test_chat_repl_hooks_run_respects_shell_opt_in(monkeypatch: pytest.MonkeyPat
         assert Path(".morphic/audit_log.jsonl").exists()
 
 
+def test_chat_repl_tools_run_records_tool_and_hook_events() -> None:
+    with runner.isolated_filesystem():
+        hook_dir = Path(".morphic/hooks")
+        hook_dir.mkdir(parents=True)
+        (hook_dir / "pre.json").write_text(
+            json.dumps(
+                {
+                    "command": "exit 99",
+                    "enabled": True,
+                    "name": "pre-log",
+                    "type": "pre_tool",
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            app,
+            ["chat"],
+            input='/tools run fs_read {"path":"README.md"}\n/quit\n',
+        )
+
+        assert result.exit_code == 0
+        assert "tools tool=fs_read mode=noop success=True" in result.output
+        ledgers = list(Path(".morphic/sessions").glob("*.jsonl"))
+        assert len(ledgers) == 1
+        events = [
+            json.loads(line)
+            for line in ledgers[0].read_text(encoding="utf-8").splitlines()
+        ]
+        assert any(
+            event["type"] == "slash_command"
+            and event["payload"]["command"] == '/tools run fs_read {"path":"README.md"}'
+            for event in events
+        )
+        assert any(event["type"] == "hook_execution_completed" for event in events)
+        assert any(event["type"] == "tool_call_completed" for event in events)
+        tool_completed = next(
+            event for event in events if event["type"] == "tool_call_completed"
+        )
+        assert "not executed" in tool_completed["payload"]["stdout_summary"]
+
+
+def test_chat_repl_tools_run_rejects_invalid_json_args() -> None:
+    with runner.isolated_filesystem():
+        result = runner.invoke(app, ["chat"], input="/tools run fs_read {bad}\n/quit\n")
+
+        assert result.exit_code == 0
+        assert "invalid JSON arguments" in result.output
+
+
 def test_code_one_shot_runs_goal_without_repl() -> None:
     with runner.isolated_filesystem():
         result = runner.invoke(app, ["code", "implement Phase 4"])
