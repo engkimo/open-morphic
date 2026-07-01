@@ -228,9 +228,10 @@ class ChatRepl:
             hook_registry=WorkspaceHookRegistry(self._workspace_root),
             hook_executor=hook_executor,
         )
+        tool_executor = self._tool_executor_factory(self._workspace_root)
         result = await ExecuteChatToolUseCase(
             session_store=self._session_store,
-            tool_executor=self._tool_executor_factory(self._workspace_root),
+            tool_executor=tool_executor,
             hook_runner=hook_runner,
         ).execute(
             session=current,
@@ -240,7 +241,7 @@ class ChatRepl:
         )
         current = result.session
 
-        mode = "noop"
+        mode = "laee" if tool_executor.__class__.__name__ == "LaeeToolExecutor" else "noop"
         output = f"tools tool={tool_name} mode={mode} success={result.tool_result.success}"
         current, assistant_event = current.record_event(
             ChatEventType.ASSISTANT_MESSAGE,

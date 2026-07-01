@@ -221,6 +221,15 @@
 - [x] T2206 Preserve no-op default so explicit `/tools run` does not mutate the workspace.
 - [x] T2207 Reject invalid JSON tool arguments with a user-facing message.
 
+## Phase 23 - REPL Tool Run LAEE Opt-In
+
+- [x] T2301 Add chat tool executor factory with safe no-op default.
+- [x] T2302 Select LAEE-backed tool execution only when `MORPHIC_CHAT_TOOL_EXECUTION=laee`.
+- [x] T2303 Reject unknown tool execution modes with user-facing validation.
+- [x] T2304 Build LAEE tool executor with shared local executor settings when opt-in is enabled.
+- [x] T2305 Surface tool execution mode in `morphic chat --doctor --json`.
+- [x] T2306 Validate REPL `/tools run shell_exec ...` writes LAEE audit log entries when opted in.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

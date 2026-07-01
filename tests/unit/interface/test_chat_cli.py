@@ -21,6 +21,7 @@ from domain.value_objects.status import ObservationStatus
 from interface.cli.chat_command import (
     _chat_doctor_payload,
     _chat_hook_executor,
+    _chat_tool_executor,
     _role_engine_preferences,
 )
 from interface.cli.chat_repl import ChatRepl
@@ -104,6 +105,7 @@ def test_chat_doctor_json_lists_engines() -> None:
     payload = json.loads(result.output)
     assert "engines" in payload
     assert payload["hook_execution_mode"] == "noop"
+    assert payload["tool_execution_mode"] == "noop"
     assert any(engine["id"] == "ollama" for engine in payload["engines"])
 
 
@@ -162,6 +164,37 @@ def test_chat_hook_executor_rejects_unknown_mode(
     assert "Invalid hook execution mode" in str(exc_info.value)
 
 
+def test_chat_tool_executor_defaults_to_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+    from infrastructure.tools.noop_tool_executor import NoopToolExecutor
+
+    monkeypatch.delenv("MORPHIC_CHAT_TOOL_EXECUTION", raising=False)
+
+    executor = _chat_tool_executor(local_executor_factory=lambda: _FakeLocalExecutor())
+
+    assert isinstance(executor, NoopToolExecutor)
+
+
+def test_chat_tool_executor_uses_laee_only_with_explicit_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from infrastructure.tools.laee_tool_executor import LaeeToolExecutor
+
+    monkeypatch.setenv("MORPHIC_CHAT_TOOL_EXECUTION", "laee")
+
+    executor = _chat_tool_executor(local_executor_factory=lambda: _FakeLocalExecutor())
+
+    assert isinstance(executor, LaeeToolExecutor)
+
+
+def test_chat_tool_executor_rejects_unknown_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MORPHIC_CHAT_TOOL_EXECUTION", "always")
+
+    with pytest.raises(ValueError) as exc_info:
+        _chat_tool_executor(local_executor_factory=lambda: _FakeLocalExecutor())
+
+    assert "Invalid tool execution mode" in str(exc_info.value)
+
+
 def test_chat_doctor_invalid_hook_execution_mode_exits_with_diagnostic(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -172,6 +205,18 @@ def test_chat_doctor_invalid_hook_execution_mode_exits_with_diagnostic(
 
     assert result.exit_code == 2
     assert "Invalid hook execution mode" in result.output
+
+
+def test_chat_doctor_invalid_tool_execution_mode_exits_with_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MORPHIC_CHAT_TOOL_EXECUTION", "always")
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(app, ["chat", "--doctor", "--json"])
+
+    assert result.exit_code == 2
+    assert "Invalid tool execution mode" in result.output
 
 
 @pytest.mark.asyncio
@@ -194,6 +239,17 @@ async def test_chat_doctor_payload_uses_injected_engine_registry() -> None:
             "supports_streaming": False,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_chat_doctor_payload_reports_laee_tool_execution_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MORPHIC_CHAT_TOOL_EXECUTION", "laee")
+
+    payload = await _chat_doctor_payload(engine_registry=_FakeEngineRegistry())
+
+    assert payload["tool_execution_mode"] == "laee"
 
 
 def test_chat_repl_status_and_quit_creates_session_ledger() -> None:
@@ -319,6 +375,22 @@ def test_chat_repl_tools_run_rejects_invalid_json_args() -> None:
 
         assert result.exit_code == 0
         assert "invalid JSON arguments" in result.output
+
+
+def test_chat_repl_tools_run_respects_laee_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MORPHIC_CHAT_TOOL_EXECUTION", "laee")
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            app,
+            ["chat"],
+            input='/tools run shell_exec {"cmd":"echo tool-ok"}\n/quit\n',
+        )
+
+        assert result.exit_code == 0
+        assert "tools tool=shell_exec mode=laee success=True" in result.output
+        audit_log = Path(".morphic/audit_log.jsonl")
+        assert audit_log.exists()
+        assert "shell_exec" in audit_log.read_text(encoding="utf-8")
 
 
 def test_code_one_shot_runs_goal_without_repl() -> None:

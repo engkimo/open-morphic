@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **[FEAT/CHAT-CLI]** Phase 23 REPL tool run LAEE opt-inをTDDで追加: Chat CLI tool executor factoryを追加し、defaultはsafeな `NoopToolExecutor`、`MORPHIC_CHAT_TOOL_EXECUTION=laee` の明示opt-in時のみ `LaeeToolExecutor` を選択するようにした。LAEE modeはshared local executor settingsを使い、`morphic chat --doctor --json` に `tool_execution_mode` を出力。REPL `/tools run shell_exec ...` がopt-in時にLAEE audit logへ記録されることを検証。
 - **[FEAT/CHAT-CLI]** Phase 22 REPL tool run no-op UXをTDDで追加: safe defaultの `NoopToolExecutor` を追加し、`morphic chat` 内で `/tools run <tool_name> [json_arguments]` を実行できるようにした。tool runは `ExecuteChatToolUseCase` を通り、既存hook runner flowでpre/post hooksを記録しつつ、defaultでは実toolを起動せずsession ledgerへ `tool_call_requested` / `tool_call_completed` を記録。invalid JSON argumentsはuser-facing messageを返す。
 - **[FEAT/CHAT-CLI]** Phase 21 REPL hook run UXをTDDで追加: `morphic chat` 内で `/hooks run <hook_type>` を実行できるようにし、slash command eventとhook execution eventsを同一chat session ledgerへ記録。defaultはno-op、`MORPHIC_CHAT_HOOK_EXECUTION=shell` opt-in時はLAEE `shell_exec` 経由で実行しaudit logへ記録されることを検証。これによりDeferred `D008 Hook command execution` を完了扱いに更新。
 - **[FEAT/CHAT-CLI]** Phase 20 manual hook run CLIをTDDで追加: `morphic hooks run <hook_type>` を追加し、hook execution eventsを `.morphic/sessions/*.jsonl` に永続化。`--json` はsession id / hook execution mode / diagnostics / events / results / summaryを返す。defaultはsafeなno-opのまま維持し、`MORPHIC_CHAT_HOOK_EXECUTION=shell` opt-in時はLAEE `shell_exec` 経由で実行しaudit logへ記録されることを検証。

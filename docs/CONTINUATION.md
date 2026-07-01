@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-06-30
-> Latest work: Morphic Chat CLI Phase 22 REPL tool run no-op UX
+> Latest work: Morphic Chat CLI Phase 23 REPL tool run LAEE opt-in
 
 ## Latest Session Notes (2026-06-26)
 
@@ -153,6 +153,14 @@ Phase 22 implemented:
 - Invalid JSON tool arguments return a user-facing message without crashing the REPL.
 - This starts `D011 General chat tool execution UX beyond explicit hook commands`; LAEE-backed real tool execution remains a follow-up.
 
+Phase 23 implemented:
+- Added a Chat CLI tool executor factory with safe no-op default.
+- `MORPHIC_CHAT_TOOL_EXECUTION=laee` explicitly opts into `LaeeToolExecutor`; unset, empty, or `noop` uses `NoopToolExecutor`.
+- LAEE tool executor construction reuses the same local executor settings as shell-backed hooks.
+- Unknown tool execution modes raise a validation error and surface through `morphic chat --doctor --json` with exit code 2.
+- `morphic chat --doctor --json` now reports `tool_execution_mode`.
+- REPL `/tools run shell_exec {"cmd":"echo tool-ok"}` is covered by an opt-in test that verifies `.morphic/audit_log.jsonl`.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -162,7 +170,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Next recommended slice: add explicit LAEE opt-in for `/tools run` using `LaeeToolExecutor`, mirroring the safe no-op default / env opt-in pattern used for hook execution.
+- Next recommended slice: add risk-aware `/tools run` behavior so the REPL reports LAEE denied/error results clearly and uses non-zero command summaries when tools fail.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

@@ -17,6 +17,7 @@ from domain.ports.council_runtime import CouncilRuntimePort
 from domain.ports.engine_registry import EngineRegistryPort
 from domain.ports.hook_executor import HookExecutorPort
 from domain.ports.local_executor import LocalExecutorPort
+from domain.ports.tool_executor import ToolExecutorPort
 from domain.value_objects.agent_engine import AgentEngineType
 from infrastructure.council.local_chat_council_runtime import LocalChatCouncilRuntime
 from infrastructure.council.route_chat_council_runtime import RouteChatCouncilRuntime
@@ -24,6 +25,8 @@ from infrastructure.engines.route_engine_registry import RouteEngineRegistry
 from infrastructure.engines.static_engine_registry import StaticEngineRegistry
 from infrastructure.hooks.noop_hook_executor import NoopHookExecutor
 from infrastructure.hooks.shell_hook_executor import ShellHookExecutor
+from infrastructure.tools.laee_tool_executor import LaeeToolExecutor
+from infrastructure.tools.noop_tool_executor import NoopToolExecutor
 from interface.cli._utils import _get_container, _run
 from interface.cli.chat_repl import ChatRepl
 from interface.cli.formatters import console
@@ -134,6 +137,7 @@ def chat_cmd(
             council_runtime=council_runtime,
             engine_registry=engine_registry,
             hook_executor_factory=lambda root: _chat_hook_executor(workspace_root=root),
+            tool_executor_factory=lambda _root: _chat_tool_executor(),
         ).run(resume=resume)
     )
 
@@ -165,6 +169,7 @@ def code_cmd(
             council_runtime=council_runtime,
             engine_registry=engine_registry,
             hook_executor_factory=lambda root: _chat_hook_executor(workspace_root=root),
+            tool_executor_factory=lambda _root: _chat_tool_executor(),
         ).run_goal(goal=goal)
     )
 
@@ -204,6 +209,29 @@ def _chat_hook_execution_mode() -> str:
     raise ValueError(
         "Invalid hook execution mode "
         f"'{mode}'. Expected one of: noop, shell"
+    )
+
+
+def _chat_tool_executor(
+    *,
+    local_executor_factory: Callable[[], LocalExecutorPort] | None = None,
+) -> ToolExecutorPort:
+    mode = _chat_tool_execution_mode()
+    if mode == "noop":
+        return NoopToolExecutor()
+    factory = local_executor_factory or _chat_local_executor
+    return LaeeToolExecutor(local_executor=factory())
+
+
+def _chat_tool_execution_mode() -> str:
+    mode = os.getenv("MORPHIC_CHAT_TOOL_EXECUTION", "noop").strip().lower()
+    if mode == "":
+        return "noop"
+    if mode in {"noop", "laee"}:
+        return mode
+    raise ValueError(
+        "Invalid tool execution mode "
+        f"'{mode}'. Expected one of: noop, laee"
     )
 
 
@@ -298,4 +326,5 @@ async def _chat_doctor_payload(
         "engines": [engine.model_dump(mode="json") for engine in engines],
         "hook_execution_mode": _chat_hook_execution_mode(),
         "permission_modes": [mode.value for mode in PermissionMode],
+        "tool_execution_mode": _chat_tool_execution_mode(),
     }
