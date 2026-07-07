@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
-> Last updated: 2026-07-01
-> Latest work: Morphic Chat CLI Phase 24 REPL tool run failure reporting
+> Last updated: 2026-07-07
+> Latest work: Morphic Chat CLI Phase 25 CLI permission mode controls
 
 ## Latest Session Notes (2026-06-26)
 
@@ -166,6 +166,12 @@ Phase 24 implemented:
 - REPL tool execution now assesses risk with `RiskAssessor` from the tool name and JSON arguments before calling `ExecuteChatToolUseCase`.
 - `MORPHIC_CHAT_TOOL_EXECUTION=laee` `/tools run fs_delete ...` is covered by a deny-path test that verifies the target file is preserved and `.morphic/audit_log.jsonl` records the denied action.
 
+Phase 25 implemented:
+- Added `--permission-mode` to both `morphic chat` and `morphic code`.
+- Selected modes use the existing `PermissionMode` values and are persisted in session start ledger events.
+- `/status` already surfaces the active permission mode, so `morphic chat --permission-mode read-only` now reports `mode=read-only`.
+- Read-only mutating `/tools run` attempts now return a user-facing `permission denied: ...` assistant message instead of crashing the REPL.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -175,7 +181,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Next recommended slice: add user-facing permission mode controls for `morphic chat` / `morphic code` so read-only and confirm modes can be selected explicitly from the CLI.
+- Next recommended slice: add explicit invalid permission mode diagnostics tests and help text coverage for the new CLI option.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

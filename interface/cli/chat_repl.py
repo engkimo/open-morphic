@@ -231,18 +231,27 @@ class ChatRepl:
             hook_executor=hook_executor,
         )
         tool_executor = self._tool_executor_factory(self._workspace_root)
-        result = await ExecuteChatToolUseCase(
-            session_store=self._session_store,
-            tool_executor=tool_executor,
-            hook_runner=hook_runner,
-        ).execute(
-            session=current,
-            tool_name=tool_name,
-            arguments=arguments,
-            risk_level=self._risk_assessor.assess(
-                Action(tool=tool_name, args=arguments)
-            ),
-        )
+        try:
+            result = await ExecuteChatToolUseCase(
+                session_store=self._session_store,
+                tool_executor=tool_executor,
+                hook_runner=hook_runner,
+            ).execute(
+                session=current,
+                tool_name=tool_name,
+                arguments=arguments,
+                risk_level=self._risk_assessor.assess(
+                    Action(tool=tool_name, args=arguments)
+                ),
+            )
+        except PermissionError as exc:
+            output = f"permission denied: {exc}"
+            current, assistant_event = current.record_event(
+                ChatEventType.ASSISTANT_MESSAGE,
+                {"text": output, "source": "/tools"},
+            )
+            await self._session_store.append_event(assistant_event)
+            return current, output
         current = result.session
 
         mode = "laee" if tool_executor.__class__.__name__ == "LaeeToolExecutor" else "noop"

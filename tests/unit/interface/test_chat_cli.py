@@ -264,6 +264,53 @@ def test_chat_repl_status_and_quit_creates_session_ledger() -> None:
         assert len(ledgers) == 1
 
 
+def test_chat_permission_mode_option_starts_read_only_session() -> None:
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            app,
+            ["chat", "--permission-mode", "read-only"],
+            input="/status\n/quit\n",
+        )
+
+        assert result.exit_code == 0
+        assert "mode=read-only" in result.output
+        ledgers = list(Path(".morphic/sessions").glob("*.jsonl"))
+        assert len(ledgers) == 1
+        events = [
+            json.loads(line)
+            for line in ledgers[0].read_text(encoding="utf-8").splitlines()
+        ]
+        assert events[0]["type"] == "session_started"
+        assert events[0]["payload"]["permission_mode"] == "read-only"
+
+
+def test_chat_read_only_permission_mode_blocks_mutating_tool() -> None:
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            app,
+            ["chat", "--permission-mode", "read-only"],
+            input='/tools run shell_exec {"cmd":"echo blocked"}\n/quit\n',
+        )
+
+        assert result.exit_code == 0
+        assert (
+            "permission denied: read-only session cannot execute mutating tool: shell_exec"
+            in result.output
+        )
+        ledgers = list(Path(".morphic/sessions").glob("*.jsonl"))
+        assert len(ledgers) == 1
+        events = [
+            json.loads(line)
+            for line in ledgers[0].read_text(encoding="utf-8").splitlines()
+        ]
+        assert any(
+            event["type"] == "assistant_message"
+            and "permission denied" in event["payload"]["text"]
+            for event in events
+        )
+        assert not any(event["type"] == "tool_call_completed" for event in events)
+
+
 def test_chat_repl_hooks_run_records_hook_events_in_current_session() -> None:
     with runner.isolated_filesystem():
         hook_dir = Path(".morphic/hooks")
@@ -425,6 +472,24 @@ def test_code_one_shot_runs_goal_without_repl() -> None:
         assert "Plan next step for: implement Phase 4" in result.output
         ledgers = list(Path(".morphic/sessions").glob("*.jsonl"))
         assert len(ledgers) == 1
+
+
+def test_code_permission_mode_option_starts_workspace_write_session() -> None:
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            app,
+            ["code", "--permission-mode", "workspace-write", "implement Phase 4"],
+        )
+
+        assert result.exit_code == 0
+        ledgers = list(Path(".morphic/sessions").glob("*.jsonl"))
+        assert len(ledgers) == 1
+        events = [
+            json.loads(line)
+            for line in ledgers[0].read_text(encoding="utf-8").splitlines()
+        ]
+        assert events[0]["type"] == "session_started"
+        assert events[0]["payload"]["permission_mode"] == "workspace-write"
 
 
 def test_code_route_council_flag_uses_routed_runtime(monkeypatch: pytest.MonkeyPatch) -> None:

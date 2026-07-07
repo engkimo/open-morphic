@@ -66,6 +66,11 @@ _LEADER_ENGINE_OPTION = typer.Option(
     "--leader-engine",
     help="Preferred route engine for the leader role.",
 )
+_PERMISSION_MODE_OPTION = typer.Option(
+    PermissionMode.CONFIRM_DESTRUCTIVE,
+    "--permission-mode",
+    help="Workspace permission mode.",
+)
 
 
 @contextmanager
@@ -102,6 +107,7 @@ def chat_cmd(
     planner_engine: str | None = _PLANNER_ENGINE_OPTION,
     critic_engine: str | None = _CRITIC_ENGINE_OPTION,
     leader_engine: str | None = _LEADER_ENGINE_OPTION,
+    permission_mode: PermissionMode = _PERMISSION_MODE_OPTION,
     workspace: Path | None = _CHAT_WORKSPACE_OPTION,
 ) -> None:
     """Start the Morphic terminal chat REPL."""
@@ -138,7 +144,7 @@ def chat_cmd(
             engine_registry=engine_registry,
             hook_executor_factory=lambda root: _chat_hook_executor(workspace_root=root),
             tool_executor_factory=lambda _root: _chat_tool_executor(),
-        ).run(resume=resume)
+        ).run(resume=resume, permission_mode=permission_mode)
     )
 
 
@@ -148,6 +154,7 @@ def code_cmd(
     planner_engine: str | None = _PLANNER_ENGINE_OPTION,
     critic_engine: str | None = _CRITIC_ENGINE_OPTION,
     leader_engine: str | None = _LEADER_ENGINE_OPTION,
+    permission_mode: PermissionMode = _PERMISSION_MODE_OPTION,
     workspace: Path | None = _CODE_WORKSPACE_OPTION,
 ) -> None:
     """Run one coding goal and persist the session ledger."""
@@ -170,7 +177,7 @@ def code_cmd(
             engine_registry=engine_registry,
             hook_executor_factory=lambda root: _chat_hook_executor(workspace_root=root),
             tool_executor_factory=lambda _root: _chat_tool_executor(),
-        ).run_goal(goal=goal)
+        ).run_goal(goal=goal, permission_mode=permission_mode)
     )
 
 

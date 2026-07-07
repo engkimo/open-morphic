@@ -237,6 +237,14 @@
 - [x] T2403 Assess `/tools run` risk from tool name and JSON arguments before execution.
 - [x] T2404 Validate denied destructive tools keep the target file intact and write audit logs.
 
+## Phase 25 - CLI Permission Mode Controls
+
+- [x] T2501 Add `--permission-mode` to `morphic chat`.
+- [x] T2502 Add `--permission-mode` to `morphic code`.
+- [x] T2503 Persist selected permission mode in session start ledger events.
+- [x] T2504 Surface selected permission mode through `/status`.
+- [x] T2505 Keep read-only tool blocking user-facing instead of crashing the REPL.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
