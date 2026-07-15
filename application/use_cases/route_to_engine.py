@@ -121,6 +121,7 @@ class RouteToEngineUseCase:
         permission_mode: PermissionMode | None = None,
         event_sink: AgentEngineEventSinkPort | None = None,
         resume_session_id: str | None = None,
+        resume_engine: AgentEngineType | None = None,
     ) -> AgentEngineResult:
         """Route to best available engine and execute.
 
@@ -136,11 +137,22 @@ class RouteToEngineUseCase:
         BUG-002: Successful engine costs are recorded via CostTracker.
         """
         if resume_session_id is not None and (
-            event_sink is None or workspace_root is None or permission_mode is None
+            event_sink is None
+            or workspace_root is None
+            or permission_mode is None
+            or resume_engine is None
         ):
             raise ValueError(
-                "native resume requires streaming, workspace, and permission context"
+                "native resume requires engine, streaming, workspace, and permission context"
             )
+        if resume_session_id is None and resume_engine is not None:
+            raise ValueError("resume engine requires a native session id")
+        if (
+            resume_engine is not None
+            and preferred_engine is not None
+            and resume_engine is not preferred_engine
+        ):
+            raise ValueError("preferred engine must match native resume engine")
 
         # Extract topic for affinity lookup
         topic = TopicExtractor.extract(task)
@@ -162,6 +174,15 @@ class RouteToEngineUseCase:
         last_result: AgentEngineResult | None = None
 
         for engine_type in chain:
+            if resume_engine is not None and engine_type is not resume_engine:
+                attempts.append(
+                    FallbackAttempt(
+                        engine=engine_type.value,
+                        attempted=False,
+                        skip_reason="resume_engine_mismatch",
+                    )
+                )
+                continue
             driver = self._drivers.get(engine_type)
             if driver is None:
                 logger.debug("Engine %s not registered, skipping", engine_type.value)

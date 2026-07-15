@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **[FIX/AGENT-CLI]** Phase 35 provider-pinned native resumeをTDDで追加: route resume requestへowner `resume_engine`を必須化し、preferred engineとの不一致を拒否。fallback chain内のnon-owner enginesはavailability check/subprocess起動前に`resume_engine_mismatch`でskipする。これによりClaude session idをCodexへ、Codex thread idをClaudeへ渡すcross-provider fallbackをfail closed。
 - **[FEAT/AGENT-CLI]** Phase 34 Claude native streaming/resumeをTDDで追加: Claude `stream-json`のsystem init、assistant text/tool_use、user tool_result、final resultをprovider-independent engine eventsへ正規化しraw payloadを保持。Claude driverが`ResumableStreamingScopedAgentEnginePort`を実装し、explicit session idを同一workspace/permission provenance下で`--resume`する。Claude-reported output/model/usage/total costをresultへ保持し、Chat CLI `--route-direct --engine claude_code`を開放。
 - **[FEAT/AGENT-CLI]** Phase 33 scoped Claude Code adapterをTDDで追加: subprocess runnerへexplicit `cwd`を追加し、Claude driverが`ScopedAgentEnginePort`を実装。Morphic `read-only`→Claude `plan`、`workspace-write`→`acceptEdits`、`danger-full-access`→explicit `bypassPermissions` + dangerous flagへmappingし、headlessでpromptを保持できない`confirm-destructive`は拒否。従来の`--setting-sources user`とhard-coded tool allowlistを撤廃し、project/local settings、CLAUDE.md、skills、hooks、MCP、pluginsのnative harness behaviorを保持する。
 - **[FIX/CHAT-CLI]** Phase 32 native subprocess cancellation cleanupをTDDで追加: buffered/streaming CLI taskがcancelされた場合、child processへ`terminate`を送り、2秒のgraceを超えた場合のみ`kill`へ昇格する。cleanup後もoriginal `CancelledError`をcallerへ再送出するため、Ctrl-C semanticsを維持しつつorphan Codex processを防止。

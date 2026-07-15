@@ -32,6 +32,7 @@ class _RouteExecutor(Protocol):
         permission_mode: PermissionMode | None = None,
         event_sink: AgentEngineEventSinkPort | None = None,
         resume_session_id: str | None = None,
+        resume_engine: AgentEngineType | None = None,
     ) -> AgentEngineResult: ...
 
 
@@ -120,6 +121,9 @@ class RouteChatDirectRuntime(StreamingCouncilRuntimePort):
             event_sink=event_sink,
             resume_session_id=(
                 native_session.session_id if native_session is not None else None
+            ),
+            resume_engine=(
+                native_session.engine if native_session is not None else None
             ),
         )
         if not result.success:

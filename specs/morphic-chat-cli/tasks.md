@@ -319,6 +319,14 @@
 - [x] T3405 Preserve Claude-reported final output, model, usage, and total cost.
 - [x] T3406 Allow `--engine claude_code` in route-direct Chat CLI mode.
 
+## Phase 35 - Provider-Pinned Native Resume
+
+- [x] T3501 Require the native owner engine with every resume session id.
+- [x] T3502 Reject preferred-engine and resume-engine mismatches.
+- [x] T3503 Skip non-owner engines before availability checks or execution.
+- [x] T3504 Prevent cross-provider fallback with a provider-native session id.
+- [x] T3505 Record resume-engine mismatch attempts for routing transparency.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

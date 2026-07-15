@@ -173,6 +173,15 @@ features while Morphic owns a common durable ledger, progress view, safety bound
 cost/result envelope, and session continuity. Next comes streaming input/steering and a
 same-task comparative benchmark.
 
+## Phase 35 update
+
+Native resume identity is now provider-pinned end to end. A resume request carries its
+owner engine as well as the session id; Morphic rejects preferred-engine mismatches and
+skips every non-owner fallback before availability checks or process execution. Claude
+session ids can never be offered to Codex, and Codex thread ids can never be offered to
+Claude. This closes a subtle but critical cross-provider continuity failure introduced
+when the second resumable native adapter came online.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

@@ -179,6 +179,7 @@ async def test_direct_runtime_resumes_matching_native_session() -> None:
     )
 
     assert route.calls[0]["resume_session_id"] == "thread-1"
+    assert route.calls[0]["resume_engine"] is AgentEngineType.CODEX_CLI
 
 
 async def test_direct_runtime_rejects_resume_in_different_workspace() -> None:

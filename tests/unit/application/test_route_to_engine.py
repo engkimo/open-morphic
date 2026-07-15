@@ -35,9 +35,10 @@ def _make_driver(
     cost_per_hour_usd: float = 0.0,
 ) -> AsyncMock:
     """Create a mock AgentEnginePort driver."""
+    scoped_engines = {AgentEngineType.CODEX_CLI, AgentEngineType.CLAUDE_CODE}
     driver_spec = (
         ResumableStreamingScopedAgentEnginePort
-        if engine_type is AgentEngineType.CODEX_CLI
+        if engine_type in scoped_engines
         else AgentEnginePort
     )
     driver = AsyncMock(spec=driver_spec)
@@ -55,7 +56,7 @@ def _make_driver(
         error=error,
     )
     driver.run_task = AsyncMock(return_value=result)
-    if engine_type is AgentEngineType.CODEX_CLI:
+    if engine_type in scoped_engines:
         driver.run_task_scoped = AsyncMock(return_value=result)
         driver.run_task_scoped_stream = AsyncMock(return_value=result)
         driver.resume_task_scoped_stream = AsyncMock(return_value=result)
@@ -256,26 +257,27 @@ class TestExecuteHappy:
         )
 
     async def test_scoped_execution_skips_unsupported_engine(self) -> None:
-        claude = _make_driver(AgentEngineType.CLAUDE_CODE)
+        openhands = _make_driver(AgentEngineType.OPENHANDS)
         codex = _make_driver(AgentEngineType.CODEX_CLI)
         uc = RouteToEngineUseCase(
             {
-                AgentEngineType.CLAUDE_CODE: claude,
+                AgentEngineType.OPENHANDS: openhands,
                 AgentEngineType.CODEX_CLI: codex,
             }
         )
 
         result = await uc.execute(
             "fix tests",
-            task_type=TaskType.COMPLEX_REASONING,
+            task_type=TaskType.CODE_GENERATION,
             budget=5.0,
+            preferred_engine=AgentEngineType.OPENHANDS,
             workspace_root="/workspace",
             permission_mode=PermissionMode.WORKSPACE_WRITE,
         )
 
         assert result.success is True
         assert result.engine is AgentEngineType.CODEX_CLI
-        claude.run_task.assert_not_awaited()
+        openhands.run_task.assert_not_awaited()
         codex.run_task_scoped.assert_awaited_once()
         assert result.fallback_attempts[0].skip_reason == "scoped_execution_unsupported"
 
@@ -319,6 +321,7 @@ class TestExecuteHappy:
             permission_mode=PermissionMode.WORKSPACE_WRITE,
             event_sink=sink,
             resume_session_id="thread-1",
+            resume_engine=AgentEngineType.CODEX_CLI,
         )
 
         assert result.success is True
@@ -334,6 +337,41 @@ class TestExecuteHappy:
             timeout_seconds=300.0,
         )
         drivers[AgentEngineType.CODEX_CLI].run_task_scoped_stream.assert_not_awaited()
+
+    async def test_native_resume_never_falls_back_to_another_engine(self) -> None:
+        claude = _make_driver(
+            AgentEngineType.CLAUDE_CODE,
+            success=False,
+            error="session missing",
+        )
+        codex = _make_driver(AgentEngineType.CODEX_CLI)
+        sink = AsyncMock(spec=AgentEngineEventSinkPort)
+        uc = RouteToEngineUseCase(
+            {
+                AgentEngineType.CLAUDE_CODE: claude,
+                AgentEngineType.CODEX_CLI: codex,
+            }
+        )
+
+        result = await uc.execute(
+            "continue",
+            preferred_engine=AgentEngineType.CLAUDE_CODE,
+            task_type=TaskType.CODE_GENERATION,
+            workspace_root="/workspace",
+            permission_mode=PermissionMode.WORKSPACE_WRITE,
+            event_sink=sink,
+            resume_session_id="claude-session-1",
+            resume_engine=AgentEngineType.CLAUDE_CODE,
+        )
+
+        assert result.success is False
+        claude.resume_task_scoped_stream.assert_awaited_once()
+        codex.resume_task_scoped_stream.assert_not_awaited()
+        assert any(
+            attempt.engine == "codex_cli"
+            and attempt.skip_reason == "resume_engine_mismatch"
+            for attempt in result.fallback_attempts
+        )
 
 
 # ═══════════════════════════════════════════════════════════════
