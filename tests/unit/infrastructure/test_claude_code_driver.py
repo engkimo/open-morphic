@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+from domain.entities.chat_session import PermissionMode
 from domain.ports.agent_engine import AgentEngineCapabilities, AgentEngineResult
 from domain.value_objects.agent_engine import AgentEngineType
 from infrastructure.agent_cli._subprocess_base import CLIResult
@@ -146,12 +147,60 @@ class TestRunTask:
             "json",
             "--max-turns",
             "10",
-            "--setting-sources",
-            "user",
-            "--allowedTools",
-            "Bash,Read,Write,Edit,WebFetch,WebSearch",
+            "--permission-mode",
+            "plan",
         ]
         assert cmd == expected
+
+    @pytest.mark.asyncio
+    async def test_scoped_workspace_write_preserves_native_harness(self, driver):
+        with patch.object(
+            driver,
+            "_run_cli",
+            return_value=CLIResult(stdout="{}", stderr="", returncode=0),
+        ) as mock_run:
+            await driver.run_task_scoped(
+                "Fix tests",
+                workspace_root="/workspace",
+                permission_mode=PermissionMode.WORKSPACE_WRITE,
+            )
+
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("--permission-mode") + 1] == "acceptEdits"
+        assert mock_run.call_args.kwargs["cwd"] == "/workspace"
+        assert "--setting-sources" not in cmd
+        assert "--allowedTools" not in cmd
+        assert "--disable-slash-commands" not in cmd
+
+    @pytest.mark.asyncio
+    async def test_danger_full_access_requires_explicit_bypass_flag(self, driver):
+        with patch.object(
+            driver,
+            "_run_cli",
+            return_value=CLIResult(stdout="{}", stderr="", returncode=0),
+        ) as mock_run:
+            await driver.run_task_scoped(
+                "Fix tests",
+                workspace_root="/workspace",
+                permission_mode=PermissionMode.DANGER_FULL_ACCESS,
+            )
+
+        cmd = mock_run.call_args[0][0]
+        assert "--dangerously-skip-permissions" in cmd
+        assert cmd[cmd.index("--permission-mode") + 1] == "bypassPermissions"
+
+    @pytest.mark.asyncio
+    async def test_confirm_destructive_is_rejected_before_subprocess(self, driver):
+        with patch.object(driver, "_run_cli") as mock_run:
+            result = await driver.run_task_scoped(
+                "Fix tests",
+                workspace_root="/workspace",
+                permission_mode=PermissionMode.CONFIRM_DESTRUCTIVE,
+            )
+
+        assert result.success is False
+        assert "confirm-destructive" in str(result.error)
+        mock_run.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_model_override(self, driver):

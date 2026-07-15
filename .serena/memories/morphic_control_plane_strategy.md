@@ -147,6 +147,18 @@ paths terminate the child when their asyncio task is cancelled, escalate to kill
 two-second grace period, and re-raise the original cancellation. This closes the orphan
 process risk before adding a user-facing `/cancel` or steering control channel.
 
+## Phase 33 update
+
+Claude Code is now a permission-aware scoped adapter. Morphic maps read-only to `plan`,
+workspace-write to `acceptEdits`, and danger-full-access to an explicit bypass mode; it
+rejects confirm-destructive in headless execution. The driver runs in the requested cwd.
+
+More importantly for the control-plane strategy, Morphic no longer forces Claude to
+user-only settings or a hard-coded tool allowlist. Claude's project/local settings,
+CLAUDE.md discovery, skills, hooks, MCP, plugins, and native tool policy remain intact.
+The next slice is `stream-json` normalization and explicit session resume; only after
+that should Chat CLI direct mode allow `claude_code` alongside `codex_cli`.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

@@ -5,17 +5,18 @@ from __future__ import annotations
 import json
 import time
 
+from domain.entities.chat_session import PermissionMode
 from domain.ports.agent_engine import (
     AgentEngineCapabilities,
-    AgentEnginePort,
     AgentEngineResult,
+    ScopedAgentEnginePort,
 )
 from domain.services.engine_cost_calculator import EngineCostCalculator
 from domain.value_objects.agent_engine import AgentEngineType
 from infrastructure.agent_cli._subprocess_base import SubprocessMixin
 
 
-class ClaudeCodeDriver(SubprocessMixin, AgentEnginePort):
+class ClaudeCodeDriver(SubprocessMixin, ScopedAgentEnginePort):
     """Agent engine backed by Claude Code CLI (headless).
 
     Executes `claude -p <task> --output-format json` and parses structured output.
@@ -34,12 +35,58 @@ class ClaudeCodeDriver(SubprocessMixin, AgentEnginePort):
         model: str | None = None,
         timeout_seconds: float = 300.0,
     ) -> AgentEngineResult:
+        return await self._run_task(
+            task=task,
+            model=model,
+            timeout_seconds=timeout_seconds,
+            workspace_root=None,
+            permission_mode=PermissionMode.READ_ONLY,
+        )
+
+    async def run_task_scoped(
+        self,
+        task: str,
+        *,
+        workspace_root: str,
+        permission_mode: PermissionMode,
+        model: str | None = None,
+        timeout_seconds: float = 300.0,
+    ) -> AgentEngineResult:
+        return await self._run_task(
+            task=task,
+            model=model,
+            timeout_seconds=timeout_seconds,
+            workspace_root=workspace_root,
+            permission_mode=permission_mode,
+        )
+
+    async def _run_task(
+        self,
+        *,
+        task: str,
+        model: str | None,
+        timeout_seconds: float,
+        workspace_root: str | None,
+        permission_mode: PermissionMode,
+    ) -> AgentEngineResult:
         if not self._enabled:
             return AgentEngineResult(
                 engine=AgentEngineType.CLAUDE_CODE,
                 success=False,
                 output="",
                 error="Claude Code driver is disabled",
+            )
+
+        claude_mode = self._permission_mode(permission_mode)
+        if claude_mode is None:
+            return AgentEngineResult(
+                engine=AgentEngineType.CLAUDE_CODE,
+                success=False,
+                output="",
+                error=(
+                    "Claude Code headless mode cannot preserve confirm-destructive "
+                    "approval prompts"
+                ),
             )
 
         cmd = [
@@ -50,16 +97,20 @@ class ClaudeCodeDriver(SubprocessMixin, AgentEnginePort):
             "json",
             "--max-turns",
             "10",
-            "--setting-sources",
-            "user",
-            "--allowedTools",
-            "Bash,Read,Write,Edit,WebFetch,WebSearch",
+            "--permission-mode",
+            claude_mode,
         ]
+        if permission_mode is PermissionMode.DANGER_FULL_ACCESS:
+            cmd.append("--dangerously-skip-permissions")
         if model:
             cmd.extend(["--model", model])
 
         start = time.monotonic()
-        cli_result = await self._run_cli(cmd, timeout=timeout_seconds)
+        cli_result = await self._run_cli(
+            cmd,
+            timeout=timeout_seconds,
+            cwd=workspace_root,
+        )
         duration = time.monotonic() - start
 
         if cli_result.returncode != 0:
@@ -98,6 +149,15 @@ class ClaudeCodeDriver(SubprocessMixin, AgentEnginePort):
             model_used=model_used,
             metadata=metadata,
         )
+
+    def _permission_mode(self, permission_mode: PermissionMode) -> str | None:
+        if permission_mode is PermissionMode.READ_ONLY:
+            return "plan"
+        if permission_mode is PermissionMode.WORKSPACE_WRITE:
+            return "acceptEdits"
+        if permission_mode is PermissionMode.DANGER_FULL_ACCESS:
+            return "bypassPermissions"
+        return None
 
     async def is_available(self) -> bool:
         return self._enabled and self._check_cli_exists(self._cli_path)

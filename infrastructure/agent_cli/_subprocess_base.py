@@ -29,6 +29,7 @@ class SubprocessMixin:
         cmd: list[str],
         timeout: float = 300.0,
         env: dict[str, str] | None = None,
+        cwd: str | None = None,
     ) -> CLIResult:
         """Run a CLI command asynchronously with timeout.
 
@@ -45,6 +46,7 @@ class SubprocessMixin:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
+            cwd=cwd,
         )
         try:
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
@@ -75,6 +77,7 @@ class SubprocessMixin:
         timeout: float = 300.0,
         on_stdout_line: Callable[[str], Awaitable[None]],
         env: dict[str, str] | None = None,
+        cwd: str | None = None,
     ) -> CLIResult:
         """Run a CLI while delivering decoded stdout lines incrementally."""
         proc = await asyncio.create_subprocess_exec(
@@ -82,6 +85,7 @@ class SubprocessMixin:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
+            cwd=cwd,
         )
         assert proc.stdout is not None
         assert proc.stderr is not None
