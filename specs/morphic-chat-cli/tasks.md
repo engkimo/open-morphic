@@ -245,12 +245,77 @@
 - [x] T2504 Surface selected permission mode through `/status`.
 - [x] T2505 Keep read-only tool blocking user-facing instead of crashing the REPL.
 
+## Phase 26 - Single-Engine Direct Route
+
+- [x] T2601 Add RED tests for one-call route-backed direct runtime behavior.
+- [x] T2602 Add `RouteChatDirectRuntime` and normalize its result as one implementer turn.
+- [x] T2603 Add `--route-direct` to `morphic chat` and `morphic code`.
+- [x] T2604 Add optional `--engine <engine_id>` preference for direct mode.
+- [x] T2605 Reject simultaneous `--route-direct` and `--route-council` modes.
+- [x] T2606 Surface route failure and empty output without local success fallback.
+- [x] T2607 Require explicit `danger-full-access` until native permission mapping exists.
+- [x] T2608 Keep external engines fake-only in unit tests.
+
+## Phase 27 - Codex Permission and JSONL Normalization
+
+- [x] T2701 Add strict provider-independent native engine event entities.
+- [x] T2702 Parse Codex JSONL thread, turn, item, completion, failure, and error records.
+- [x] T2703 Extract Codex thread id, final assistant message, usage, and parse diagnostics.
+- [x] T2704 Replace deprecated `--full-auto` with explicit `--sandbox`.
+- [x] T2705 Map read-only, workspace-write, and danger-full-access permissions to Codex.
+- [x] T2706 Reject confirm-destructive because non-interactive Codex cannot prompt.
+- [x] T2707 Pass workspace root with Codex `--cd`.
+- [x] T2708 Restrict direct route to explicit `--engine codex_cli` until other mappings exist.
+- [x] T2709 Preserve legacy single-JSON/raw-output parsing compatibility.
+
+## Phase 28 - Native Event Ledger and Scoped Execution Contract
+
+- [x] T2801 Attach normalized native engine events to direct-runtime turns.
+- [x] T2802 Persist each native engine event as an append-only `engine_event` chat event.
+- [x] T2803 Preserve native event order before the corresponding council argument.
+- [x] T2804 Add a separate `ScopedAgentEnginePort` for workspace and permission-aware execution.
+- [x] T2805 Keep the common `AgentEnginePort` compatible with existing engine adapters.
+- [x] T2806 Skip permission-unaware engines instead of silently dropping scoped controls.
+- [x] T2807 Retain raw provider payloads in the session ledger for audit and replay.
+
+## Phase 29 - Incremental Codex Event Streaming
+
+- [x] T2901 Add an async subprocess runner that drains stdout and stderr concurrently.
+- [x] T2902 Deliver decoded stdout lines before native process completion.
+- [x] T2903 Add a stateful Codex JSONL event decoder for sequence and thread propagation.
+- [x] T2904 Add explicit streaming scoped-engine and council runtime capability ports.
+- [x] T2905 Route streaming scoped requests only to adapters that implement the capability.
+- [x] T2906 Persist user input before execution and native events as they arrive.
+- [x] T2907 Avoid replaying streamed result metadata into duplicate ledger events.
+- [x] T2908 Preserve buffered execution for non-streaming callers and adapters.
+
+## Phase 30 - Live Native Progress Rendering
+
+- [x] T3001 Add an optional native event observer to send-message orchestration.
+- [x] T3002 Publish to the observer only after durable ledger append succeeds.
+- [x] T3003 Keep observer failures best-effort so presentation cannot erase audit state.
+- [x] T3004 Add a concise terminal renderer for selected lifecycle/tool/file/plan events.
+- [x] T3005 Suppress assistant-message, unknown, raw payload, and reasoning content.
+- [x] T3006 Compact whitespace and cap rendered event detail length.
+- [x] T3007 Wire the renderer into Chat REPL and one-shot code streaming paths.
+
+## Phase 31 - Scoped Codex Thread Resume
+
+- [x] T3101 Track native session id, engine, workspace, and permission provenance.
+- [x] T3102 Restore native session provenance by replaying the append-only ledger.
+- [x] T3103 Add a narrow resumable streaming engine capability port.
+- [x] T3104 Route an explicit native session id only to resumable adapters.
+- [x] T3105 Invoke `codex exec ... resume <thread_id> <prompt>` with explicit sandbox and cwd.
+- [x] T3106 Reuse the stored Codex thread on later turns in the same Morphic session.
+- [x] T3107 Refuse resume when workspace or permission provenance does not match.
+- [x] T3108 Reject native resume requests missing streaming/scope context.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
 - [ ] D002 Claude Code adapter.
 - [ ] D003 Gemini CLI adapter.
-- [ ] D004 Codex CLI adapter.
+- [x] D004 Codex CLI adapter.
 - [ ] D005 OpenHands adapter.
 - [ ] D006 `.morphic` to `.claude` export.
 - [ ] D007 `.morphic` to Gemini/Codex metadata export.
@@ -258,3 +323,4 @@
 - [ ] D009 Council event visualization.
 - [ ] D010 Memory candidate approval UI.
 - [ ] D011 General chat tool execution UX beyond explicit hook commands.
+- [ ] D012 Native CLI streaming, resume, steering, and permission propagation.

@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
-> Last updated: 2026-07-07
-> Latest work: Morphic Chat CLI Phase 25 CLI permission mode controls
+> Last updated: 2026-07-14
+> Latest work: Morphic Chat CLI Phase 31 scoped Codex thread resume
 
 ## Latest Session Notes (2026-06-26)
 
@@ -172,6 +172,52 @@ Phase 25 implemented:
 - `/status` already surfaces the active permission mode, so `morphic chat --permission-mode read-only` now reports `mode=read-only`.
 - Read-only mutating `/tools run` attempts now return a user-facing `permission denied: ...` assistant message instead of crashing the REPL.
 
+Phase 26 implemented:
+- Added `RouteChatDirectRuntime`, which delegates a Chat CLI turn to exactly one `RouteToEngineUseCase` execution and records the result as one `IMPLEMENTER` council turn plus the assistant decision.
+- Added `--route-direct` to both `morphic chat` and `morphic code`; optional `--engine <engine_id>` pins the preferred route engine while omission keeps automatic routing.
+- `--route-direct` and `--route-council` are mutually exclusive, and invalid direct engine ids return exit code 2 diagnostics.
+- Direct route failure and empty output are surfaced as errors instead of silently falling back to deterministic local success text.
+- Direct external-engine execution currently requires explicit `--permission-mode danger-full-access`; this temporary gate remains until Morphic permission modes propagate to native CLI permission controls.
+- Strategy memory added at `.serena/memories/morphic_control_plane_strategy.md`: Morphic competes as a native-engine-preserving multi-engine control plane, not as another single-engine CLI clone.
+
+Phase 27 implemented:
+- Added strict provider-independent `AgentEngineEvent` / `AgentEngineEventType` domain entities for native agent lifecycle data.
+- Added a resilient Codex JSONL parser for thread, turn, command/MCP/web tool, file change, plan, reasoning, assistant, completion, failure, and error records while retaining raw payloads.
+- Codex results now expose normalized events, thread/session id, final assistant message, usage, and malformed-line count through metadata.
+- Replaced deprecated Codex `--full-auto` invocation with explicit `--sandbox`; `read-only`, `workspace-write`, and `danger-full-access` map directly from Morphic permission modes.
+- Added Codex `--cd <workspace_root>` propagation so `--workspace` cannot silently execute against the process working directory.
+- `confirm-destructive` is rejected for direct Codex execution because `codex exec` cannot open an interactive approval prompt.
+- Direct route currently requires explicit `--engine codex_cli`; automatic/native routing will reopen after other adapters implement equivalent workspace and permission mappings.
+
+Phase 28 implemented:
+- Direct native runtime turns now retain normalized provider-independent engine events.
+- `SendChatMessageUseCase` persists each engine event independently and in order before its council argument, decision, and assistant response.
+- Raw provider payloads remain present in each event for audit, replay, and forward compatibility.
+- Added `ScopedAgentEnginePort` so workspace and permission propagation is an explicit adapter capability rather than optional arguments that existing drivers could ignore.
+- Scoped routing skips unsupported adapters and can fall back to Codex without executing a permission-unaware engine.
+
+Phase 29 implemented:
+- Added an async subprocess streaming path that drains stdout and stderr concurrently and publishes decoded stdout lines before process completion.
+- Added stateful Codex JSONL decoding so live events retain provider order and the active thread id.
+- Added narrow `StreamingScopedAgentEnginePort` and `StreamingCouncilRuntimePort` capabilities rather than widening all engine/council implementations.
+- Direct streaming chat persists the user message before execution and appends each native event immediately through an application-owned ledger sink.
+- Final Codex result metadata still contains the complete event list for buffered consumers; streaming chat deliberately avoids persisting that list twice.
+- Unit coverage includes a real local subprocess for line/stderr collection; no real Codex task or paid model was invoked.
+
+Phase 30 implemented:
+- `SendChatMessageUseCase` can fan streamed native events out to an optional presentation observer after each ledger append succeeds.
+- Observer failures are logged and isolated from the durable audit path and native execution.
+- Added `NativeEventProgressRenderer` for concise run/tool/file/plan/completion/error lines in Chat REPL and one-shot code execution.
+- Raw provider payloads, generic progress/reasoning, unknown events, and assistant messages are not rendered; event detail is whitespace-normalized and capped at 160 characters.
+- The final assistant response remains rendered once through the existing response path.
+
+Phase 31 implemented:
+- `ChatSession` tracks each native engine session id together with the workspace root and permission mode that created it.
+- Resume reconstructs native session provenance by replaying persisted `context_indexed` and `engine_event` records.
+- Added `ResumableStreamingScopedAgentEnginePort`; routing never treats ordinary streaming support as implicit resume support.
+- Codex resume uses the explicit stored thread id and preserves `--sandbox` plus `--cd` scope; it never uses the ambiguous global `--last` session.
+- Direct runtime fails before engine execution when stored workspace or permission provenance differs from the current session.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -181,7 +227,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Next recommended slice: add explicit invalid permission mode diagnostics tests and help text coverage for the new CLI option.
+- Add explicit user steering/cancellation for a running native turn, then implement the same scoped streaming/resume contract for Claude Code.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

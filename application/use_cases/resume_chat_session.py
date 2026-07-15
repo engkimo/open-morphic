@@ -40,15 +40,12 @@ class ResumeChatSessionUseCase:
             if isinstance(mode_value, str):
                 permission_mode = PermissionMode(mode_value)
 
-        status = ChatSessionStatus.ACTIVE
-        if any(event.type is ChatEventType.SESSION_ENDED for event in events):
-            status = ChatSessionStatus.ENDED
-
         session = ChatSession(
             id=resolved_session_id,
             goal=goal,
             permission_mode=permission_mode,
-            status=status,
-            next_sequence=max(event.sequence for event in events) + 1,
+            status=ChatSessionStatus.ACTIVE,
         )
+        for event in events:
+            session = session.replay_event(event)
         return ResumeChatSessionResult(session=session, events=events)

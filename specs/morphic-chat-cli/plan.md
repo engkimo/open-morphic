@@ -65,6 +65,51 @@ executor role -> may use Codex CLI or local LAEE tools
 
 Keeping these separate prevents the design from hard-coding "Claude is the architect" or "Codex is always implementer."
 
+### Direct route before always-on council
+
+Council is a quality mechanism, not the default execution topology for every task. The
+CLI should also support a direct runtime that delegates one goal to one routed native
+agent engine. Direct mode reuses `CouncilRuntimePort` temporarily so session/event
+orchestration stays unchanged, but emits one `IMPLEMENTER` turn and one decision.
+
+Direct mode is explicit while native permission propagation is incomplete. The first
+supported adapter is Codex CLI: `read-only`, `workspace-write`, and
+`danger-full-access` map to explicit Codex sandboxes, while `confirm-destructive` is
+rejected because `codex exec` has no interactive approval channel. Direct mode makes
+exactly one route call and never converts route failure into deterministic local success.
+Other native engines remain unavailable in direct mode until their permission and
+workspace controls are mapped explicitly.
+
+Native adapter output is normalized into `AgentEngineEvent` values and attached to the
+single implementer turn. `SendChatMessageUseCase` writes each value as an independent
+`engine_event` before the council argument, decision, and assistant response. This makes
+tool activity, file changes, plans, and lifecycle state replayable without parsing a
+provider blob embedded only in the final response. Workspace and permission propagation
+uses a separate `ScopedAgentEnginePort`; ordinary adapters keep the smaller common port
+and are skipped when a scoped run is requested.
+
+For live execution, `StreamingScopedAgentEnginePort` adds an event sink without widening
+the ordinary or buffered scoped contracts. Codex drains stdout and stderr concurrently,
+decodes each JSONL stdout line with stateful thread/sequence tracking, and publishes it
+before process completion. `StreamingCouncilRuntimePort` carries the sink to the
+application layer, where the user message is persisted first and each native event is
+appended immediately. The final result still retains its complete event metadata for
+non-streaming consumers, but the streaming send path does not append it twice.
+
+Terminal progress is a best-effort observer downstream of durable event append. The
+renderer uses an allowlist of lifecycle, tool, file, and plan event types, normalizes
+whitespace, and truncates detail. It never reads the raw payload and ignores assistant
+messages, generic progress/reasoning, and unknown provider events. A renderer exception
+is logged but does not cancel native execution or roll back the already-written ledger.
+
+Native thread continuity is reconstructed from the Morphic ledger, not from a global
+provider "last session" lookup. `ChatSession` records engine id, provider session id,
+workspace root, and permission mode when a native event first identifies a thread.
+Resume replays the ledger to rebuild that binding. `ResumableStreamingScopedAgentEnginePort`
+is a separate capability; Codex implements it with `exec` scope flags before
+`resume <thread_id> <prompt>`. Direct runtime compares stored workspace and permission
+provenance with the current turn and fails before route execution on mismatch.
+
 ### Morphic owns execution state
 
 External CLIs can contribute proposals or execute delegated tasks, but Morphic should own:
@@ -313,4 +358,5 @@ Manual validation:
 8. Add `morphic code "<goal>"` one-shot entry.
 9. Add diagnostics commands.
 10. Add first external engine adapter behind registry.
-
+11. Add an explicit single-engine direct route before making real execution the default.
+12. Add normalized streaming/resume/approval events and native permission mappings.

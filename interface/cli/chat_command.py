@@ -21,6 +21,7 @@ from domain.ports.tool_executor import ToolExecutorPort
 from domain.value_objects.agent_engine import AgentEngineType
 from infrastructure.council.local_chat_council_runtime import LocalChatCouncilRuntime
 from infrastructure.council.route_chat_council_runtime import RouteChatCouncilRuntime
+from infrastructure.council.route_chat_direct_runtime import RouteChatDirectRuntime
 from infrastructure.engines.route_engine_registry import RouteEngineRegistry
 from infrastructure.engines.static_engine_registry import StaticEngineRegistry
 from infrastructure.hooks.noop_hook_executor import NoopHookExecutor
@@ -50,6 +51,21 @@ _CODE_ROUTE_COUNCIL_OPTION = typer.Option(
     False,
     "--route-council",
     help="Use route-backed engines for chat council roles.",
+)
+_CHAT_ROUTE_DIRECT_OPTION = typer.Option(
+    False,
+    "--route-direct",
+    help="Use one route-backed native engine for each chat turn.",
+)
+_CODE_ROUTE_DIRECT_OPTION = typer.Option(
+    False,
+    "--route-direct",
+    help="Use one route-backed native engine for the coding goal.",
+)
+_DIRECT_ENGINE_OPTION = typer.Option(
+    None,
+    "--engine",
+    help="Preferred engine for --route-direct; omit for automatic routing.",
 )
 _PLANNER_ENGINE_OPTION = typer.Option(
     None,
@@ -104,6 +120,8 @@ def chat_cmd(
         help="Emit machine-readable JSON for diagnostics.",
     ),
     route_council: bool = _CHAT_ROUTE_COUNCIL_OPTION,
+    route_direct: bool = _CHAT_ROUTE_DIRECT_OPTION,
+    direct_engine: str | None = _DIRECT_ENGINE_OPTION,
     planner_engine: str | None = _PLANNER_ENGINE_OPTION,
     critic_engine: str | None = _CRITIC_ENGINE_OPTION,
     leader_engine: str | None = _LEADER_ENGINE_OPTION,
@@ -130,6 +148,8 @@ def chat_cmd(
         try:
             council_runtime = _chat_council_runtime(
                 route_council=route_council,
+                route_direct=route_direct,
+                direct_engine=direct_engine,
                 planner_engine=planner_engine,
                 critic_engine=critic_engine,
                 leader_engine=leader_engine,
@@ -137,20 +157,26 @@ def chat_cmd(
         except ValueError as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=2) from None
-    _run(
-        ChatRepl(
-            workspace_root=workspace or Path.cwd(),
-            council_runtime=council_runtime,
-            engine_registry=engine_registry,
-            hook_executor_factory=lambda root: _chat_hook_executor(workspace_root=root),
-            tool_executor_factory=lambda _root: _chat_tool_executor(),
-        ).run(resume=resume, permission_mode=permission_mode)
-    )
+    try:
+        _run(
+            ChatRepl(
+                workspace_root=workspace or Path.cwd(),
+                council_runtime=council_runtime,
+                engine_registry=engine_registry,
+                hook_executor_factory=lambda root: _chat_hook_executor(workspace_root=root),
+                tool_executor_factory=lambda _root: _chat_tool_executor(),
+            ).run(resume=resume, permission_mode=permission_mode)
+        )
+    except (PermissionError, RuntimeError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
 
 
 def code_cmd(
     goal: str = typer.Argument(..., help="One-shot coding goal."),
     route_council: bool = _CODE_ROUTE_COUNCIL_OPTION,
+    route_direct: bool = _CODE_ROUTE_DIRECT_OPTION,
+    direct_engine: str | None = _DIRECT_ENGINE_OPTION,
     planner_engine: str | None = _PLANNER_ENGINE_OPTION,
     critic_engine: str | None = _CRITIC_ENGINE_OPTION,
     leader_engine: str | None = _LEADER_ENGINE_OPTION,
@@ -163,6 +189,8 @@ def code_cmd(
         try:
             council_runtime = _chat_council_runtime(
                 route_council=route_council,
+                route_direct=route_direct,
+                direct_engine=direct_engine,
                 planner_engine=planner_engine,
                 critic_engine=critic_engine,
                 leader_engine=leader_engine,
@@ -170,15 +198,19 @@ def code_cmd(
         except ValueError as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=2) from None
-    _run(
-        ChatRepl(
-            workspace_root=workspace or Path.cwd(),
-            council_runtime=council_runtime,
-            engine_registry=engine_registry,
-            hook_executor_factory=lambda root: _chat_hook_executor(workspace_root=root),
-            tool_executor_factory=lambda _root: _chat_tool_executor(),
-        ).run_goal(goal=goal, permission_mode=permission_mode)
-    )
+    try:
+        _run(
+            ChatRepl(
+                workspace_root=workspace or Path.cwd(),
+                council_runtime=council_runtime,
+                engine_registry=engine_registry,
+                hook_executor_factory=lambda root: _chat_hook_executor(workspace_root=root),
+                tool_executor_factory=lambda _root: _chat_tool_executor(),
+            ).run_goal(goal=goal, permission_mode=permission_mode)
+        )
+    except (PermissionError, RuntimeError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
 
 
 def _chat_engine_registry() -> EngineRegistryPort:
@@ -276,15 +308,39 @@ def _chat_local_executor() -> LocalExecutorPort:
 def _chat_council_runtime(
     *,
     route_council: bool = False,
+    route_direct: bool = False,
+    direct_engine: str | None = None,
     planner_engine: str | None = None,
     critic_engine: str | None = None,
     leader_engine: str | None = None,
 ) -> CouncilRuntimePort:
+    if route_direct and route_council:
+        raise ValueError("--route-direct and --route-council are mutually exclusive")
+    preferred_direct_engine = _direct_engine_preference(direct_engine)
+    if preferred_direct_engine is not None and not route_direct:
+        raise ValueError("--engine requires --route-direct")
     role_engines = _role_engine_preferences(
         planner_engine=planner_engine,
         critic_engine=critic_engine,
         leader_engine=leader_engine,
     )
+    if route_direct:
+        if preferred_direct_engine is not AgentEngineType.CODEX_CLI:
+            raise ValueError(
+                "--route-direct currently requires --engine codex_cli until "
+                "other native engine permission mappings are implemented"
+            )
+        try:
+            container = _get_container()
+            route_to_engine = getattr(container, "route_to_engine", None)
+            if route_to_engine is not None:
+                return RouteChatDirectRuntime(
+                    route_to_engine,
+                    preferred_engine=preferred_direct_engine,
+                )
+        except Exception as exc:
+            raise ValueError(f"Direct route is unavailable: {exc}") from exc
+        raise ValueError("Direct route is unavailable: route engine is not configured")
     if not route_council and os.getenv("MORPHIC_CHAT_ROUTE_COUNCIL") != "1":
         return LocalChatCouncilRuntime()
     try:
@@ -298,6 +354,18 @@ def _chat_council_runtime(
     except Exception:
         return LocalChatCouncilRuntime()
     return LocalChatCouncilRuntime()
+
+
+def _direct_engine_preference(engine_id: str | None) -> AgentEngineType | None:
+    if engine_id is None:
+        return None
+    try:
+        return AgentEngineType(engine_id)
+    except ValueError as exc:
+        valid = ", ".join(engine.value for engine in AgentEngineType)
+        raise ValueError(
+            f"Invalid direct engine '{engine_id}'. Expected one of: {valid}"
+        ) from exc
 
 
 def _role_engine_preferences(

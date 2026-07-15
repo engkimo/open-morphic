@@ -8,11 +8,14 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from domain.entities.agent_engine_event import AgentEngineEvent, AgentEngineEventType
 from domain.entities.approval import ApprovalRequest
 from domain.entities.chat_session import ChatSession
 from domain.entities.council_runtime import CouncilDecision, CouncilRole, CouncilTurn
 from domain.entities.execution import Action, Observation
 from domain.entities.workspace_context import ContextIndex
+from domain.ports.agent_engine import AgentEngineEventSinkPort
+from domain.ports.council_runtime import StreamingCouncilRuntimePort
 from domain.ports.engine_registry import EngineProfile, EngineRuntimeKind
 from domain.ports.local_executor import LocalExecutorPort
 from domain.value_objects import RiskLevel
@@ -26,6 +29,7 @@ from interface.cli.chat_command import (
 )
 from interface.cli.chat_repl import ChatRepl
 from interface.cli.main import app
+from interface.cli.native_event_progress import NativeEventProgressRenderer
 from interface.cli.renderers import render_approval_request
 from interface.cli.slash_commands import parse_slash_command
 
@@ -69,6 +73,48 @@ class _FakeCouncilRuntime:
             evidence=turn.evidence,
         )
         return [turn], decision
+
+
+class _FakeStreamingCouncilRuntime(StreamingCouncilRuntimePort):
+    async def deliberate(self, session, context, user_message):
+        raise AssertionError("streaming path expected")
+
+    async def deliberate_stream(
+        self,
+        session,
+        context,
+        user_message,
+        event_sink: AgentEngineEventSinkPort,
+    ) -> tuple[list[CouncilTurn], CouncilDecision]:
+        del session, context
+        await event_sink.publish(
+            AgentEngineEvent(
+                type=AgentEngineEventType.RUN_STARTED,
+                engine=AgentEngineType.CODEX_CLI,
+                sequence=0,
+                session_id="thread-ui",
+                payload={"type": "thread.started"},
+            )
+        )
+        turn = CouncilTurn(
+            role=CouncilRole.IMPLEMENTER,
+            engine_id="codex_cli",
+            content=f"Completed: {user_message}",
+        )
+        return [turn], CouncilDecision(
+            leader_engine_id="codex_cli",
+            selected_role=CouncilRole.IMPLEMENTER,
+            selected_content=turn.content,
+            rationale="stream completed",
+        )
+
+
+class _CollectingEventSink(AgentEngineEventSinkPort):
+    def __init__(self) -> None:
+        self.events: list[AgentEngineEvent] = []
+
+    async def publish(self, event: AgentEngineEvent) -> None:
+        self.events.append(event)
 
 
 class _FakeLocalExecutor(LocalExecutorPort):
@@ -517,6 +563,94 @@ def test_code_route_council_flag_uses_routed_runtime(monkeypatch: pytest.MonkeyP
         assert "Routed response for: implement routed council" in result.output
 
 
+def test_code_route_direct_flag_uses_single_engine_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from interface.cli import chat_command
+
+    calls: list[dict[str, object]] = []
+
+    def fake_council_runtime(**kwargs: object) -> _FakeCouncilRuntime:
+        calls.append(kwargs)
+        return _FakeCouncilRuntime()
+
+    monkeypatch.setattr(chat_command, "_chat_engine_registry", _FakeEngineRegistry)
+    monkeypatch.setattr(chat_command, "_chat_council_runtime", fake_council_runtime)
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            app,
+            [
+                "code",
+                "--route-direct",
+                "--engine",
+                "codex_cli",
+                "--permission-mode",
+                "danger-full-access",
+                "implement direct routing",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert calls == [
+            {
+                "critic_engine": None,
+                "direct_engine": "codex_cli",
+                "leader_engine": None,
+                "planner_engine": None,
+                "route_council": False,
+                "route_direct": True,
+            }
+        ]
+        assert "Routed response for: implement direct routing" in result.output
+
+
+def test_chat_rejects_direct_and_council_modes_together() -> None:
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            app,
+            ["chat", "--route-direct", "--route-council"],
+        )
+
+        assert result.exit_code == 2
+        assert "mutually exclusive" in result.output
+
+
+def test_code_rejects_invalid_direct_engine() -> None:
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            app,
+            [
+                "code",
+                "--route-direct",
+                "--engine",
+                "missing_engine",
+                "implement direct routing",
+            ],
+        )
+
+        assert result.exit_code == 2
+        assert "Invalid direct engine" in result.output
+        assert "missing_engine" in result.output
+
+
+def test_code_direct_route_requires_codex_engine_until_other_mappings_exist() -> None:
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            app,
+            [
+                "code",
+                "--route-direct",
+                "--permission-mode",
+                "workspace-write",
+                "implement direct routing",
+            ],
+        )
+
+        assert result.exit_code == 2
+        assert "requires --engine codex_cli" in result.output
+
+
 def test_code_defaults_to_local_council_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     from interface.cli import chat_command
 
@@ -574,16 +708,20 @@ def test_code_route_council_role_flags_are_parsed(
     def fake_council_runtime(
         *,
         route_council: bool = False,
+        route_direct: bool = False,
+        direct_engine: str | None = None,
         planner_engine: str | None = None,
         critic_engine: str | None = None,
         leader_engine: str | None = None,
     ) -> _FakeCouncilRuntime:
         calls.append(
-            {
-                "critic_engine": critic_engine,
-                "leader_engine": leader_engine,
-                "planner_engine": planner_engine,
-                "route_council": route_council,
+                {
+                    "critic_engine": critic_engine,
+                    "direct_engine": direct_engine,
+                    "leader_engine": leader_engine,
+                    "planner_engine": planner_engine,
+                    "route_council": route_council,
+                    "route_direct": route_direct,
             }
         )
         return _FakeCouncilRuntime()
@@ -611,9 +749,11 @@ def test_code_route_council_role_flags_are_parsed(
         assert calls == [
             {
                 "critic_engine": "claude_code",
+                "direct_engine": None,
                 "leader_engine": "gemini_cli",
                 "planner_engine": "codex_cli",
                 "route_council": True,
+                "route_direct": False,
             }
         ]
 
@@ -654,6 +794,41 @@ def test_chat_council_runtime_builds_role_engine_preferences(
         CouncilRole.PLANNER: AgentEngineType.CODEX_CLI,
         CouncilRole.CRITIC: AgentEngineType.CLAUDE_CODE,
         CouncilRole.LEADER: AgentEngineType.GEMINI_CLI,
+    }
+
+
+def test_chat_council_runtime_builds_direct_engine_preference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from interface.cli import chat_command
+
+    class _Container:
+        route_to_engine = object()
+
+    captured: dict[str, object] = {}
+
+    class _FakeDirectRuntime(_FakeCouncilRuntime):
+        def __init__(
+            self,
+            route_to_engine: object,
+            *,
+            preferred_engine: AgentEngineType | None = None,
+        ) -> None:
+            captured["preferred_engine"] = preferred_engine
+            captured["route_to_engine"] = route_to_engine
+
+    monkeypatch.setattr(chat_command, "_get_container", lambda: _Container())
+    monkeypatch.setattr(chat_command, "RouteChatDirectRuntime", _FakeDirectRuntime)
+
+    runtime = chat_command._chat_council_runtime(
+        route_direct=True,
+        direct_engine="codex_cli",
+    )
+
+    assert isinstance(runtime, _FakeDirectRuntime)
+    assert captured == {
+        "preferred_engine": AgentEngineType.CODEX_CLI,
+        "route_to_engine": _Container.route_to_engine,
     }
 
 
@@ -698,6 +873,51 @@ async def test_chat_repl_run_goal_uses_injected_council_runtime(tmp_path) -> Non
     assert output == "Routed response for: implement routed council"
     ledger = next((tmp_path / ".morphic" / "sessions").glob("*.jsonl"))
     assert "codex_cli" in ledger.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_chat_repl_forwards_streamed_events_to_injected_progress_sink(tmp_path) -> None:
+    sink = _CollectingEventSink()
+
+    output = await ChatRepl(
+        workspace_root=tmp_path,
+        council_runtime=_FakeStreamingCouncilRuntime(),
+        engine_event_observer=sink,
+    ).run_goal(goal="fix tests")
+
+    assert output == "Completed: fix tests"
+    assert [event.type for event in sink.events] == [AgentEngineEventType.RUN_STARTED]
+
+
+@pytest.mark.asyncio
+async def test_native_event_progress_renderer_is_concise_and_hides_raw_payload() -> None:
+    lines: list[str] = []
+    renderer = NativeEventProgressRenderer(printer=lines.append)
+
+    await renderer.publish(
+        AgentEngineEvent(
+            type=AgentEngineEventType.TOOL_STARTED,
+            engine=AgentEngineType.CODEX_CLI,
+            sequence=1,
+            session_id="thread-ui",
+            item_type="command_execution",
+            text="pytest   tests/unit/   -q",
+            payload={"secret": "must-not-render", "reasoning": "private"},
+        )
+    )
+    await renderer.publish(
+        AgentEngineEvent(
+            type=AgentEngineEventType.ASSISTANT_MESSAGE,
+            engine=AgentEngineType.CODEX_CLI,
+            sequence=2,
+            text="final answer is rendered elsewhere",
+            payload={},
+        )
+    )
+
+    assert lines == ["codex_cli | tool started: pytest tests/unit/ -q"]
+    assert "must-not-render" not in "".join(lines)
+    assert "private" not in "".join(lines)
 
 
 def test_render_approval_request_includes_risk_and_action() -> None:

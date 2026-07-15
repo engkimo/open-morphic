@@ -37,6 +37,7 @@ from domain.ports.hook_executor import HookExecutorPort
 from domain.ports.hook_registry import HookRegistryPort
 from domain.ports.tool_executor import ToolExecutionRequest, ToolExecutionResult, ToolExecutorPort
 from domain.value_objects import RiskLevel
+from domain.value_objects.agent_engine import AgentEngineType
 
 
 def test_chat_event_requires_ordered_append_only_fields() -> None:
@@ -90,6 +91,31 @@ def test_chat_session_records_events_without_mutating_previous_state() -> None:
     assert event.sequence == 0
     assert event.session_id == "chat-1"
     assert updated.status is ChatSessionStatus.ACTIVE
+
+
+def test_chat_session_tracks_native_session_provenance_from_engine_event() -> None:
+    session = ChatSession.start(
+        session_id="chat-1",
+        permission_mode=PermissionMode.WORKSPACE_WRITE,
+    )
+    session, _ = session.record_event(
+        ChatEventType.CONTEXT_INDEXED,
+        {"workspace_root": "/repo"},
+    )
+
+    updated, _ = session.record_event(
+        ChatEventType.ENGINE_EVENT,
+        {
+            "engine": "codex_cli",
+            "session_id": "thread-1",
+            "type": "run_started",
+        },
+    )
+
+    native = updated.native_sessions[AgentEngineType.CODEX_CLI.value]
+    assert native.session_id == "thread-1"
+    assert native.workspace_root == "/repo"
+    assert native.permission_mode is PermissionMode.WORKSPACE_WRITE
 
 
 def test_chat_session_close_marks_terminal_state() -> None:

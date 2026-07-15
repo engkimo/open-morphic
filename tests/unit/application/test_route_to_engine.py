@@ -11,8 +11,15 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from application.use_cases.route_to_engine import RouteToEngineUseCase
+from domain.entities.chat_session import PermissionMode
 from domain.entities.cognitive import AgentAffinityScore, SharedTaskState
-from domain.ports.agent_engine import AgentEngineCapabilities, AgentEnginePort, AgentEngineResult
+from domain.ports.agent_engine import (
+    AgentEngineCapabilities,
+    AgentEngineEventSinkPort,
+    AgentEnginePort,
+    AgentEngineResult,
+    ResumableStreamingScopedAgentEnginePort,
+)
 from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.model_tier import TaskType
 
@@ -28,22 +35,30 @@ def _make_driver(
     cost_per_hour_usd: float = 0.0,
 ) -> AsyncMock:
     """Create a mock AgentEnginePort driver."""
-    driver = AsyncMock(spec=AgentEnginePort)
+    driver_spec = (
+        ResumableStreamingScopedAgentEnginePort
+        if engine_type is AgentEngineType.CODEX_CLI
+        else AgentEnginePort
+    )
+    driver = AsyncMock(spec=driver_spec)
     driver.is_available = AsyncMock(return_value=available)
     driver.get_capabilities.return_value = AgentEngineCapabilities(
         engine_type=engine_type,
         max_context_tokens=max_context_tokens,
         cost_per_hour_usd=cost_per_hour_usd,
     )
-    driver.run_task = AsyncMock(
-        return_value=AgentEngineResult(
-            engine=engine_type,
-            success=success,
-            output=output,
-            cost_usd=cost_usd,
-            error=error,
-        )
+    result = AgentEngineResult(
+        engine=engine_type,
+        success=success,
+        output=output,
+        cost_usd=cost_usd,
+        error=error,
     )
+    driver.run_task = AsyncMock(return_value=result)
+    if engine_type is AgentEngineType.CODEX_CLI:
+        driver.run_task_scoped = AsyncMock(return_value=result)
+        driver.run_task_scoped_stream = AsyncMock(return_value=result)
+        driver.resume_task_scoped_stream = AsyncMock(return_value=result)
     return driver
 
 
@@ -222,6 +237,103 @@ class TestExecuteHappy:
             model="custom-model",
             timeout_seconds=60.0,
         )
+
+    async def test_passes_workspace_and_permission_context_to_codex(self, drivers: dict) -> None:
+        uc = RouteToEngineUseCase(drivers)
+        await uc.execute(
+            "fix tests",
+            preferred_engine=AgentEngineType.CODEX_CLI,
+            workspace_root="/workspace",
+            permission_mode=PermissionMode.WORKSPACE_WRITE,
+        )
+
+        drivers[AgentEngineType.CODEX_CLI].run_task_scoped.assert_awaited_once_with(
+            task="fix tests",
+            model=None,
+            timeout_seconds=300.0,
+            workspace_root="/workspace",
+            permission_mode=PermissionMode.WORKSPACE_WRITE,
+        )
+
+    async def test_scoped_execution_skips_unsupported_engine(self) -> None:
+        claude = _make_driver(AgentEngineType.CLAUDE_CODE)
+        codex = _make_driver(AgentEngineType.CODEX_CLI)
+        uc = RouteToEngineUseCase(
+            {
+                AgentEngineType.CLAUDE_CODE: claude,
+                AgentEngineType.CODEX_CLI: codex,
+            }
+        )
+
+        result = await uc.execute(
+            "fix tests",
+            task_type=TaskType.COMPLEX_REASONING,
+            budget=5.0,
+            workspace_root="/workspace",
+            permission_mode=PermissionMode.WORKSPACE_WRITE,
+        )
+
+        assert result.success is True
+        assert result.engine is AgentEngineType.CODEX_CLI
+        claude.run_task.assert_not_awaited()
+        codex.run_task_scoped.assert_awaited_once()
+        assert result.fallback_attempts[0].skip_reason == "scoped_execution_unsupported"
+
+    async def test_streaming_scoped_execution_uses_streaming_driver_method(
+        self,
+        drivers: dict,
+    ) -> None:
+        sink = AsyncMock(spec=AgentEngineEventSinkPort)
+        uc = RouteToEngineUseCase(drivers)
+
+        result = await uc.execute(
+            "fix tests",
+            preferred_engine=AgentEngineType.CODEX_CLI,
+            workspace_root="/workspace",
+            permission_mode=PermissionMode.WORKSPACE_WRITE,
+            event_sink=sink,
+        )
+
+        assert result.success is True
+        drivers[AgentEngineType.CODEX_CLI].run_task_scoped_stream.assert_awaited_once_with(
+            task="fix tests",
+            workspace_root="/workspace",
+            permission_mode=PermissionMode.WORKSPACE_WRITE,
+            event_sink=sink,
+            model=None,
+            timeout_seconds=300.0,
+        )
+        drivers[AgentEngineType.CODEX_CLI].run_task_scoped.assert_not_awaited()
+
+    async def test_native_resume_uses_resumable_streaming_driver_method(
+        self,
+        drivers: dict,
+    ) -> None:
+        sink = AsyncMock(spec=AgentEngineEventSinkPort)
+        uc = RouteToEngineUseCase(drivers)
+
+        result = await uc.execute(
+            "continue",
+            preferred_engine=AgentEngineType.CODEX_CLI,
+            workspace_root="/workspace",
+            permission_mode=PermissionMode.WORKSPACE_WRITE,
+            event_sink=sink,
+            resume_session_id="thread-1",
+        )
+
+        assert result.success is True
+        drivers[
+            AgentEngineType.CODEX_CLI
+        ].resume_task_scoped_stream.assert_awaited_once_with(
+            task="continue",
+            resume_session_id="thread-1",
+            workspace_root="/workspace",
+            permission_mode=PermissionMode.WORKSPACE_WRITE,
+            event_sink=sink,
+            model=None,
+            timeout_seconds=300.0,
+        )
+        drivers[AgentEngineType.CODEX_CLI].run_task_scoped_stream.assert_not_awaited()
 
 
 # ═══════════════════════════════════════════════════════════════

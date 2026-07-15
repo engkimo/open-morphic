@@ -15,10 +15,19 @@ import time
 from dataclasses import dataclass
 
 from application.use_cases.run_council_debate import RunCouncilDebateUseCase
+from domain.entities.chat_session import PermissionMode
 from domain.entities.cognitive import AgentAction, Decision
 from domain.entities.council import SubtaskBrief
 from domain.ports.agent_affinity_repository import AgentAffinityRepository
-from domain.ports.agent_engine import AgentEngineCapabilities, AgentEnginePort, AgentEngineResult
+from domain.ports.agent_engine import (
+    AgentEngineCapabilities,
+    AgentEngineEventSinkPort,
+    AgentEnginePort,
+    AgentEngineResult,
+    ResumableStreamingScopedAgentEnginePort,
+    ScopedAgentEnginePort,
+    StreamingScopedAgentEnginePort,
+)
 from domain.ports.context_adapter import ContextAdapterPort
 from domain.ports.engine_cost_recorder import EngineCostRecorderPort
 from domain.ports.shared_task_state_repository import SharedTaskStateRepository
@@ -108,6 +117,10 @@ class RouteToEngineUseCase:
         timeout_seconds: float = 300.0,
         context: str | None = None,
         task_id: str | None = None,
+        workspace_root: str | None = None,
+        permission_mode: PermissionMode | None = None,
+        event_sink: AgentEngineEventSinkPort | None = None,
+        resume_session_id: str | None = None,
     ) -> AgentEngineResult:
         """Route to best available engine and execute.
 
@@ -122,6 +135,13 @@ class RouteToEngineUseCase:
         BUG-003: Every attempt is recorded as a FallbackAttempt for transparency.
         BUG-002: Successful engine costs are recorded via CostTracker.
         """
+        if resume_session_id is not None and (
+            event_sink is None or workspace_root is None or permission_mode is None
+        ):
+            raise ValueError(
+                "native resume requires streaming, workspace, and permission context"
+            )
+
         # Extract topic for affinity lookup
         topic = TopicExtractor.extract(task)
 
@@ -175,11 +195,74 @@ class RouteToEngineUseCase:
 
             start = time.monotonic()
             try:
-                result = await driver.run_task(
-                    task=effective_task,
-                    model=model,
-                    timeout_seconds=timeout_seconds,
-                )
+                if workspace_root is not None or permission_mode is not None:
+                    if (
+                        not isinstance(driver, ScopedAgentEnginePort)
+                        or workspace_root is None
+                        or permission_mode is None
+                    ):
+                        attempts.append(
+                            FallbackAttempt(
+                                engine=engine_type.value,
+                                attempted=False,
+                                skip_reason="scoped_execution_unsupported",
+                            )
+                        )
+                        continue
+                    if event_sink is not None:
+                        if resume_session_id is not None:
+                            if not isinstance(
+                                driver, ResumableStreamingScopedAgentEnginePort
+                            ):
+                                attempts.append(
+                                    FallbackAttempt(
+                                        engine=engine_type.value,
+                                        attempted=False,
+                                        skip_reason="native_resume_unsupported",
+                                    )
+                                )
+                                continue
+                            result = await driver.resume_task_scoped_stream(
+                                task=effective_task,
+                                resume_session_id=resume_session_id,
+                                workspace_root=workspace_root,
+                                permission_mode=permission_mode,
+                                event_sink=event_sink,
+                                model=model,
+                                timeout_seconds=timeout_seconds,
+                            )
+                        elif not isinstance(driver, StreamingScopedAgentEnginePort):
+                            attempts.append(
+                                FallbackAttempt(
+                                    engine=engine_type.value,
+                                    attempted=False,
+                                    skip_reason="streaming_scoped_execution_unsupported",
+                                )
+                            )
+                            continue
+                        else:
+                            result = await driver.run_task_scoped_stream(
+                                task=effective_task,
+                                workspace_root=workspace_root,
+                                permission_mode=permission_mode,
+                                event_sink=event_sink,
+                                model=model,
+                                timeout_seconds=timeout_seconds,
+                            )
+                    else:
+                        result = await driver.run_task_scoped(
+                            task=effective_task,
+                            workspace_root=workspace_root,
+                            permission_mode=permission_mode,
+                            model=model,
+                            timeout_seconds=timeout_seconds,
+                        )
+                else:
+                    result = await driver.run_task(
+                        task=effective_task,
+                        model=model,
+                        timeout_seconds=timeout_seconds,
+                    )
             except Exception as exc:
                 elapsed = time.monotonic() - start
                 logger.warning(

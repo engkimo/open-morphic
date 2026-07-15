@@ -100,6 +100,15 @@ Acceptance criteria:
 - **FR-13:** The CLI shall support permission modes compatible with Morphic policy: `read-only`, `workspace-write`, `confirm-destructive`, `danger-full-access`.
 - **FR-14:** The CLI shall support structured non-interactive output for diagnostics: `morphic chat --doctor --json` or equivalent.
 - **FR-15:** The system shall resume the latest session with `morphic chat --resume latest`.
+- **FR-16:** The CLI shall offer an explicit single-engine direct route that invokes `RouteToEngineUseCase` exactly once per user turn instead of forcing planner/critic/leader council execution.
+- **FR-17:** The direct route shall accept an optional preferred engine id and shall surface route failure or empty output instead of silently returning a deterministic local response as success.
+- **FR-18:** Direct external-engine execution shall propagate workspace root and Morphic permission mode to a native adapter that can preserve them. Codex direct mode maps `read-only`, `workspace-write`, and `danger-full-access` to explicit Codex sandboxes and rejects `confirm-destructive`, because non-interactive execution cannot surface a new approval prompt.
+- **FR-19:** Native JSONL engine output shall be normalized into provider-independent engine events while retaining the raw provider payload for audit and forward compatibility.
+- **FR-20:** A direct native run shall persist each normalized engine event as an independent append-only session event, in provider order and before the corresponding council argument and assistant response.
+- **FR-21:** Workspace root and permission mode shall be passed only through adapters that explicitly implement scoped execution; routing shall skip unsupported adapters rather than silently discarding either control.
+- **FR-22:** A streaming native adapter shall publish normalized events and append them to the session ledger before the native process exits; final buffered metadata shall not duplicate events already persisted through the stream.
+- **FR-23:** The terminal shall render a concise allowlist of live native lifecycle, tool, file, and plan events after durable append. It shall not render raw provider payloads, hidden reasoning, or duplicate the final assistant message as progress.
+- **FR-24:** Native session resume shall bind the provider session id to its engine, original workspace root, and permission mode. Resume shall use an explicit resumable adapter capability and shall fail closed when any safety provenance differs or is absent.
 
 ## Non-Functional Requirements
 
@@ -123,6 +132,8 @@ Acceptance criteria:
 | Framework imports in new domain files | 0 |
 | Existing unit suite regression | 0 failures |
 | User-visible first progress after submit | <= 500 ms in local dev |
+| Direct-route engine calls per turn | exactly 1 |
+| Direct-route failures hidden by local fallback | 0 |
 
 ## Relationship to Existing Specs
 
@@ -138,4 +149,3 @@ Acceptance criteria:
 - [x] LAEE risk classification declared.
 - [x] Unit + integration test strategy defined.
 - [x] Ollama path included.
-

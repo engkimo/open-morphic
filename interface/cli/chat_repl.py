@@ -20,6 +20,7 @@ from domain.entities.chat_session import ChatSession, PermissionMode
 from domain.entities.execution import Action
 from domain.entities.hook import HookType
 from domain.entities.workspace_context import ContextIndex
+from domain.ports.agent_engine import AgentEngineEventSinkPort
 from domain.ports.council_runtime import CouncilRuntimePort
 from domain.ports.engine_registry import EngineRegistryPort
 from domain.ports.hook_executor import HookExecutorPort
@@ -33,6 +34,7 @@ from infrastructure.hooks.noop_hook_executor import NoopHookExecutor
 from infrastructure.hooks.workspace_hook_registry import WorkspaceHookRegistry
 from infrastructure.tools.noop_tool_executor import NoopToolExecutor
 from interface.cli.formatters import console
+from interface.cli.native_event_progress import NativeEventProgressRenderer
 from interface.cli.slash_commands import parse_slash_command
 
 
@@ -47,6 +49,7 @@ class ChatRepl:
         engine_registry: EngineRegistryPort | None = None,
         hook_executor_factory: Callable[[Path], HookExecutorPort] | None = None,
         tool_executor_factory: Callable[[Path], ToolExecutorPort] | None = None,
+        engine_event_observer: AgentEngineEventSinkPort | None = None,
     ) -> None:
         self._workspace_root = workspace_root
         self._session_store = JsonlChatSessionStore(workspace_root=workspace_root)
@@ -56,6 +59,9 @@ class ChatRepl:
         self._hook_executor_factory = hook_executor_factory or (lambda _root: NoopHookExecutor())
         self._tool_executor_factory = tool_executor_factory or (lambda _root: NoopToolExecutor())
         self._risk_assessor = RiskAssessor()
+        self._engine_event_observer = (
+            engine_event_observer or NativeEventProgressRenderer()
+        )
 
     async def run(
         self,
@@ -100,6 +106,7 @@ class ChatRepl:
             result = await SendChatMessageUseCase(
                 session_store=self._session_store,
                 council_runtime=self._council_runtime,
+                engine_event_observer=self._engine_event_observer,
             ).execute(session=session, context=context, message=line)
             session = result.session
             console.print(result.events[-1].payload["text"])
@@ -121,6 +128,7 @@ class ChatRepl:
         result = await SendChatMessageUseCase(
             session_store=self._session_store,
             council_runtime=self._council_runtime,
+            engine_event_observer=self._engine_event_observer,
         ).execute(session=session, context=context, message=goal)
         output = str(result.events[-1].payload["text"])
         console.print(output)
