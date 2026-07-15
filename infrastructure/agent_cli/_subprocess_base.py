@@ -56,6 +56,9 @@ class SubprocessMixin:
                 stderr=stderr_bytes.decode(errors="replace"),
                 returncode=proc.returncode or 0,
             )
+        except asyncio.CancelledError:
+            await self._terminate_process(proc)
+            raise
         except TimeoutError:
             proc.kill()
             await proc.communicate()
@@ -104,6 +107,9 @@ class SubprocessMixin:
                 stderr=stderr,
                 returncode=proc.returncode or 0,
             )
+        except asyncio.CancelledError:
+            await self._terminate_process(proc)
+            raise
         except TimeoutError:
             proc.kill()
             await proc.communicate()
@@ -116,6 +122,21 @@ class SubprocessMixin:
             proc.kill()
             await proc.communicate()
             raise
+
+    async def _terminate_process(
+        self,
+        proc: asyncio.subprocess.Process,
+        grace_seconds: float = 2.0,
+    ) -> None:
+        """Stop a cancelled child without swallowing caller cancellation."""
+        if proc.returncode is not None:
+            return
+        proc.terminate()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=grace_seconds)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
 
     @staticmethod
     def _check_cli_exists(binary: str) -> bool:

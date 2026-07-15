@@ -140,6 +140,13 @@ Resume is a separate adapter capability rather than an assumption attached to al
 streaming engines. The next gap is interactive steering/cancellation, followed by a
 Claude Code adapter implementing the same scoped event and continuity contracts.
 
+## Phase 32 update
+
+Native process cancellation is now resource-safe. Both buffered and streaming subprocess
+paths terminate the child when their asyncio task is cancelled, escalate to kill after a
+two-second grace period, and re-raise the original cancellation. This closes the orphan
+process risk before adding a user-facing `/cancel` or steering control channel.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:
