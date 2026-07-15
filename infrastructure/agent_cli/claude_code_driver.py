@@ -8,15 +8,17 @@ import time
 from domain.entities.chat_session import PermissionMode
 from domain.ports.agent_engine import (
     AgentEngineCapabilities,
+    AgentEngineEventSinkPort,
     AgentEngineResult,
-    ScopedAgentEnginePort,
+    ResumableStreamingScopedAgentEnginePort,
 )
 from domain.services.engine_cost_calculator import EngineCostCalculator
 from domain.value_objects.agent_engine import AgentEngineType
 from infrastructure.agent_cli._subprocess_base import SubprocessMixin
+from infrastructure.agent_cli.claude_jsonl import ClaudeJsonlEventDecoder, parse_claude_output
 
 
-class ClaudeCodeDriver(SubprocessMixin, ScopedAgentEnginePort):
+class ClaudeCodeDriver(SubprocessMixin, ResumableStreamingScopedAgentEnginePort):
     """Agent engine backed by Claude Code CLI (headless).
 
     Executes `claude -p <task> --output-format json` and parses structured output.
@@ -60,6 +62,46 @@ class ClaudeCodeDriver(SubprocessMixin, ScopedAgentEnginePort):
             permission_mode=permission_mode,
         )
 
+    async def run_task_scoped_stream(
+        self,
+        task: str,
+        *,
+        workspace_root: str,
+        permission_mode: PermissionMode,
+        event_sink: AgentEngineEventSinkPort,
+        model: str | None = None,
+        timeout_seconds: float = 300.0,
+    ) -> AgentEngineResult:
+        return await self._run_task(
+            task=task,
+            model=model,
+            timeout_seconds=timeout_seconds,
+            workspace_root=workspace_root,
+            permission_mode=permission_mode,
+            event_sink=event_sink,
+        )
+
+    async def resume_task_scoped_stream(
+        self,
+        task: str,
+        *,
+        resume_session_id: str,
+        workspace_root: str,
+        permission_mode: PermissionMode,
+        event_sink: AgentEngineEventSinkPort,
+        model: str | None = None,
+        timeout_seconds: float = 300.0,
+    ) -> AgentEngineResult:
+        return await self._run_task(
+            task=task,
+            model=model,
+            timeout_seconds=timeout_seconds,
+            workspace_root=workspace_root,
+            permission_mode=permission_mode,
+            event_sink=event_sink,
+            resume_session_id=resume_session_id,
+        )
+
     async def _run_task(
         self,
         *,
@@ -68,6 +110,8 @@ class ClaudeCodeDriver(SubprocessMixin, ScopedAgentEnginePort):
         timeout_seconds: float,
         workspace_root: str | None,
         permission_mode: PermissionMode,
+        event_sink: AgentEngineEventSinkPort | None = None,
+        resume_session_id: str | None = None,
     ) -> AgentEngineResult:
         if not self._enabled:
             return AgentEngineResult(
@@ -94,7 +138,7 @@ class ClaudeCodeDriver(SubprocessMixin, ScopedAgentEnginePort):
             "-p",
             task,
             "--output-format",
-            "json",
+            "stream-json" if event_sink is not None else "json",
             "--max-turns",
             "10",
             "--permission-mode",
@@ -102,16 +146,52 @@ class ClaudeCodeDriver(SubprocessMixin, ScopedAgentEnginePort):
         ]
         if permission_mode is PermissionMode.DANGER_FULL_ACCESS:
             cmd.append("--dangerously-skip-permissions")
+        if resume_session_id:
+            cmd.extend(["--resume", resume_session_id])
         if model:
             cmd.extend(["--model", model])
 
         start = time.monotonic()
-        cli_result = await self._run_cli(
-            cmd,
-            timeout=timeout_seconds,
-            cwd=workspace_root,
-        )
+        if event_sink is None:
+            cli_result = await self._run_cli(
+                cmd, timeout=timeout_seconds, cwd=workspace_root
+            )
+        else:
+            decoder = ClaudeJsonlEventDecoder()
+
+            async def publish_line(line: str) -> None:
+                for event in decoder.decode(line):
+                    await event_sink.publish(event)
+
+            cli_result = await self._run_cli_streaming(
+                cmd,
+                timeout=timeout_seconds,
+                on_stdout_line=publish_line,
+                cwd=workspace_root,
+            )
         duration = time.monotonic() - start
+
+        if event_sink is not None:
+            parsed = parse_claude_output(cli_result.stdout)
+            metadata = {
+                "events": [event.model_dump(mode="json") for event in parsed.events]
+            }
+            if parsed.session_id:
+                metadata["session_id"] = parsed.session_id
+            if parsed.usage:
+                metadata["usage"] = parsed.usage
+            if parsed.parse_errors:
+                metadata["parse_errors"] = parsed.parse_errors
+            return AgentEngineResult(
+                engine=AgentEngineType.CLAUDE_CODE,
+                success=cli_result.returncode == 0 and parsed.error is None,
+                output=parsed.output,
+                error=parsed.error or (cli_result.stderr if cli_result.returncode else None),
+                cost_usd=parsed.cost_usd,
+                duration_seconds=duration,
+                model_used=parsed.model or model,
+                metadata=metadata,
+            )
 
         if cli_result.returncode != 0:
             return AgentEngineResult(

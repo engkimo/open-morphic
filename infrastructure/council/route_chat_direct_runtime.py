@@ -47,10 +47,13 @@ class RouteChatDirectRuntime(StreamingCouncilRuntimePort):
         timeout_seconds: float = 300.0,
     ) -> None:
         self._route_to_engine = route_to_engine
-        if preferred_engine is not AgentEngineType.CODEX_CLI:
+        if preferred_engine not in {
+            AgentEngineType.CODEX_CLI,
+            AgentEngineType.CLAUDE_CODE,
+        }:
             raise ValueError(
-                "direct route currently requires codex_cli until other native "
-                "engine adapters map workspace and permission controls"
+                "direct route requires an explicit streaming native engine: "
+                "codex_cli or claude_code"
             )
         self._preferred_engine = preferred_engine
         self._budget = budget
@@ -93,7 +96,7 @@ class RouteChatDirectRuntime(StreamingCouncilRuntimePort):
     ) -> tuple[list[CouncilTurn], CouncilDecision]:
         if session.permission_mode is PermissionMode.CONFIRM_DESTRUCTIVE:
             raise PermissionError(
-                "Codex non-interactive direct route cannot preserve "
+                "Non-interactive direct route cannot preserve "
                 "confirm-destructive approvals"
             )
 

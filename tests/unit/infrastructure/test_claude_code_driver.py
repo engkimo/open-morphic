@@ -7,11 +7,20 @@ from unittest.mock import patch
 
 import pytest
 
+from domain.entities.agent_engine_event import AgentEngineEvent, AgentEngineEventType
 from domain.entities.chat_session import PermissionMode
 from domain.ports.agent_engine import AgentEngineCapabilities, AgentEngineResult
 from domain.value_objects.agent_engine import AgentEngineType
 from infrastructure.agent_cli._subprocess_base import CLIResult
 from infrastructure.agent_cli.claude_code_driver import ClaudeCodeDriver
+
+
+class _CollectingEventSink:
+    def __init__(self) -> None:
+        self.events: list[AgentEngineEvent] = []
+
+    async def publish(self, event: AgentEngineEvent) -> None:
+        self.events.append(event)
 
 
 @pytest.fixture()
@@ -63,6 +72,104 @@ class TestIsAvailable:
 
 
 class TestRunTask:
+    @pytest.mark.asyncio
+    async def test_scoped_stream_normalizes_claude_jsonl(self, driver):
+        lines = [
+            json.dumps(
+                {
+                    "type": "system",
+                    "subtype": "init",
+                    "session_id": "claude-session-1",
+                    "model": "claude-sonnet-4-6",
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "session_id": "claude-session-1",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "tool-1",
+                                "name": "Bash",
+                                "input": {"command": "pytest -q"},
+                            }
+                        ]
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "user",
+                    "session_id": "claude-session-1",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "tool-1",
+                                "content": "3517 passed",
+                            }
+                        ]
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "result",
+                    "subtype": "success",
+                    "session_id": "claude-session-1",
+                    "result": "All tests pass.",
+                    "total_cost_usd": 0.02,
+                }
+            ),
+        ]
+
+        async def fake_stream(cmd, *, timeout, on_stdout_line, env=None, cwd=None):
+            del cmd, timeout, env, cwd
+            for line in lines:
+                await on_stdout_line(line)
+            return CLIResult(stdout="\n".join(lines), stderr="", returncode=0)
+
+        sink = _CollectingEventSink()
+        with patch.object(driver, "_run_cli_streaming", side_effect=fake_stream):
+            result = await driver.run_task_scoped_stream(
+                "Fix tests",
+                workspace_root="/workspace",
+                permission_mode=PermissionMode.WORKSPACE_WRITE,
+                event_sink=sink,
+            )
+
+        assert result.output == "All tests pass."
+        assert result.metadata["session_id"] == "claude-session-1"
+        assert result.cost_usd == 0.02
+        assert [event.type for event in sink.events] == [
+            AgentEngineEventType.RUN_STARTED,
+            AgentEngineEventType.TOOL_STARTED,
+            AgentEngineEventType.TOOL_COMPLETED,
+            AgentEngineEventType.RUN_COMPLETED,
+        ]
+
+    @pytest.mark.asyncio
+    async def test_resume_stream_uses_explicit_session_id(self, driver):
+        sink = _CollectingEventSink()
+        with patch.object(
+            driver,
+            "_run_cli_streaming",
+            return_value=CLIResult(stdout="{}", stderr="", returncode=0),
+        ) as mock_run:
+            await driver.resume_task_scoped_stream(
+                "Continue",
+                resume_session_id="claude-session-1",
+                workspace_root="/workspace",
+                permission_mode=PermissionMode.WORKSPACE_WRITE,
+                event_sink=sink,
+            )
+
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("--resume") + 1] == "claude-session-1"
+        assert cmd[cmd.index("--output-format") + 1] == "stream-json"
+        assert mock_run.call_args.kwargs["cwd"] == "/workspace"
     @pytest.mark.asyncio
     async def test_valid_json_output(self, driver):
         json_output = json.dumps({"result": "Hello world", "session_id": "sess-123"})

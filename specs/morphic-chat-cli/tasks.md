@@ -310,10 +310,19 @@
 - [x] T3107 Refuse resume when workspace or permission provenance does not match.
 - [x] T3108 Reject native resume requests missing streaming/scope context.
 
+## Phase 34 - Claude Native Streaming and Resume
+
+- [x] T3401 Normalize Claude system init, assistant, user, tool, and result JSONL.
+- [x] T3402 Retain raw Claude payloads and explicit session ids in native events.
+- [x] T3403 Implement scoped Claude stream-json delivery through the shared event sink.
+- [x] T3404 Resume an explicit Claude session id under stored workspace/permission scope.
+- [x] T3405 Preserve Claude-reported final output, model, usage, and total cost.
+- [x] T3406 Allow `--engine claude_code` in route-direct Chat CLI mode.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
-- [ ] D002 Claude Code adapter.
+- [x] D002 Claude Code adapter.
 - [ ] D003 Gemini CLI adapter.
 - [x] D004 Codex CLI adapter.
 - [ ] D005 OpenHands adapter.

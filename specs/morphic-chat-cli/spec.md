@@ -109,6 +109,7 @@ Acceptance criteria:
 - **FR-22:** A streaming native adapter shall publish normalized events and append them to the session ledger before the native process exits; final buffered metadata shall not duplicate events already persisted through the stream.
 - **FR-23:** The terminal shall render a concise allowlist of live native lifecycle, tool, file, and plan events after durable append. It shall not render raw provider payloads, hidden reasoning, or duplicate the final assistant message as progress.
 - **FR-24:** Native session resume shall bind the provider session id to its engine, original workspace root, and permission mode. Resume shall use an explicit resumable adapter capability and shall fail closed when any safety provenance differs or is absent.
+- **FR-25:** Claude Code direct mode shall preserve its native project harness while normalizing `stream-json` init, assistant, tool use/result, and final result messages into the same Morphic event and scoped-resume contracts as Codex.
 
 ## Non-Functional Requirements
 

@@ -325,10 +325,12 @@ def _chat_council_runtime(
         leader_engine=leader_engine,
     )
     if route_direct:
-        if preferred_direct_engine is not AgentEngineType.CODEX_CLI:
+        if preferred_direct_engine not in {
+            AgentEngineType.CODEX_CLI,
+            AgentEngineType.CLAUDE_CODE,
+        }:
             raise ValueError(
-                "--route-direct currently requires --engine codex_cli until "
-                "other native engine permission mappings are implemented"
+                "--route-direct requires --engine codex_cli or claude_code"
             )
         try:
             container = _get_container()

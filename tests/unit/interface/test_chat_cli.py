@@ -634,7 +634,7 @@ def test_code_rejects_invalid_direct_engine() -> None:
         assert "missing_engine" in result.output
 
 
-def test_code_direct_route_requires_codex_engine_until_other_mappings_exist() -> None:
+def test_code_direct_route_requires_supported_explicit_engine() -> None:
     with runner.isolated_filesystem():
         result = runner.invoke(
             app,
@@ -648,7 +648,7 @@ def test_code_direct_route_requires_codex_engine_until_other_mappings_exist() ->
         )
 
         assert result.exit_code == 2
-        assert "requires --engine codex_cli" in result.output
+        assert "requires --engine codex_cli or claude_code" in result.output
 
 
 def test_code_defaults_to_local_council_mode(monkeypatch: pytest.MonkeyPatch) -> None:

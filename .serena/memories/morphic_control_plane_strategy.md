@@ -159,6 +159,20 @@ CLAUDE.md discovery, skills, hooks, MCP, plugins, and native tool policy remain 
 The next slice is `stream-json` normalization and explicit session resume; only after
 that should Chat CLI direct mode allow `claude_code` alongside `codex_cli`.
 
+## Phase 34 update
+
+Claude Code now implements the same normalized streaming and provenance-checked resume
+contracts as Codex. Morphic maps Claude system init, assistant text/tool use, user tool
+results, and final results into the shared event vocabulary while retaining raw payloads.
+Explicit Claude session ids are resumed only inside their original workspace and
+permission scope.
+
+Chat CLI direct mode now supports both `codex_cli` and `claude_code`. This is the first
+working proof of the product thesis: two strong native harnesses keep their provider
+features while Morphic owns a common durable ledger, progress view, safety boundary,
+cost/result envelope, and session continuity. Next comes streaming input/steering and a
+same-task comparative benchmark.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

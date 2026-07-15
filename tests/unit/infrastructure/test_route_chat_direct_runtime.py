@@ -294,7 +294,7 @@ async def test_direct_runtime_accepts_workspace_write_for_codex() -> None:
     assert route.calls[0]["permission_mode"] is PermissionMode.WORKSPACE_WRITE
 
 
-async def test_direct_runtime_requires_codex_preference_until_other_adapters_map_permissions(
+async def test_direct_runtime_requires_supported_explicit_native_preference(
 ) -> None:
     route = _FakeRouteToEngine(
         AgentEngineResult(
@@ -306,8 +306,8 @@ async def test_direct_runtime_requires_codex_preference_until_other_adapters_map
 
     with pytest.raises(ValueError, match="codex_cli"):
         RouteChatDirectRuntime(route)
-    with pytest.raises(ValueError, match="codex_cli"):
-        RouteChatDirectRuntime(
-            route,
-            preferred_engine=AgentEngineType.CLAUDE_CODE,
-        )
+    runtime = RouteChatDirectRuntime(
+        route,
+        preferred_engine=AgentEngineType.CLAUDE_CODE,
+    )
+    assert runtime._preferred_engine is AgentEngineType.CLAUDE_CODE

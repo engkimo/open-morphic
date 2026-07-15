@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-07-14
-> Latest work: Morphic Chat CLI Phase 33 scoped Claude Code adapter
+> Latest work: Morphic Chat CLI Phase 34 Claude native streaming and resume
 
 ## Latest Session Notes (2026-06-26)
 
@@ -231,6 +231,12 @@ Phase 33 implemented:
 - Removed the user-only setting source and hard-coded tool allowlist, allowing Claude Code to preserve native project/local settings, CLAUDE.md, skills, hooks, MCP servers, plugins, and tool policy.
 - Claude streaming JSONL normalization and native resume remain the next slice; direct Chat CLI mode remains Codex-only until those contracts are implemented.
 
+Phase 34 implemented:
+- Added Claude stream-json normalization for init, assistant text, tool use, tool result, success, and failure records while retaining raw payloads.
+- `ClaudeCodeDriver` now implements the same streaming scoped and explicit resume capabilities as Codex.
+- Claude session id, output, model, usage, total cost, and malformed-line diagnostics are retained in normalized results.
+- Chat CLI direct mode now accepts explicit `--engine claude_code` as well as `codex_cli`; both use the same ledger, progress, provenance, and fail-closed resume path.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -240,7 +246,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Normalize Claude `stream-json` events and implement scoped streaming/resume, then reopen direct Chat CLI engine selection for Claude Code.
+- Add streaming input/steering and an explicit cancellation control channel, then benchmark Codex and Claude direct runs on the same repository tasks.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`
