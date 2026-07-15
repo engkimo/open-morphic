@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from application.use_cases.discover_workspace_context import (
@@ -185,6 +187,30 @@ class FakeStreamingNativeEventRuntime(StreamingCouncilRuntimePort):
         )
 
 
+class CancellingStreamingNativeEventRuntime(StreamingCouncilRuntimePort):
+    async def deliberate(self, session, context, user_message):
+        raise AssertionError("streaming path expected")
+
+    async def deliberate_stream(
+        self,
+        session,
+        context,
+        user_message,
+        event_sink: AgentEngineEventSinkPort,
+    ) -> tuple[list[CouncilTurn], CouncilDecision]:
+        del session, context, user_message
+        await event_sink.publish(
+            AgentEngineEvent(
+                type=AgentEngineEventType.RUN_STARTED,
+                engine=AgentEngineType.CODEX_CLI,
+                sequence=0,
+                session_id="thread-cancelled",
+                payload={"type": "thread.started"},
+            )
+        )
+        raise asyncio.CancelledError
+
+
 class CollectingEngineEventObserver(AgentEngineEventSinkPort):
     def __init__(self) -> None:
         self.events: list[AgentEngineEvent] = []
@@ -365,6 +391,32 @@ async def test_send_chat_message_persists_stream_events_live_without_duplicates(
     ]
     assert sum(event.type is ChatEventType.ENGINE_EVENT for event in store.appended) == 1
     assert [event.type for event in observer.events] == [AgentEngineEventType.PROGRESS]
+
+
+@pytest.mark.asyncio
+async def test_send_chat_message_records_cancelled_stream_turn_and_propagates() -> None:
+    store = InMemoryChatSessionStore()
+    session = (
+        await StartChatSessionUseCase(session_store=store).execute(
+            goal="Fix tests",
+            permission_mode=PermissionMode.WORKSPACE_WRITE,
+            session_id="chat-cancelled-1",
+        )
+    ).session
+    context = await FakeContextDiscovery().discover("/repo")
+
+    with pytest.raises(asyncio.CancelledError):
+        await SendChatMessageUseCase(
+            session_store=store,
+            council_runtime=CancellingStreamingNativeEventRuntime(),
+        ).execute(session=session, context=context, message="fix tests")
+
+    assert [event.type for event in store.appended[-3:]] == [
+        ChatEventType.USER_MESSAGE,
+        ChatEventType.ENGINE_EVENT,
+        ChatEventType.TURN_CANCELLED,
+    ]
+    assert store.appended[-1].payload == {"reason": "caller_cancelled"}
 
 
 @pytest.mark.asyncio

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 
@@ -88,12 +89,20 @@ class SendChatMessageUseCase:
                 session_store=self._session_store,
                 observer=self._engine_event_observer,
             )
-            turns, decision = await self._council_runtime.deliberate_stream(
-                current,
-                context,
-                message,
-                sink,
-            )
+            try:
+                turns, decision = await self._council_runtime.deliberate_stream(
+                    current,
+                    context,
+                    message,
+                    sink,
+                )
+            except asyncio.CancelledError:
+                _, cancelled_event = sink.session.record_event(
+                    ChatEventType.TURN_CANCELLED,
+                    {"reason": "caller_cancelled"},
+                )
+                await asyncio.shield(self._session_store.append_event(cancelled_event))
+                raise
             current = sink.session
             persisted_count = len(events)
         else:

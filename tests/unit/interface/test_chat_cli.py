@@ -310,6 +310,23 @@ def test_chat_repl_status_and_quit_creates_session_ledger() -> None:
         assert len(ledgers) == 1
 
 
+def test_chat_keyboard_interrupt_exits_with_cancelled_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from interface.cli import chat_command
+
+    def interrupt(coro: object) -> None:
+        coro.close()  # type: ignore[attr-defined]
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(chat_command, "_run", interrupt)
+
+    result = runner.invoke(app, ["chat"])
+
+    assert result.exit_code == 130
+    assert "Cancelled." in result.output
+
+
 def test_chat_permission_mode_option_starts_read_only_session() -> None:
     with runner.isolated_filesystem():
         result = runner.invoke(
@@ -518,6 +535,23 @@ def test_code_one_shot_runs_goal_without_repl() -> None:
         assert "Plan next step for: implement Phase 4" in result.output
         ledgers = list(Path(".morphic/sessions").glob("*.jsonl"))
         assert len(ledgers) == 1
+
+
+def test_code_keyboard_interrupt_exits_with_cancelled_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from interface.cli import chat_command
+
+    def interrupt(coro: object) -> None:
+        coro.close()  # type: ignore[attr-defined]
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(chat_command, "_run", interrupt)
+
+    result = runner.invoke(app, ["code", "fix tests"])
+
+    assert result.exit_code == 130
+    assert "Cancelled." in result.output
 
 
 def test_code_permission_mode_option_starts_workspace_write_session() -> None:

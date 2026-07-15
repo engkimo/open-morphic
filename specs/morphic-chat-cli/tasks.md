@@ -327,6 +327,14 @@
 - [x] T3504 Prevent cross-provider fallback with a provider-native session id.
 - [x] T3505 Record resume-engine mismatch attempts for routing transparency.
 
+## Phase 36 - Durable Turn Cancellation
+
+- [x] T3601 Add RED tests for interrupted streaming-turn persistence.
+- [x] T3602 Append `turn_cancelled` after all native events delivered before cancellation.
+- [x] T3603 Re-raise the original asyncio cancellation after the ledger append.
+- [x] T3604 Report Ctrl-C consistently for chat and code with exit code 130.
+- [x] T3605 Verify cancellation behavior without invoking a real native CLI.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

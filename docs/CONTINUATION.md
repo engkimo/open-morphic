@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
-> Last updated: 2026-07-14
-> Latest work: Morphic Chat CLI Phase 35 provider-pinned native resume
+> Last updated: 2026-07-15
+> Latest work: Morphic Chat CLI Phase 36 durable turn cancellation
 
 ## Latest Session Notes (2026-06-26)
 
@@ -243,6 +243,13 @@ Phase 35 implemented:
 - Every non-owner engine in the fallback chain is skipped before availability checks or execution and recorded as `resume_engine_mismatch`.
 - Provider-native session ids can no longer cross from Claude to Codex or Codex to Claude during fallback.
 
+Phase 36 implemented:
+- Streaming turn cancellation now appends `turn_cancelled` after the user message and any native events already delivered to the ledger.
+- The original `CancelledError` still propagates after the durable append, allowing the native subprocess cleanup path to retain its cancellation semantics.
+- `morphic chat` and `morphic code` print `Cancelled.` and exit 130 on Ctrl-C instead of silently terminating.
+- A cancelled turn never emits council decision or assistant success events.
+- Verification: 3,523 unit tests passed; repository-wide Ruff clean.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -252,7 +259,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add streaming input/steering with an explicit cancellation control channel, now that provider identity and subprocess cleanup are both fail-closed.
+- Add an explicit in-process steering/cancellation control channel so a running turn can be interrupted without terminating the whole Morphic CLI process.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

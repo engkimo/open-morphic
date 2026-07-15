@@ -170,6 +170,9 @@ def chat_cmd(
     except (PermissionError, RuntimeError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from None
+    except KeyboardInterrupt:
+        typer.echo("Cancelled.", err=True)
+        raise typer.Exit(code=130) from None
 
 
 def code_cmd(
@@ -211,6 +214,9 @@ def code_cmd(
     except (PermissionError, RuntimeError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from None
+    except KeyboardInterrupt:
+        typer.echo("Cancelled.", err=True)
+        raise typer.Exit(code=130) from None
 
 
 def _chat_engine_registry() -> EngineRegistryPort:

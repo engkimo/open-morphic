@@ -182,6 +182,21 @@ session ids can never be offered to Codex, and Codex thread ids can never be off
 Claude. This closes a subtle but critical cross-provider continuity failure introduced
 when the second resumable native adapter came online.
 
+## Phase 36 update
+
+Streaming cancellation is now visible in Morphic's durable control plane, not only in
+subprocess cleanup. The send-message use case appends a `turn_cancelled` event after the
+user message and every native event received before interruption, then re-raises the
+original cancellation. It does not manufacture a council decision or assistant success
+for incomplete work.
+
+Both terminal entry points now report Ctrl-C as `Cancelled.` with exit code 130. Together
+with Phase 32 child-process termination, cancellation now has end-to-end semantics from
+the user's terminal through the application ledger to the provider process. The next
+step is an explicit steering/cancellation control channel that can stop a running turn
+without exiting the Morphic process. Phase 36 passed all 3,523 unit tests with
+repository-wide Ruff clean.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

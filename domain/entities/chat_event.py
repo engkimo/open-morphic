@@ -22,6 +22,7 @@ class ChatEventType(str, Enum):
     COUNCIL_ARGUMENT = "council_argument"
     COUNCIL_DECISION = "council_decision"
     ENGINE_EVENT = "engine_event"
+    TURN_CANCELLED = "turn_cancelled"
     TOOL_CALL_REQUESTED = "tool_call_requested"
     APPROVAL_REQUESTED = "approval_requested"
     APPROVAL_RESOLVED = "approval_resolved"
