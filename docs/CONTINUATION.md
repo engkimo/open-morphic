@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
-> Last updated: 2026-07-15
-> Latest work: Morphic Chat CLI Phase 36 durable turn cancellation
+> Last updated: 2026-07-16
+> Latest work: Morphic Chat CLI Phase 37 active-turn control
 
 ## Latest Session Notes (2026-06-26)
 
@@ -250,6 +250,15 @@ Phase 36 implemented:
 - A cancelled turn never emits council decision or assistant success events.
 - Verification: 3,523 unit tests passed; repository-wide Ruff clean.
 
+Phase 37 implemented:
+- Added an injectable `ActiveTurnController` that owns at most one interactive turn child task.
+- Ctrl-C during an active chat turn cancels that turn, completes provider cleanup and durable `turn_cancelled` recording, then returns to the same REPL.
+- The REPL replays the ledger after cancellation so subsequent events continue after every partially persisted event without duplicate sequence numbers.
+- Outer asyncio cancellation remains process-level cancellation; idle chat and one-shot code Ctrl-C behavior remain unchanged.
+- The previous SIGINT handler is restored after every turn, and repeated cancellation requests do not interrupt cleanup.
+- Non-streaming runtimes now persist the user message before execution and append `turn_cancelled` on interruption, matching the streaming replay contract.
+- Verification: 3,528 unit tests passed; repository-wide Ruff clean.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -259,7 +268,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add an explicit in-process steering/cancellation control channel so a running turn can be interrupted without terminating the whole Morphic CLI process.
+- Expose the active-turn controller through an addressable local/remote command transport, then add provider-specific steering input where supported.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

@@ -111,7 +111,8 @@ Acceptance criteria:
 - **FR-24:** Native session resume shall bind the provider session id to its engine, original workspace root, and permission mode. Resume shall use an explicit resumable adapter capability and shall fail closed when any safety provenance differs or is absent.
 - **FR-25:** Claude Code direct mode shall preserve its native project harness while normalizing `stream-json` init, assistant, tool use/result, and final result messages into the same Morphic event and scoped-resume contracts as Codex.
 - **FR-26:** A native resume session id shall be pinned to its originating engine. Routing shall never pass a Claude session id to Codex, a Codex thread id to Claude, or any provider-native id to a fallback engine.
-- **FR-27:** Cancelling a streaming turn shall append a `turn_cancelled` event after any already-delivered native events, preserve the original cancellation signal, terminate the CLI with exit code 130, and avoid presenting a cancelled turn as a completed assistant response.
+- **FR-27:** Cancelling a streaming turn shall append a `turn_cancelled` event after any already-delivered native events, preserve the original cancellation signal, and avoid presenting a cancelled turn as a completed assistant response. A cancellation not handled by an interactive control surface shall terminate the CLI with exit code 130.
+- **FR-28:** During an active `morphic chat` turn, Ctrl-C shall cancel only that turn, allow provider cleanup and durable cancellation recording to finish, rebuild the in-memory session from the ledger, and return to the prompt. Cancellation of the outer REPL task and Ctrl-C while no turn is active shall retain normal process-level cancellation behavior.
 
 ## Non-Functional Requirements
 

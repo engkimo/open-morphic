@@ -335,6 +335,17 @@
 - [x] T3604 Report Ctrl-C consistently for chat and code with exit code 130.
 - [x] T3605 Verify cancellation behavior without invoking a real native CLI.
 
+## Phase 37 - Active Turn Control
+
+- [x] T3701 Add RED tests for active-turn cancellation and outer cancellation passthrough.
+- [x] T3702 Add an injectable controller that owns at most one turn task.
+- [x] T3703 Route SIGINT to the active child task and restore the previous handler.
+- [x] T3704 Ignore repeated cancellation requests while cleanup is already running.
+- [x] T3705 Replay the ledger before the interactive REPL accepts another prompt.
+- [x] T3706 Preserve idle and one-shot process-level Ctrl-C behavior.
+- [x] T3707 Verify continuous ledger sequencing after cancellation and REPL continuation.
+- [x] T3708 Persist user input and cancellation for non-streaming runtimes too.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

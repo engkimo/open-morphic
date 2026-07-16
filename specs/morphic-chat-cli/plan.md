@@ -110,6 +110,15 @@ is a separate capability; Codex implements it with `exec` scope flags before
 `resume <thread_id> <prompt>`. Direct runtime compares stored workspace and permission
 provenance with the current turn and fails before route execution on mismatch.
 
+Interactive cancellation uses one interface-level `ActiveTurnController` around the
+send-message coroutine. It owns exactly one child task and temporarily routes SIGINT to
+that task. Controller-requested cancellation becomes a local `TurnCancelledError`, while
+external cancellation of the parent remains `CancelledError`. After a controlled stop,
+the REPL replays the append-only ledger before accepting another prompt so sequence and
+native-session state include every event persisted during cancellation. The controller
+is injectable, providing the same cancellation primitive for a later local or remote
+control transport without coupling application use cases to POSIX signals.
+
 ### Morphic owns execution state
 
 External CLIs can contribute proposals or execute delegated tasks, but Morphic should own:

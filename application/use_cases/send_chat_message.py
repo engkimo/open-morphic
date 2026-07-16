@@ -79,10 +79,9 @@ class SendChatMessageUseCase:
         )
         events = [user_event]
         streaming = isinstance(self._council_runtime, StreamingCouncilRuntimePort)
-        persisted_count = 0
+        await self._session_store.append_event(user_event)
+        persisted_count = 1
         if streaming:
-            await self._session_store.append_event(user_event)
-            persisted_count = 1
             sink = _LedgerEngineEventSink(
                 session=current,
                 events=events,
@@ -97,20 +96,20 @@ class SendChatMessageUseCase:
                     sink,
                 )
             except asyncio.CancelledError:
-                _, cancelled_event = sink.session.record_event(
-                    ChatEventType.TURN_CANCELLED,
-                    {"reason": "caller_cancelled"},
-                )
-                await asyncio.shield(self._session_store.append_event(cancelled_event))
+                await self._append_cancellation(sink.session)
                 raise
             current = sink.session
             persisted_count = len(events)
         else:
-            turns, decision = await self._council_runtime.deliberate(
-                current,
-                context,
-                message,
-            )
+            try:
+                turns, decision = await self._council_runtime.deliberate(
+                    current,
+                    context,
+                    message,
+                )
+            except asyncio.CancelledError:
+                await self._append_cancellation(current)
+                raise
 
         for turn in turns:
             if not streaming:
@@ -146,3 +145,10 @@ class SendChatMessageUseCase:
             await self._session_store.append_event(event)
 
         return SendChatMessageResult(session=current, events=events)
+
+    async def _append_cancellation(self, session: ChatSession) -> None:
+        _, cancelled_event = session.record_event(
+            ChatEventType.TURN_CANCELLED,
+            {"reason": "caller_cancelled"},
+        )
+        await asyncio.shield(self._session_store.append_event(cancelled_event))

@@ -94,6 +94,17 @@ class FakeCouncilRuntime(CouncilRuntimePort):
         )
 
 
+class CancellingCouncilRuntime(CouncilRuntimePort):
+    async def deliberate(
+        self,
+        session,
+        context: ContextIndex,
+        user_message: str,
+    ) -> tuple[list[CouncilTurn], CouncilDecision]:
+        del session, context, user_message
+        raise asyncio.CancelledError
+
+
 class FakeEngineRegistry(EngineRegistryPort):
     async def list_engines(self) -> list[EngineProfile]:
         return [
@@ -327,6 +338,30 @@ async def test_send_chat_message_appends_user_council_and_assistant_events() -> 
         ChatEventType.ASSISTANT_MESSAGE,
     ]
     assert result.events[-1].payload["text"] == "Start with application use cases."
+
+
+@pytest.mark.asyncio
+async def test_send_chat_message_records_cancelled_non_streaming_turn() -> None:
+    store = InMemoryChatSessionStore()
+    session = (
+        await StartChatSessionUseCase(session_store=store).execute(
+            goal="Plan changes",
+            permission_mode=PermissionMode.READ_ONLY,
+            session_id="chat-local-cancelled-1",
+        )
+    ).session
+    context = await FakeContextDiscovery().discover("/repo")
+
+    with pytest.raises(asyncio.CancelledError):
+        await SendChatMessageUseCase(
+            session_store=store,
+            council_runtime=CancellingCouncilRuntime(),
+        ).execute(session=session, context=context, message="plan changes")
+
+    assert [event.type for event in store.appended[-2:]] == [
+        ChatEventType.USER_MESSAGE,
+        ChatEventType.TURN_CANCELLED,
+    ]
 
 
 @pytest.mark.asyncio

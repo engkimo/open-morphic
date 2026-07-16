@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -32,6 +33,7 @@ from interface.cli.main import app
 from interface.cli.native_event_progress import NativeEventProgressRenderer
 from interface.cli.renderers import render_approval_request
 from interface.cli.slash_commands import parse_slash_command
+from interface.cli.turn_control import ActiveTurnController
 
 runner = CliRunner()
 
@@ -107,6 +109,35 @@ class _FakeStreamingCouncilRuntime(StreamingCouncilRuntimePort):
             selected_content=turn.content,
             rationale="stream completed",
         )
+
+
+class _BlockingStreamingCouncilRuntime(StreamingCouncilRuntimePort):
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+
+    async def deliberate(self, session, context, user_message):
+        raise AssertionError("streaming path expected")
+
+    async def deliberate_stream(
+        self,
+        session,
+        context,
+        user_message,
+        event_sink: AgentEngineEventSinkPort,
+    ) -> tuple[list[CouncilTurn], CouncilDecision]:
+        del session, context, user_message
+        await event_sink.publish(
+            AgentEngineEvent(
+                type=AgentEngineEventType.RUN_STARTED,
+                engine=AgentEngineType.CODEX_CLI,
+                sequence=0,
+                session_id="thread-controlled",
+                payload={"type": "thread.started"},
+            )
+        )
+        self.started.set()
+        await asyncio.Event().wait()
+        raise AssertionError("cancelled turn must not complete")
 
 
 class _CollectingEventSink(AgentEngineEventSinkPort):
@@ -921,6 +952,42 @@ async def test_chat_repl_forwards_streamed_events_to_injected_progress_sink(tmp_
 
     assert output == "Completed: fix tests"
     assert [event.type for event in sink.events] == [AgentEngineEventType.RUN_STARTED]
+
+
+@pytest.mark.asyncio
+async def test_chat_repl_cancels_only_active_turn_then_continues(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    lines = iter(["fix tests", "/quit"])
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(lines))
+    runtime = _BlockingStreamingCouncilRuntime()
+    turn_controller = ActiveTurnController()
+    repl_task = asyncio.create_task(
+        ChatRepl(
+            workspace_root=tmp_path,
+            council_runtime=runtime,
+            turn_controller=turn_controller,
+        ).run()
+    )
+    await runtime.started.wait()
+
+    assert turn_controller.cancel_active_turn() is True
+    session = await repl_task
+
+    assert session.status.value == "ended"
+    assert "Turn cancelled." in capsys.readouterr().out
+    ledger = next((tmp_path / ".morphic" / "sessions").glob("*.jsonl"))
+    events = [json.loads(line) for line in ledger.read_text().splitlines()]
+    assert [event["sequence"] for event in events] == list(range(len(events)))
+    assert [event["type"] for event in events[-5:]] == [
+        "user_message",
+        "engine_event",
+        "turn_cancelled",
+        "slash_command",
+        "session_ended",
+    ]
 
 
 @pytest.mark.asyncio

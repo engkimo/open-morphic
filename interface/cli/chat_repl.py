@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,7 @@ from infrastructure.tools.noop_tool_executor import NoopToolExecutor
 from interface.cli.formatters import console
 from interface.cli.native_event_progress import NativeEventProgressRenderer
 from interface.cli.slash_commands import parse_slash_command
+from interface.cli.turn_control import ActiveTurnController, TurnCancelledError
 
 
 class ChatRepl:
@@ -50,6 +52,7 @@ class ChatRepl:
         hook_executor_factory: Callable[[Path], HookExecutorPort] | None = None,
         tool_executor_factory: Callable[[Path], ToolExecutorPort] | None = None,
         engine_event_observer: AgentEngineEventSinkPort | None = None,
+        turn_controller: ActiveTurnController | None = None,
     ) -> None:
         self._workspace_root = workspace_root
         self._session_store = JsonlChatSessionStore(workspace_root=workspace_root)
@@ -62,6 +65,7 @@ class ChatRepl:
         self._engine_event_observer = (
             engine_event_observer or NativeEventProgressRenderer()
         )
+        self._turn_controller = turn_controller or ActiveTurnController()
 
     async def run(
         self,
@@ -103,11 +107,27 @@ class ChatRepl:
                     break
                 continue
 
-            result = await SendChatMessageUseCase(
-                session_store=self._session_store,
-                council_runtime=self._council_runtime,
-                engine_event_observer=self._engine_event_observer,
-            ).execute(session=session, context=context, message=line)
+            try:
+                send_message = SendChatMessageUseCase(
+                    session_store=self._session_store,
+                    council_runtime=self._council_runtime,
+                    engine_event_observer=self._engine_event_observer,
+                ).execute
+                result = await self._turn_controller.run(
+                    partial(
+                        send_message,
+                        session=session,
+                        context=context,
+                        message=line,
+                    )
+                )
+            except TurnCancelledError:
+                resumed = await ResumeChatSessionUseCase(
+                    session_store=self._session_store,
+                ).execute(session.id)
+                session = resumed.session
+                console.print("Turn cancelled.")
+                continue
             session = result.session
             console.print(result.events[-1].payload["text"])
 

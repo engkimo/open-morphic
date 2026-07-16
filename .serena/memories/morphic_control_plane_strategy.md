@@ -1,7 +1,7 @@
 # Morphic Control Plane Strategy
 
 Decision date: 2026-07-14
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 ## Product decision
 
@@ -196,6 +196,29 @@ the user's terminal through the application ledger to the provider process. The 
 step is an explicit steering/cancellation control channel that can stop a running turn
 without exiting the Morphic process. Phase 36 passed all 3,523 unit tests with
 repository-wide Ruff clean.
+
+## Phase 37 update
+
+Interactive chat now has an addressable active-turn controller. While a turn is running,
+Ctrl-C is routed to the child turn task rather than the parent REPL. The existing
+cancellation chain still terminates the provider process and appends `turn_cancelled`,
+but the REPL reloads its `ChatSession` from the durable ledger and accepts the next
+prompt. Replaying first is essential: it prevents the in-memory pre-turn sequence from
+colliding with user, engine, and cancellation events already appended during the
+interrupted turn.
+
+The controller distinguishes its own cancellation request from cancellation of the
+outer caller. An embedding application can still cancel the whole REPL with ordinary
+asyncio semantics; only an explicit active-turn request becomes `TurnCancelledError`.
+Repeated Ctrl-C requests do not interrupt cancellation cleanup. The controller also
+restores the previous SIGINT handler when the turn ends, so idle Ctrl-C and one-shot
+`morphic code` keep exit-code 130 behavior. User input and cancellation are durable for
+non-streaming runtimes too, giving local council and native direct turns the same replay
+contract. Phase 37 passed all 3,528 unit tests with repository-wide Ruff clean.
+
+The next control-plane slice is an addressable local/remote command transport over this
+controller, followed by provider-specific steering input where the native CLI supports
+it. Cancellation semantics no longer need to be reinvented by each transport.
 
 ## Publication checkpoint (2026-07-15)
 

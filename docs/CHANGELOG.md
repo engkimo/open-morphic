@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **[FEAT/CHAT-CLI]** Phase 37 active-turn controlをTDDで追加: injectable `ActiveTurnController`がinteractive chatの1 turnをchild taskとして所有し、active turn中のCtrl-Cだけをchildへ配送してprovider cleanupと`turn_cancelled`永続化を完了後、REPLを終了せず次promptへ戻す。中断後はledger replayでsequence/native session stateを再構築し、partial eventsとのsequence衝突を防止。non-streaming runtimeもuser/cancellationを同じ台帳契約で保存する。outer task cancellationは`CancelledError`のまま透過し、idle時とone-shot codeのCtrl-C exit 130も維持する。
 - **[FIX/CHAT-CLI]** Phase 36 durable turn cancellationをTDDで追加: streaming turnのcaller cancellationを`turn_cancelled`として、それまでに到着済みのnative engine eventsの後へappend-only ledger記録する。記録後はoriginal `CancelledError`を再送出し、`morphic chat` / `morphic code`はCtrl-Cを`Cancelled.`とexit code 130で一貫して終了する。cancelled turnをassistant successとして生成しない。
 - **[FIX/AGENT-CLI]** Phase 35 provider-pinned native resumeをTDDで追加: route resume requestへowner `resume_engine`を必須化し、preferred engineとの不一致を拒否。fallback chain内のnon-owner enginesはavailability check/subprocess起動前に`resume_engine_mismatch`でskipする。これによりClaude session idをCodexへ、Codex thread idをClaudeへ渡すcross-provider fallbackをfail closed。
 - **[FEAT/AGENT-CLI]** Phase 34 Claude native streaming/resumeをTDDで追加: Claude `stream-json`のsystem init、assistant text/tool_use、user tool_result、final resultをprovider-independent engine eventsへ正規化しraw payloadを保持。Claude driverが`ResumableStreamingScopedAgentEnginePort`を実装し、explicit session idを同一workspace/permission provenance下で`--resume`する。Claude-reported output/model/usage/total costをresultへ保持し、Chat CLI `--route-direct --engine claude_code`を開放。
