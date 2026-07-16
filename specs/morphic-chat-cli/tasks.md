@@ -346,6 +346,17 @@
 - [x] T3707 Verify continuous ledger sequencing after cancellation and REPL continuation.
 - [x] T3708 Persist user input and cancellation for non-streaming runtimes too.
 
+## Phase 38 - Authenticated Loopback Control
+
+- [x] T3801 Add RED tests for external status/cancel and descriptor cleanup.
+- [x] T3802 Bind a short-lived server only to `127.0.0.1` on a random port.
+- [x] T3803 Write a protocol-versioned session descriptor with 0700/0600 permissions.
+- [x] T3804 Authenticate requests with a random token and exact session id.
+- [x] T3805 Reject non-loopback descriptors and unsupported commands fail closed.
+- [x] T3806 Add explicit `morphic chat --control` opt-in wiring.
+- [x] T3807 Add `morphic chat-control status/cancel` with single-session discovery.
+- [x] T3808 Remove owned descriptors after completion or cancellation cleanup.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

@@ -34,6 +34,7 @@ from infrastructure.engines.static_engine_registry import StaticEngineRegistry
 from infrastructure.hooks.noop_hook_executor import NoopHookExecutor
 from infrastructure.hooks.workspace_hook_registry import WorkspaceHookRegistry
 from infrastructure.tools.noop_tool_executor import NoopToolExecutor
+from interface.cli.chat_control_transport import ChatControlServer
 from interface.cli.formatters import console
 from interface.cli.native_event_progress import NativeEventProgressRenderer
 from interface.cli.slash_commands import parse_slash_command
@@ -53,6 +54,7 @@ class ChatRepl:
         tool_executor_factory: Callable[[Path], ToolExecutorPort] | None = None,
         engine_event_observer: AgentEngineEventSinkPort | None = None,
         turn_controller: ActiveTurnController | None = None,
+        control_enabled: bool = False,
     ) -> None:
         self._workspace_root = workspace_root
         self._session_store = JsonlChatSessionStore(workspace_root=workspace_root)
@@ -66,6 +68,7 @@ class ChatRepl:
             engine_event_observer or NativeEventProgressRenderer()
         )
         self._turn_controller = turn_controller or ActiveTurnController()
+        self._control_enabled = control_enabled
 
     async def run(
         self,
@@ -113,14 +116,21 @@ class ChatRepl:
                     council_runtime=self._council_runtime,
                     engine_event_observer=self._engine_event_observer,
                 ).execute
-                result = await self._turn_controller.run(
-                    partial(
-                        send_message,
-                        session=session,
-                        context=context,
-                        message=line,
-                    )
+                operation = partial(
+                    send_message,
+                    session=session,
+                    context=context,
+                    message=line,
                 )
+                if self._control_enabled:
+                    async with ChatControlServer(
+                        workspace_root=self._workspace_root,
+                        session_id=session.id,
+                        turn_controller=self._turn_controller,
+                    ):
+                        result = await self._turn_controller.run(operation)
+                else:
+                    result = await self._turn_controller.run(operation)
             except TurnCancelledError:
                 resumed = await ResumeChatSessionUseCase(
                     session_store=self._session_store,

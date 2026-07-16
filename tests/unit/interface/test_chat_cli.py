@@ -28,6 +28,7 @@ from interface.cli.chat_command import (
     _chat_tool_executor,
     _role_engine_preferences,
 )
+from interface.cli.chat_control_transport import send_chat_control_command
 from interface.cli.chat_repl import ChatRepl
 from interface.cli.main import app
 from interface.cli.native_event_progress import NativeEventProgressRenderer
@@ -339,6 +340,18 @@ def test_chat_repl_status_and_quit_creates_session_ledger() -> None:
         assert "session ended" in result.output
         ledgers = list(Path(".morphic/sessions").glob("*.jsonl"))
         assert len(ledgers) == 1
+
+
+def test_chat_control_option_cleans_descriptor_after_completed_turn() -> None:
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            app,
+            ["chat", "--control"],
+            input="plan changes\n/quit\n",
+        )
+
+        assert result.exit_code == 0
+        assert list(Path(".morphic/control").glob("*.json")) == []
 
 
 def test_chat_keyboard_interrupt_exits_with_cancelled_status(
@@ -988,6 +1001,67 @@ async def test_chat_repl_cancels_only_active_turn_then_continues(
         "slash_command",
         "session_ended",
     ]
+
+
+@pytest.mark.asyncio
+async def test_chat_repl_exposes_opt_in_remote_turn_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    lines = iter(["fix tests", "/quit"])
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(lines))
+    runtime = _BlockingStreamingCouncilRuntime()
+    repl_task = asyncio.create_task(
+        ChatRepl(
+            workspace_root=tmp_path,
+            council_runtime=runtime,
+            control_enabled=True,
+        ).run()
+    )
+    await runtime.started.wait()
+    descriptor_path = next((tmp_path / ".morphic" / "control").glob("*.json"))
+    session_id = json.loads(descriptor_path.read_text())["session_id"]
+
+    response = await send_chat_control_command(
+        workspace_root=tmp_path,
+        session_id=session_id,
+        command="cancel",
+    )
+    session = await repl_task
+
+    assert response["cancelled"] is True
+    assert session.status.value == "ended"
+    assert descriptor_path.exists() is False
+
+
+def test_chat_control_status_command_is_registered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from interface.cli.commands import chat_control
+
+    def fake_run(coro: object) -> dict[str, object]:
+        coro.close()  # type: ignore[attr-defined]
+        return {
+            "active_turn": True,
+            "ok": True,
+            "session_id": "chat-control-cli",
+        }
+
+    monkeypatch.setattr(chat_control, "_run", fake_run)
+
+    result = runner.invoke(
+        app,
+        [
+            "chat-control",
+            "status",
+            "--session",
+            "chat-control-cli",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.output)["active_turn"] is True
 
 
 @pytest.mark.asyncio

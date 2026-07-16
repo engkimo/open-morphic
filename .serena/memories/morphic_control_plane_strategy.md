@@ -220,6 +220,27 @@ The next control-plane slice is an addressable local/remote command transport ov
 controller, followed by provider-specific steering input where the native CLI supports
 it. Cancellation semantics no longer need to be reinvented by each transport.
 
+## Phase 38 update
+
+The active-turn controller is now addressable from another local terminal through an
+explicitly enabled, authenticated loopback transport. `morphic chat --control` creates a
+random-port server only while a turn is active. A session-scoped descriptor under
+`.morphic/control/` carries protocol version, loopback address, port, and a random token;
+the directory is mode 0700 and the descriptor is mode 0600. The descriptor is removed
+when the turn completes or cancellation cleanup finishes.
+
+`morphic chat-control status` and `morphic chat-control cancel` provide the first
+external control surface. The client refuses non-loopback descriptors, and the server
+rejects invalid tokens, mismatched sessions, and unsupported commands before touching
+the controller. The listener is opt-in and active-turn-only rather than a permanent
+unauthenticated port. Remote use should initially go through an authenticated host
+boundary such as SSH; direct network exposure remains deliberately unsupported.
+
+This is Morphic's first reusable remote-control primitive above provider processes. The
+next slice is authenticated `steer`: cancel the current turn, queue a bounded replacement
+prompt, replay the ledger, and continue the same provider-bound native session. Phase 38
+passed all 3,536 unit tests with repository-wide Ruff clean.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

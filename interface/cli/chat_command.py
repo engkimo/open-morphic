@@ -119,6 +119,11 @@ def chat_cmd(
         "--json",
         help="Emit machine-readable JSON for diagnostics.",
     ),
+    control: bool = typer.Option(
+        False,
+        "--control",
+        help="Enable authenticated loopback control for active turns.",
+    ),
     route_council: bool = _CHAT_ROUTE_COUNCIL_OPTION,
     route_direct: bool = _CHAT_ROUTE_DIRECT_OPTION,
     direct_engine: str | None = _DIRECT_ENGINE_OPTION,
@@ -165,6 +170,7 @@ def chat_cmd(
                 engine_registry=engine_registry,
                 hook_executor_factory=lambda root: _chat_hook_executor(workspace_root=root),
                 tool_executor_factory=lambda _root: _chat_tool_executor(),
+                control_enabled=control,
             ).run(resume=resume, permission_mode=permission_mode)
         )
     except (PermissionError, RuntimeError) as exc:

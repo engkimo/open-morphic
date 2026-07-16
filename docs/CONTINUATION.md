@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-07-16
-> Latest work: Morphic Chat CLI Phase 37 active-turn control
+> Latest work: Morphic Chat CLI Phase 38 authenticated loopback control
 
 ## Latest Session Notes (2026-06-26)
 
@@ -259,6 +259,14 @@ Phase 37 implemented:
 - Non-streaming runtimes now persist the user message before execution and append `turn_cancelled` on interruption, matching the streaming replay contract.
 - Verification: 3,528 unit tests passed; repository-wide Ruff clean.
 
+Phase 38 implemented:
+- `morphic chat --control` opts an interactive session into a short-lived active-turn control server bound only to `127.0.0.1` on a random port.
+- A protocol-versioned, session-scoped descriptor carries the port and random authentication token under `.morphic/control/`; directory/file modes are 0700/0600.
+- `morphic chat-control status` and `morphic chat-control cancel` can inspect or cancel the active turn from another terminal, with optional single-session discovery.
+- Invalid tokens, mismatched sessions, unsupported commands, and non-loopback descriptors fail closed without cancelling the turn.
+- The owned descriptor is removed after normal completion or after cancellation cleanup; the listener is disabled by default and never remains permanently open.
+- Verification: 3,536 unit tests passed; repository-wide Ruff clean.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -268,7 +276,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Expose the active-turn controller through an addressable local/remote command transport, then add provider-specific steering input where supported.
+- Add an authenticated bounded `steer` command that cancels the active turn, queues a replacement prompt, replays the ledger, and continues the same provider-bound native session.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

@@ -119,6 +119,16 @@ native-session state include every event persisted during cancellation. The cont
 is injectable, providing the same cancellation primitive for a later local or remote
 control transport without coupling application use cases to POSIX signals.
 
+External local control is an opt-in interface adapter over that same controller.
+`ChatControlServer` binds a random port on `127.0.0.1` only for the lifetime of an active
+turn and writes a hashed, session-scoped descriptor under `.morphic/control/`. The
+descriptor contains protocol version 1 and a per-server random token, with directory
+mode 0700 and file mode 0600. Requests are one bounded JSON line and must match token,
+session, and an allowlisted command. The client refuses any descriptor whose host is not
+the exact loopback address. `morphic chat-control` is therefore a local control primitive
+that can be carried through SSH or a future authenticated API/MCP bridge without opening
+an unauthenticated workspace listener or changing application/domain contracts.
+
 ### Morphic owns execution state
 
 External CLIs can contribute proposals or execute delegated tasks, but Morphic should own:
