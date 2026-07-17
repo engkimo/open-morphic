@@ -83,15 +83,21 @@ class ChatRepl:
         )
         session, context = await self._discover_context(session)
         console.print(f"Morphic chat session {session.id}")
+        queued_line: str | None = None
 
         while True:
-            try:
-                line = input("> ")
-            except EOFError:
-                break
+            is_steered = queued_line is not None
+            if is_steered:
+                line = queued_line
+                queued_line = None
+            else:
+                try:
+                    line = input("> ")
+                except EOFError:
+                    break
             if not line.strip():
                 continue
-            if line.strip().startswith("/"):
+            if not is_steered and line.strip().startswith("/"):
                 if line.strip().startswith("/hooks "):
                     session, output = await self._execute_hooks_command(session, line)
                     console.print(output)
@@ -136,7 +142,21 @@ class ChatRepl:
                     session_store=self._session_store,
                 ).execute(session.id)
                 session = resumed.session
-                console.print("Turn cancelled.")
+                queued_line = self._turn_controller.take_steer_prompt()
+                if queued_line is None:
+                    console.print("Turn cancelled.")
+                else:
+                    session, steered_event = session.record_event(
+                        ChatEventType.TURN_STEERED,
+                        {
+                            "replacement_prompt_bytes": len(
+                                queued_line.encode("utf-8")
+                            ),
+                            "source": "turn_controller",
+                        },
+                    )
+                    await self._session_store.append_event(steered_event)
+                    console.print("Turn steered.")
                 continue
             session = result.session
             console.print(result.events[-1].payload["text"])

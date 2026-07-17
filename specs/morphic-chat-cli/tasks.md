@@ -357,6 +357,17 @@
 - [x] T3807 Add `morphic chat-control status/cancel` with single-session discovery.
 - [x] T3808 Remove owned descriptors after completion or cancellation cleanup.
 
+## Phase 39 - Provider-Neutral Steering
+
+- [x] T3901 Add RED tests for bounded steer queueing and native-session continuation.
+- [x] T3902 Accept only non-empty replacement prompts up to 2048 UTF-8 bytes.
+- [x] T3903 Make steer queue first-writer-wins during cancellation cleanup.
+- [x] T3904 Add authenticated `steer` to the loopback protocol and client CLI.
+- [x] T3905 Replay the ledger before submitting the replacement prompt.
+- [x] T3906 Append `turn_steered` metadata before the replacement `user_message`.
+- [x] T3907 Preserve provider, workspace, and permission provenance through resume.
+- [x] T3908 Treat slash-prefixed replacement prompts as provider messages.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

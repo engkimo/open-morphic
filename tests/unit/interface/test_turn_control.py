@@ -84,3 +84,24 @@ async def test_controller_routes_sigint_to_active_turn_and_restores_handler(
     with pytest.raises(TurnCancelledError):
         await controlled
     assert installed_handlers[-1] == signal.SIG_DFL
+
+
+@pytest.mark.asyncio
+async def test_controller_queues_only_first_steer_prompt() -> None:
+    controller = ActiveTurnController()
+    started = asyncio.Event()
+
+    async def operation() -> None:
+        started.set()
+        await asyncio.Event().wait()
+
+    controlled = asyncio.create_task(controller.run(operation))
+    await started.wait()
+
+    assert controller.steer_active_turn("replacement prompt") is True
+    assert controller.steer_active_turn("must not replace") is False
+    with pytest.raises(TurnCancelledError):
+        await controlled
+
+    assert controller.take_steer_prompt() == "replacement prompt"
+    assert controller.take_steer_prompt() is None

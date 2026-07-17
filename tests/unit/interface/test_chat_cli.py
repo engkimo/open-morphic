@@ -141,6 +141,52 @@ class _BlockingStreamingCouncilRuntime(StreamingCouncilRuntimePort):
         raise AssertionError("cancelled turn must not complete")
 
 
+class _SteerableStreamingCouncilRuntime(StreamingCouncilRuntimePort):
+    def __init__(self) -> None:
+        self.first_turn_started = asyncio.Event()
+        self.messages: list[str] = []
+        self.resumed_native_session_id: str | None = None
+
+    async def deliberate(self, session, context, user_message):
+        raise AssertionError("streaming path expected")
+
+    async def deliberate_stream(
+        self,
+        session,
+        context,
+        user_message,
+        event_sink: AgentEngineEventSinkPort,
+    ) -> tuple[list[CouncilTurn], CouncilDecision]:
+        del context
+        self.messages.append(user_message)
+        if len(self.messages) == 1:
+            await event_sink.publish(
+                AgentEngineEvent(
+                    type=AgentEngineEventType.RUN_STARTED,
+                    engine=AgentEngineType.CODEX_CLI,
+                    sequence=0,
+                    session_id="thread-steered",
+                    payload={"type": "thread.started"},
+                )
+            )
+            self.first_turn_started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("steered turn must not complete")
+
+        self.resumed_native_session_id = session.native_sessions["codex_cli"].session_id
+        turn = CouncilTurn(
+            role=CouncilRole.IMPLEMENTER,
+            engine_id="codex_cli",
+            content=f"Steered: {user_message}",
+        )
+        return [turn], CouncilDecision(
+            leader_engine_id="codex_cli",
+            selected_role=CouncilRole.IMPLEMENTER,
+            selected_content=turn.content,
+            rationale="steered native session continued",
+        )
+
+
 class _CollectingEventSink(AgentEngineEventSinkPort):
     def __init__(self) -> None:
         self.events: list[AgentEngineEvent] = []
@@ -1062,6 +1108,90 @@ def test_chat_control_status_command_is_registered(
 
     assert result.exit_code == 0
     assert json.loads(result.output)["active_turn"] is True
+
+
+@pytest.mark.asyncio
+async def test_chat_repl_steers_replacement_into_resumed_native_session(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    lines = iter(["broad implementation", "/quit"])
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(lines))
+    runtime = _SteerableStreamingCouncilRuntime()
+    repl_task = asyncio.create_task(
+        ChatRepl(
+            workspace_root=tmp_path,
+            council_runtime=runtime,
+            control_enabled=True,
+        ).run()
+    )
+    await runtime.first_turn_started.wait()
+    descriptor_path = next((tmp_path / ".morphic" / "control").glob("*.json"))
+    session_id = json.loads(descriptor_path.read_text())["session_id"]
+
+    response = await send_chat_control_command(
+        workspace_root=tmp_path,
+        session_id=session_id,
+        command="steer",
+        prompt="/quit but continue native work",
+    )
+    session = await repl_task
+
+    assert response["steered"] is True
+    assert runtime.messages == ["broad implementation", "/quit but continue native work"]
+    assert runtime.resumed_native_session_id == "thread-steered"
+    assert session.status.value == "ended"
+    ledger = next((tmp_path / ".morphic" / "sessions").glob("*.jsonl"))
+    events = [json.loads(line) for line in ledger.read_text().splitlines()]
+    assert [
+        event["payload"]["text"]
+        for event in events
+        if event["type"] == "user_message"
+    ] == ["broad implementation", "/quit but continue native work"]
+    event_types = [event["type"] for event in events]
+    cancelled_index = event_types.index("turn_cancelled")
+    assert event_types[cancelled_index : cancelled_index + 3] == [
+        "turn_cancelled",
+        "turn_steered",
+        "user_message",
+    ]
+    steered_event = events[cancelled_index + 1]
+    assert steered_event["payload"] == {
+        "replacement_prompt_bytes": len(b"/quit but continue native work"),
+        "source": "turn_controller",
+    }
+
+
+def test_chat_control_steer_command_is_registered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from interface.cli.commands import chat_control
+
+    def fake_run(coro: object) -> dict[str, object]:
+        coro.close()  # type: ignore[attr-defined]
+        return {
+            "active_turn": True,
+            "ok": True,
+            "session_id": "chat-control-cli",
+            "steered": True,
+        }
+
+    monkeypatch.setattr(chat_control, "_run", fake_run)
+
+    result = runner.invoke(
+        app,
+        [
+            "chat-control",
+            "steer",
+            "focus on tests",
+            "--session",
+            "chat-control-cli",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.output)["steered"] is True
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,7 @@
 # Morphic Control Plane Strategy
 
 Decision date: 2026-07-14
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 ## Product decision
 
@@ -240,6 +240,27 @@ This is Morphic's first reusable remote-control primitive above provider process
 next slice is authenticated `steer`: cancel the current turn, queue a bounded replacement
 prompt, replay the ledger, and continue the same provider-bound native session. Phase 38
 passed all 3,536 unit tests with repository-wide Ruff clean.
+
+## Phase 39 update
+
+The authenticated control transport now supports bounded `steer`. A steer request
+accepts one non-empty replacement prompt of at most 2048 UTF-8 bytes. The first accepted
+request queues the prompt and cancels the active child task; later requests during
+cleanup cannot replace it. Invalid or oversized prompts are rejected before cancellation.
+
+After provider cleanup appends `turn_cancelled`, the REPL replays the ledger, appends a
+`turn_steered` audit event, and submits the replacement as a normal `user_message`. This
+restores the provider session id with its original workspace and permission provenance,
+so Codex or Claude continues through the existing explicit native resume contract.
+Remote prompts beginning with `/` are always provider messages and never become local
+REPL slash commands. The prompt body is stored once in the normal user event; the steer
+event records only source and UTF-8 byte length.
+
+This deliberately implements provider-neutral steering as cancel plus provenance-checked
+resume, rather than depending on inconsistent provider stdin protocols. Phase 39 passed
+all 3,542 unit tests with repository-wide Ruff clean. The next priority is a reproducible
+same-task comparison harness for Codex alone, Claude alone, and Morphic-controlled runs,
+with live paid execution remaining explicit opt-in.
 
 ## Publication checkpoint (2026-07-15)
 

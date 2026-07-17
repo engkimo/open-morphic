@@ -114,6 +114,13 @@ async def test_control_server_rejects_invalid_token_without_cancelling(tmp_path)
         )
         unsupported = await request(
             {
+                "command": "restart",
+                "session_id": "chat-control-auth",
+                "token": descriptor["token"],
+            }
+        )
+        invalid_steer = await request(
+            {
                 "command": "steer",
                 "session_id": "chat-control-auth",
                 "token": descriptor["token"],
@@ -123,6 +130,7 @@ async def test_control_server_rejects_invalid_token_without_cancelling(tmp_path)
         assert unauthorized == {"error": "unauthorized", "ok": False}
         assert mismatched == {"error": "session_mismatch", "ok": False}
         assert unsupported == {"error": "unsupported_command", "ok": False}
+        assert invalid_steer == {"error": "invalid_steer_prompt", "ok": False}
         assert controller.has_active_turn is True
 
     controlled.cancel()
@@ -178,5 +186,55 @@ async def test_control_client_rejects_unsupported_command(tmp_path) -> None:
         await send_chat_control_command(
             workspace_root=tmp_path,
             session_id="chat-control-command",
+            command="restart",
+        )
+
+
+@pytest.mark.asyncio
+async def test_control_server_queues_bounded_steer_and_cancels_turn(tmp_path) -> None:
+    controller = ActiveTurnController()
+    operation_started = asyncio.Event()
+
+    async def operation() -> None:
+        operation_started.set()
+        await asyncio.Event().wait()
+
+    controlled = asyncio.create_task(controller.run(operation))
+    await operation_started.wait()
+
+    async with ChatControlServer(
+        workspace_root=tmp_path,
+        session_id="chat-control-steer",
+        turn_controller=controller,
+    ):
+        response = await send_chat_control_command(
+            workspace_root=tmp_path,
+            session_id="chat-control-steer",
             command="steer",
+            prompt="  continue with focused tests  ",
+        )
+
+    assert response == {
+        "active_turn": True,
+        "ok": True,
+        "session_id": "chat-control-steer",
+        "steered": True,
+    }
+    with pytest.raises(TurnCancelledError):
+        await controlled
+    assert controller.take_steer_prompt() == "continue with focused tests"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prompt", ["   ", "x" * 2049])
+async def test_control_client_rejects_invalid_steer_prompt_before_cancel(
+    tmp_path,
+    prompt: str,
+) -> None:
+    with pytest.raises(ValueError, match="steer prompt"):
+        await send_chat_control_command(
+            workspace_root=tmp_path,
+            session_id="chat-control-invalid-steer",
+            command="steer",
+            prompt=prompt,
         )

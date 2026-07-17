@@ -23,6 +23,7 @@ class ActiveTurnController:
         self._active_task: asyncio.Task[Any] | None = None
         self._cancel_requested = False
         self._previous_sigint_handler: Any = None
+        self._steer_prompt: str | None = None
 
     @property
     def has_active_turn(self) -> bool:
@@ -58,6 +59,25 @@ class ActiveTurnController:
             self._cancel_requested = True
             task.cancel()
         return True
+
+    def steer_active_turn(self, prompt: str) -> bool:
+        """Queue one replacement prompt and cancel the active turn exactly once."""
+        normalized = prompt.strip()
+        if not normalized:
+            raise ValueError("steer prompt must not be empty")
+        if self._steer_prompt is not None or self._cancel_requested:
+            return False
+        self._steer_prompt = normalized
+        if self.cancel_active_turn():
+            return True
+        self._steer_prompt = None
+        return False
+
+    def take_steer_prompt(self) -> str | None:
+        """Consume the pending replacement prompt after cancellation cleanup."""
+        prompt = self._steer_prompt
+        self._steer_prompt = None
+        return prompt
 
     @contextmanager
     def _route_sigint_to_active_turn(self) -> Iterator[None]:

@@ -31,6 +31,7 @@ def status_cmd(
         session_id=session_id,
         json_output=json_output,
         workspace_root=workspace or Path.cwd(),
+        prompt=None,
     )
 
 
@@ -46,8 +47,28 @@ def cancel_cmd(
         session_id=session_id,
         json_output=json_output,
         workspace_root=workspace or Path.cwd(),
+        prompt=None,
     )
     if payload.get("cancelled") is not True:
+        raise typer.Exit(code=1)
+
+
+@chat_control_app.command("steer")
+def steer_cmd(
+    prompt: str = typer.Argument(..., help="Replacement prompt for the native session."),
+    session_id: str | None = _SESSION_OPTION,
+    json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+    workspace: Path | None = _WORKSPACE_OPTION,
+) -> None:
+    """Cancel the active turn and continue with a replacement prompt."""
+    payload = _run_control_command(
+        command="steer",
+        session_id=session_id,
+        json_output=json_output,
+        workspace_root=workspace or Path.cwd(),
+        prompt=prompt,
+    )
+    if payload.get("steered") is not True:
         raise typer.Exit(code=1)
 
 
@@ -57,6 +78,7 @@ def _run_control_command(
     session_id: str | None,
     json_output: bool,
     workspace_root: Path,
+    prompt: str | None,
 ) -> dict[str, object]:
     try:
         resolved_session = session_id or _discover_single_session(workspace_root)
@@ -65,6 +87,7 @@ def _run_control_command(
                 workspace_root=workspace_root,
                 session_id=resolved_session,
                 command=command,
+                prompt=prompt,
             )
         )
     except (OSError, RuntimeError, ValueError) as exc:
@@ -77,9 +100,13 @@ def _run_control_command(
         console.print(
             f"session={payload['session_id']} active_turn={str(payload['active_turn']).lower()}"
         )
-    else:
+    elif command == "cancel":
         console.print(
             f"session={payload['session_id']} cancelled={str(payload['cancelled']).lower()}"
+        )
+    else:
+        console.print(
+            f"session={payload['session_id']} steered={str(payload['steered']).lower()}"
         )
     return payload
 

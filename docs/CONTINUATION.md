@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
-> Last updated: 2026-07-16
-> Latest work: Morphic Chat CLI Phase 38 authenticated loopback control
+> Last updated: 2026-07-17
+> Latest work: Morphic Chat CLI Phase 39 provider-neutral steering
 
 ## Latest Session Notes (2026-06-26)
 
@@ -267,6 +267,15 @@ Phase 38 implemented:
 - The owned descriptor is removed after normal completion or after cancellation cleanup; the listener is disabled by default and never remains permanently open.
 - Verification: 3,536 unit tests passed; repository-wide Ruff clean.
 
+Phase 39 implemented:
+- Added authenticated `morphic chat-control steer <prompt>` over the Phase 38 loopback transport.
+- Replacement prompts must be non-empty and at most 2048 UTF-8 bytes; invalid input is rejected before cancellation.
+- Steer queueing is first-writer-wins, so a later request cannot replace the accepted prompt during cleanup.
+- After `turn_cancelled`, the REPL replays the ledger, appends `turn_steered`, and submits the replacement as a normal `user_message`.
+- Replay restores the same provider-native session id, workspace, and permission mode before the replacement route executes.
+- Slash-prefixed remote prompts bypass local slash command parsing and remain provider input.
+- Verification: 3,542 unit tests passed; repository-wide Ruff clean.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -276,7 +285,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add an authenticated bounded `steer` command that cancels the active turn, queues a replacement prompt, replays the ledger, and continues the same provider-bound native session.
+- Add a reproducible same-task benchmark harness comparing Codex alone, Claude alone, and Morphic-controlled execution; keep live paid runs explicit opt-in.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

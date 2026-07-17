@@ -14,9 +14,10 @@ from interface.cli.turn_control import ActiveTurnController
 
 _HOST = "127.0.0.1"
 _MAX_LINE_BYTES = 4096
+_MAX_STEER_PROMPT_BYTES = 2048
 _PROTOCOL_VERSION = 1
 _REQUEST_TIMEOUT_SECONDS = 2.0
-_SUPPORTED_COMMANDS = frozenset({"cancel", "status"})
+_SUPPORTED_COMMANDS = frozenset({"cancel", "status", "steer"})
 
 
 class ChatControlServer:
@@ -131,6 +132,12 @@ class ChatControlServer:
         }
         if command == "cancel":
             response["cancelled"] = self._turn_controller.cancel_active_turn()
+        elif command == "steer":
+            try:
+                prompt = _normalize_steer_prompt(request.get("prompt"))
+            except ValueError:
+                return {"error": "invalid_steer_prompt", "ok": False}
+            response["steered"] = self._turn_controller.steer_active_turn(prompt)
         return response
 
     def _write_descriptor(self) -> None:
@@ -173,10 +180,16 @@ async def send_chat_control_command(
     workspace_root: Path,
     session_id: str,
     command: str,
+    prompt: str | None = None,
 ) -> dict[str, object]:
     """Send one authenticated command or report an inactive missing descriptor."""
     if command not in _SUPPORTED_COMMANDS:
         raise ValueError(f"unsupported chat control command: {command}")
+    normalized_prompt: str | None = None
+    if command == "steer":
+        normalized_prompt = _normalize_steer_prompt(prompt)
+    elif prompt is not None:
+        raise ValueError("prompt is supported only for the steer command")
 
     descriptor_path = _descriptor_path(workspace_root, session_id)
     if not descriptor_path.exists():
@@ -187,9 +200,23 @@ async def send_chat_control_command(
         }
         if command == "cancel":
             response["cancelled"] = False
+        elif command == "steer":
+            response["steered"] = False
         return response
 
     descriptor = _validated_descriptor(descriptor_path, session_id=session_id)
+    request = {
+        "command": command,
+        "session_id": session_id,
+        "token": descriptor["token"],
+    }
+    if normalized_prompt is not None:
+        request["prompt"] = normalized_prompt
+    encoded_request = (
+        json.dumps(request, ensure_ascii=False, sort_keys=True).encode("utf-8") + b"\n"
+    )
+    if len(encoded_request) > _MAX_LINE_BYTES:
+        raise ValueError("steer prompt exceeds the control request limit")
     try:
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(
@@ -202,16 +229,8 @@ async def send_chat_control_command(
     except (OSError, TimeoutError) as exc:
         raise RuntimeError("chat control endpoint is unavailable") from exc
 
-    request = {
-        "command": command,
-        "session_id": session_id,
-        "token": descriptor["token"],
-    }
     try:
-        writer.write(
-            json.dumps(request, ensure_ascii=False, sort_keys=True).encode("utf-8")
-            + b"\n"
-        )
+        writer.write(encoded_request)
         await writer.drain()
         raw_response = await asyncio.wait_for(
             reader.readline(),
@@ -249,6 +268,17 @@ def discover_active_chat_sessions(*, workspace_root: Path) -> list[str]:
 def _descriptor_path(workspace_root: Path, session_id: str) -> Path:
     digest = hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:32]
     return workspace_root / ".morphic" / "control" / f"{digest}.json"
+
+
+def _normalize_steer_prompt(prompt: object) -> str:
+    if not isinstance(prompt, str):
+        raise ValueError("steer prompt must be text")
+    normalized = prompt.strip()
+    if not normalized:
+        raise ValueError("steer prompt must not be empty")
+    if len(normalized.encode("utf-8")) > _MAX_STEER_PROMPT_BYTES:
+        raise ValueError("steer prompt must not exceed 2048 UTF-8 bytes")
+    return normalized
 
 
 def _read_descriptor(path: Path) -> dict[str, Any]:

@@ -129,6 +129,16 @@ the exact loopback address. `morphic chat-control` is therefore a local control 
 that can be carried through SSH or a future authenticated API/MCP bridge without opening
 an unauthenticated workspace listener or changing application/domain contracts.
 
+Steering is provider-neutral control built on cancellation and explicit resume. The
+loopback protocol accepts one non-empty replacement prompt capped at 2048 UTF-8 bytes.
+`ActiveTurnController` uses first-writer-wins queueing, cancels the current child task,
+and exposes the queued prompt only after cleanup. The REPL then replays the ledger,
+appends `turn_steered` metadata without duplicating prompt content, and sends the prompt
+through the ordinary message use case. Replay restores the provider-native session id,
+workspace, and permission provenance before routing, so steer cannot switch providers or
+widen scope. Queued prompts bypass local slash-command parsing and are always native
+session input.
+
 ### Morphic owns execution state
 
 External CLIs can contribute proposals or execute delegated tasks, but Morphic should own:
