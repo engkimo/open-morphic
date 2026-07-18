@@ -263,6 +263,48 @@ JSON keyをsortして同じ入力からbyte-stableなartifactを作る。この�
 読むだけでnative engineやpaid APIを起動しない。将来のlive recorderはcost capを伴う
 別のexplicit opt-inとして追加する。
 
+### Isolated trial recorder
+
+Phase 41のrecorderはdefaultでread-only planだけを返す。manifestとrecorder configを
+検証し、trial count、command fingerprints、設定上の最大費用見積りを出すが、agent、
+Git worktree、verification commandは起動しない。
+
+```bash
+# Read-only plan. No worktree or agent process is created.
+morphic benchmark agent-cli-record \
+  --manifest benchmark-manifest.json \
+  --config recorder-config.json \
+  --json
+
+# Explicit live execution. worktree root must be outside the source repository.
+morphic benchmark agent-cli-record \
+  --manifest benchmark-manifest.json \
+  --config recorder-config.json \
+  --source-root . \
+  --worktree-root ../morphic-benchmark-worktrees \
+  --evidence benchmark-evidence.json \
+  --execute \
+  --acknowledge-paid \
+  --cost-cap-usd 3.00 \
+  --json
+```
+
+recorder configは3 armの`arm_commands`と`estimated_cost_usd_per_trial`、manifestと
+exact matchする`check_commands` / `handoff_commands`、1 commandあたりの
+`timeout_seconds`を持つ。argvは配列で指定し、`{goal}`, `{workspace}`, `{arm}`,
+`{trial}`を使用できる。shell展開は行わない。
+
+実行には`--execute`、`--acknowledge-paid`、全trialの最大見積りを覆う
+`--cost-cap-usd`がすべて必要。各arm/trialはpinned revisionの別detached worktreeで
+実行され、正常・失敗・例外を問わずcleanupする。evidenceはargv/stdout/stderrの
+SHA-256、byte数、exit code、timeout、elapsed time、check/assertion結果だけを保存し、
+raw prompt/outputは保存しない。既存evidenceは上書きしない。
+
+このcost capは設定見積りに対する事前authorization gateであり、provider請求額を
+process内でhard-stopするものではない。実費とaccepted-patch判定は
+`pending_adjudication`として残す。provider receipt parserとreview adjudicatorが
+揃うまでは、recorder evidenceをPhase 40の最終comparison resultへ自動変換しない。
+
 ---
 
 ## Agent CLI Router

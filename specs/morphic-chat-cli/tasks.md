@@ -379,6 +379,19 @@
 - [x] T4007 Keep agent launch and paid live execution outside the offline evaluator.
 - [x] T4008 Include the benchmark package in built distributions.
 
+## Phase 41 - Explicit Opt-in Isolated Trial Recorder
+
+- [x] T4101 Add RED tests for plan, consent, isolation, cleanup, evidence, and CLI.
+- [x] T4102 Require exact arm/check/handoff command coverage for the Phase 40 manifest.
+- [x] T4103 Make read-only deterministic planning the default behavior.
+- [x] T4104 Require execute, paid acknowledgement, and an explicit estimate cost cap.
+- [x] T4105 Run every arm/trial in a unique detached worktree outside the source root.
+- [x] T4106 Pass argv without a shell and terminate commands at the configured timeout.
+- [x] T4107 Remove worktrees after success, command failure, or recorder exceptions.
+- [x] T4108 Persist hashes/byte counts/outcomes without raw prompts or command output.
+- [x] T4109 Refuse existing evidence output and write new evidence atomically.
+- [x] T4110 Keep actual cost and accepted-patch decisions pending explicit adjudication.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

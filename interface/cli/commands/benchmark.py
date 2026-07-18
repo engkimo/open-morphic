@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +31,51 @@ _AGENT_CLI_RESULTS_OPTION = typer.Option(
     help="Recorded trial observations JSON.",
 )
 _AGENT_CLI_JSON_OPTION = typer.Option(False, "--json", help="Emit deterministic JSON.")
+_RECORDER_CONFIG_OPTION = typer.Option(
+    ...,
+    "--config",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Recorder command configuration JSON.",
+)
+_RECORDER_WORKTREE_OPTION = typer.Option(None, "--worktree-root", help="Isolated worktree root.")
+_RECORDER_SOURCE_OPTION = typer.Option(None, "--source-root", help="Source Git workspace.")
+_RECORDER_EVIDENCE_OPTION = typer.Option(None, "--evidence", help="Evidence JSON output path.")
+_RECORDER_EXECUTE_OPTION = typer.Option(False, "--execute", help="Execute the recorded plan.")
+_RECORDER_ACK_OPTION = typer.Option(
+    False,
+    "--acknowledge-paid",
+    help="Acknowledge that configured commands may incur charges.",
+)
+_RECORDER_COST_CAP_OPTION = typer.Option(
+    None,
+    "--cost-cap-usd",
+    help="Explicit cap that must cover the configured maximum estimate.",
+)
+
+
+def _write_new_evidence(path: Path, payload: str) -> None:
+    """Publish evidence atomically without replacing an existing path."""
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary.write(payload)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+            temporary_path = Path(temporary.name)
+        os.link(temporary_path, path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def _get_container() -> Any:
@@ -204,3 +251,88 @@ def compare_agent_clis(
         names = ", ".join(leaders) if leaders else "n/a"
         console.print(f"  {metric}: {names}")
     console.print("[dim]No composite score; metric leaders are reported independently.[/dim]")
+
+
+@benchmark_app.command("agent-cli-record")
+def record_agent_cli_trials(
+    manifest_path: Path = _AGENT_CLI_MANIFEST_OPTION,
+    config_path: Path = _RECORDER_CONFIG_OPTION,
+    worktree_root: Path | None = _RECORDER_WORKTREE_OPTION,
+    source_root: Path | None = _RECORDER_SOURCE_OPTION,
+    evidence_path: Path | None = _RECORDER_EVIDENCE_OPTION,
+    execute: bool = _RECORDER_EXECUTE_OPTION,
+    acknowledge_paid: bool = _RECORDER_ACK_OPTION,
+    cost_cap_usd: float | None = _RECORDER_COST_CAP_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Plan or explicitly execute isolated same-task CLI trials."""
+    from benchmarks.agent_cli_comparison import AgentCliManifest
+    from benchmarks.agent_cli_recorder import (
+        AgentCliRecorderConfig,
+        AgentCliTrialRecorder,
+        GitWorktreeManager,
+        LocalCommandRunner,
+        build_recording_plan,
+        validate_execution_consent,
+    )
+
+    try:
+        manifest = AgentCliManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+        config = AgentCliRecorderConfig.model_validate_json(config_path.read_text(encoding="utf-8"))
+        plan = build_recording_plan(manifest, config)
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Invalid agent CLI recorder input: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if not execute:
+        if as_json:
+            typer.echo(plan.to_json())
+        else:
+            console.print(
+                f"Recorder plan trials={plan.trial_count} "
+                f"estimated_max=${plan.estimated_max_cost_usd:.6f} execute=false"
+            )
+        return
+
+    try:
+        validate_execution_consent(
+            plan,
+            acknowledged_paid=acknowledge_paid,
+            cost_cap_usd=cost_cap_usd,
+        )
+        if worktree_root is None:
+            raise ValueError("--worktree-root is required with --execute")
+        if evidence_path is None:
+            raise ValueError("--evidence is required with --execute")
+        if not evidence_path.parent.exists():
+            raise ValueError("evidence output parent must already exist")
+        if evidence_path.exists():
+            raise ValueError("evidence output already exists")
+    except ValueError as exc:
+        console.print(f"[red]Recorder execution refused: {exc}[/red]")
+        raise typer.Exit(code=2) from None
+
+    recorder = AgentCliTrialRecorder(
+        worktree_manager=GitWorktreeManager(),
+        command_runner=LocalCommandRunner(),
+    )
+    try:
+        evidence = _run(
+            recorder.record(
+                manifest=manifest,
+                config=config,
+                source_root=(source_root or Path.cwd()).resolve(),
+                worktree_root=worktree_root.resolve(),
+                acknowledged_paid=acknowledge_paid,
+                cost_cap_usd=cost_cap_usd,
+            )
+        )
+        _write_new_evidence(evidence_path, evidence.to_json())
+    except (OSError, RuntimeError, ValueError) as exc:
+        console.print(f"[red]Recorder execution failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(evidence.to_json())
+    else:
+        console.print(f"Recorded {len(evidence.trials)} isolated trials to {evidence_path}")

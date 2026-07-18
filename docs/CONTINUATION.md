@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-07-18
-> Latest work: Morphic Chat CLI Phase 40 recorded same-task benchmark
+> Latest work: Morphic Chat CLI Phase 41 isolated trial recorder
 
 ## Latest Session Notes (2026-06-26)
 
@@ -287,6 +287,18 @@ Phase 40 implemented:
 - The top-level `benchmarks` package is now included in built distributions.
 - Verification: 3,553 unit tests passed; repository-wide Ruff clean; wheel contents verified.
 
+Phase 41 implemented:
+- Added `morphic benchmark agent-cli-record`; its default path returns a deterministic plan and creates no worktree or process.
+- Recorder config must cover exactly the three arms plus every declared verification check and handoff assertion.
+- Live execution requires `--execute`, `--acknowledge-paid`, and an explicit cost cap covering the configured all-trial maximum estimate.
+- Every arm/trial runs at the pinned revision in a unique detached worktree outside the source repository.
+- Agent, check, and handoff commands receive argv directly without a shell and use a bounded timeout.
+- Worktrees are released in `finally` after normal completion, non-zero command results, or raised runner errors.
+- Evidence stores command/output hashes, byte counts, exit/timeout/elapsed data, and passed assertion names; raw prompts and output are not persisted.
+- Existing evidence is never overwritten; a mode-0600 temporary file is published through an exclusive atomic hard link and then removed.
+- Authorized estimate cap is recorded, while actual provider cost and accepted-patch review remain explicitly pending adjudication.
+- Verification: 3,566 unit tests passed; repository-wide Ruff clean; detached-worktree lifecycle, exclusive evidence publication, and wheel contents verified.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -296,7 +308,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add an explicit opt-in trial recorder with isolated worktrees, per-run timeout/cost caps, and captured revision/check evidence; do not start paid runs by default.
+- Add provider receipt parsers and a deterministic adjudication step that joins actual cost, accepted-patch review, interventions, and recovery evidence into Phase 40 observations before any paid benchmark campaign.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

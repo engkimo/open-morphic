@@ -557,6 +557,7 @@ morphic-agent/
 ├── benchmarks/                      # Deterministic and opt-in live benchmark utilities
 │   ├── __init__.py
 │   ├── agent_cli_comparison.py     # Recorded same-task 3-arm validation and metrics
+│   ├── agent_cli_recorder.py       # Opt-in detached-worktree trial evidence recorder
 │   ├── context_continuity.py       # AdapterScore, ContinuityResult, run_benchmark() — target >85%
 │   ├── dedup_accuracy.py           # DedupScore, DedupResult, run_benchmark() — target >50%
 │   └── runner.py                   # BenchmarkSuiteResult, run_all() — unified benchmark runner

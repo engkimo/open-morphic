@@ -282,6 +282,32 @@ recorder with isolated worktrees, timeouts, cost caps, and captured verification
 Phase 40 passed all 3,553 unit tests with repository-wide Ruff clean, and the built wheel
 contains the benchmark package.
 
+## Phase 41 update
+
+The evidence harness now has a deliberately separate execution recorder. Its default
+operation is a pure plan: validate manifest/config coverage, count trials, fingerprint
+commands, and show the configured maximum estimate without creating a worktree or
+starting an agent.
+
+Live recording requires three explicit signals: execute, acknowledgement that commands
+may be paid, and a cost cap covering the complete configured estimate. Every arm/trial
+runs at the pinned revision in its own detached worktree outside the source repository.
+Commands receive argv directly without a shell, have bounded timeouts, and worktrees are
+released through `finally` cleanup.
+
+Persisted evidence contains hashes and byte counts for argv/stdout/stderr plus exit,
+timeout, elapsed, verification, and handoff outcomes. It never contains raw task prompts
+or command output and never overwrites an existing evidence file. The authorized estimate
+cap is audit data, not a claim that provider billing can be hard-stopped mid-request.
+Actual provider cost, human interventions, recovery classification, and accepted-patch
+review remain `pending_adjudication`; Morphic will not manufacture those values from
+process success. The next slice is receipt parsing and deterministic adjudication into
+the Phase 40 observation schema before any paid benchmark campaign.
+Phase 41 passed all 3,566 unit tests with repository-wide Ruff clean. A real temporary
+Git repository test verified pinned detached-worktree creation and removal, and the built
+wheel contains both comparison and recorder modules. Exclusive evidence publication was
+also verified to preserve an existing file under a competing write.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:
