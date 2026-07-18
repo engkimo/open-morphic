@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import typer
@@ -9,6 +10,25 @@ import typer
 from interface.cli.formatters import console
 
 benchmark_app = typer.Typer(no_args_is_help=True)
+_AGENT_CLI_MANIFEST_OPTION = typer.Option(
+    ...,
+    "--manifest",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Same-task benchmark manifest JSON.",
+)
+_AGENT_CLI_RESULTS_OPTION = typer.Option(
+    ...,
+    "--results",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Recorded trial observations JSON.",
+)
+_AGENT_CLI_JSON_OPTION = typer.Option(False, "--json", help="Emit deterministic JSON.")
 
 
 def _get_container() -> Any:
@@ -126,3 +146,61 @@ def run_dedup() -> None:
     for s in result.scores:
         style = "green" if s.dedup_rate >= 0.5 else "yellow"
         console.print(f"  {s.scenario:<25} [{style}]{s.dedup_rate:.0%}[/{style}]")
+
+
+@benchmark_app.command("agent-cli")
+def compare_agent_clis(
+    manifest_path: Path = _AGENT_CLI_MANIFEST_OPTION,
+    results_path: Path = _AGENT_CLI_RESULTS_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Compare recorded Codex, Claude Code, and Morphic-controlled trials."""
+    from benchmarks.agent_cli_comparison import (
+        AgentCliManifest,
+        RecordedResults,
+        evaluate_recorded_results,
+    )
+
+    try:
+        manifest = AgentCliManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+        results = RecordedResults.model_validate_json(results_path.read_text(encoding="utf-8"))
+        report = evaluate_recorded_results(manifest, results)
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Invalid agent CLI benchmark input: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        console.print(report.to_json(), markup=False)
+        return
+
+    from rich.table import Table
+
+    table = Table(title=f"Agent CLI Same-task Benchmark: {report.benchmark_id}")
+    table.add_column("Arm", style="cyan")
+    table.add_column("Complete", justify="right")
+    table.add_column("Accepted", justify="right")
+    table.add_column("Verified", justify="right")
+    table.add_column("Median sec", justify="right")
+    table.add_column("Mean USD", justify="right")
+    table.add_column("Interventions", justify="right")
+    table.add_column("Recovery", justify="right")
+    table.add_column("Handoff", justify="right")
+    for arm, metrics in report.arms.items():
+        recovery = "n/a" if metrics.recovery_rate is None else f"{metrics.recovery_rate:.0%}"
+        table.add_row(
+            arm,
+            f"{metrics.completion_rate:.0%}",
+            f"{metrics.accepted_patch_rate:.0%}",
+            f"{metrics.verification_rate:.0%}",
+            f"{metrics.median_elapsed_seconds:.1f}",
+            f"{metrics.mean_cost_usd:.4f}",
+            f"{metrics.mean_human_interventions:.2f}",
+            recovery,
+            f"{metrics.context_handoff_score:.0%}",
+        )
+    console.print(table)
+    console.print("[bold]Metric leaders[/bold]")
+    for metric, leaders in report.leaders.items():
+        names = ", ".join(leaders) if leaders else "n/a"
+        console.print(f"  {metric}: {names}")
+    console.print("[dim]No composite score; metric leaders are reported independently.[/dim]")

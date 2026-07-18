@@ -432,7 +432,7 @@ morphic-agent/
 │           ├── marketplace.py       # morphic marketplace {search|install|list|suggest|uninstall} (Sprint 5.3)
 │           ├── evolution.py        # morphic evolution {stats|failures|update|report} (Sprint 6.1)
 │           ├── cognitive.py       # morphic cognitive {state|delete|affinity|handoff|insights} (Sprint 7.5)
-│           └── benchmark.py      # morphic benchmark {run|continuity|dedup} (Sprint 7.6)
+│           └── benchmark.py      # UCL + recorded agent CLI comparison commands
 │
 ├── shared/
 │   └── config.py                    # pydantic-settings (all env vars + marketplace + evolution settings)
@@ -554,8 +554,9 @@ morphic-agent/
 │       ├── test_agent_engines.py        # 37 tests (6 engines live + routing + fallback + availability, Sprint 4.4-4.5)
 │       └── test_ucl_cross_engine.py    # 13 tests (handoff pipeline + adapter fidelity + insight roundtrip + affinity + conflict + benchmarks, Sprint 7.6)
 │
-├── benchmarks/                      # Sprint 7.6: Context continuity + dedup accuracy benchmarks
+├── benchmarks/                      # Deterministic and opt-in live benchmark utilities
 │   ├── __init__.py
+│   ├── agent_cli_comparison.py     # Recorded same-task 3-arm validation and metrics
 │   ├── context_continuity.py       # AdapterScore, ContinuityResult, run_benchmark() — target >85%
 │   ├── dedup_accuracy.py           # DedupScore, DedupResult, run_benchmark() — target >50%
 │   └── runner.py                   # BenchmarkSuiteResult, run_all() — unified benchmark runner

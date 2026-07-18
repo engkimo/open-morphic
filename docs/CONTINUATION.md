@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
-> Last updated: 2026-07-17
-> Latest work: Morphic Chat CLI Phase 39 provider-neutral steering
+> Last updated: 2026-07-18
+> Latest work: Morphic Chat CLI Phase 40 recorded same-task benchmark
 
 ## Latest Session Notes (2026-06-26)
 
@@ -276,6 +276,17 @@ Phase 39 implemented:
 - Slash-prefixed remote prompts bypass local slash command parsing and remain provider input.
 - Verification: 3,542 unit tests passed; repository-wide Ruff clean.
 
+Phase 40 implemented:
+- Added an offline evaluator for one immutable task manifest shared by Codex CLI, Claude Code, and Morphic-controlled trials.
+- The manifest pins task id, goal, workspace revision, verification checks, handoff assertions, and repetition count; results must contain each arm/trial exactly once.
+- Duplicate, missing, mismatched, out-of-range, undeclared-check, undeclared-handoff, and inconsistent recovery records fail closed.
+- Reports expose completion, accepted-patch, verification, median elapsed time, mean cost, mean human interventions, recovery, and context-handoff metrics per arm.
+- Verification and handoff fidelity are derived from predeclared assertions rather than trusted as arbitrary scores.
+- Metric-specific leaders replace a subjective weighted composite score; deterministic JSON has sorted keys and no timestamp.
+- `morphic benchmark agent-cli --manifest ... --results ... [--json]` reads recorded files only and never launches a native engine or paid API.
+- The top-level `benchmarks` package is now included in built distributions.
+- Verification: 3,553 unit tests passed; repository-wide Ruff clean; wheel contents verified.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -285,7 +296,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add a reproducible same-task benchmark harness comparing Codex alone, Claude alone, and Morphic-controlled execution; keep live paid runs explicit opt-in.
+- Add an explicit opt-in trial recorder with isolated worktrees, per-run timeout/cost caps, and captured revision/check evidence; do not start paid runs by default.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

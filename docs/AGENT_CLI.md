@@ -228,6 +228,43 @@ class CodexCLIDriver:
 
 ---
 
+## Same-task comparative evidence
+
+Morphicの優位性は主観的な総合点ではなく、同一課題・同一workspace revision・
+同一verification checks・同一反復数で比較する。記録済み試行は次で評価する。
+
+```bash
+morphic benchmark agent-cli \
+  --manifest benchmark-manifest.json \
+  --results benchmark-results.json
+
+# CI artifact向けのstable JSON
+morphic benchmark agent-cli \
+  --manifest benchmark-manifest.json \
+  --results benchmark-results.json \
+  --json
+```
+
+manifestは3 arms (`codex_cli`, `claude_code`, `morphic_control`)を必須とし、taskに
+`id`, `goal`, `workspace_revision`, `checks`, `handoff_assertions`を宣言する。
+resultsは各arm × trialをexactly once記録し、completion、accepted patch、通過した
+checks/handoff assertions、elapsed time、cost、human interventions、recoveryを持つ。
+
+評価器は以下をarm別に算出し、metricごとのleaderを示す。
+
+- completion rate / accepted patch rate
+- verification rate（宣言済みchecksから算出）
+- median elapsed seconds / mean cost / mean human interventions
+- recovery rate
+- context-handoff fidelity（宣言済みhandoff assertionsから算出）
+
+恣意的なweightを避けるためcomposite scoreは作らない。出力にはtimestampを含めず、
+JSON keyをsortして同じ入力からbyte-stableなartifactを作る。このコマンドはファイルを
+読むだけでnative engineやpaid APIを起動しない。将来のlive recorderはcost capを伴う
+別のexplicit opt-inとして追加する。
+
+---
+
 ## Agent CLI Router
 
 ```python

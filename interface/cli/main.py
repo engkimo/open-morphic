@@ -117,7 +117,7 @@ def _register_commands() -> None:
     app.add_typer(
         benchmark_app,
         name="benchmark",
-        help="Run UCL benchmarks (context continuity, dedup accuracy).",
+        help="Run UCL and recorded agent CLI benchmarks.",
     )
     app.add_typer(
         a2a_app,

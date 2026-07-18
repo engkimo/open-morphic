@@ -1,7 +1,7 @@
 # Morphic Control Plane Strategy
 
 Decision date: 2026-07-14
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ## Product decision
 
@@ -261,6 +261,26 @@ resume, rather than depending on inconsistent provider stdin protocols. Phase 39
 all 3,542 unit tests with repository-wide Ruff clean. The next priority is a reproducible
 same-task comparison harness for Codex alone, Claude alone, and Morphic-controlled runs,
 with live paid execution remaining explicit opt-in.
+
+## Phase 40 update
+
+The first evidence harness is now offline and deterministic. One manifest pins the task,
+workspace revision, verification checks, handoff assertions, and repetitions shared by
+Codex CLI, Claude Code, and Morphic-controlled arms. A result set is accepted only when
+every arm/trial cell appears exactly once and all passed assertions were declared before
+the run.
+
+Reports compare completion, accepted patch, verification, median elapsed time, cost,
+human interventions, recovery, and context-handoff fidelity. Verification and handoff
+scores are derived from named assertions. Morphic deliberately does not collapse these
+dimensions into a subjective weighted winner score; it reports leaders per metric and
+emits timestamp-free, sorted-key JSON for reproducible review.
+
+`morphic benchmark agent-cli` only evaluates recorded JSON and cannot start Codex,
+Claude, Morphic, or a paid API. The next slice should be a separate explicit opt-in
+recorder with isolated worktrees, timeouts, cost caps, and captured verification evidence.
+Phase 40 passed all 3,553 unit tests with repository-wide Ruff clean, and the built wheel
+contains the benchmark package.
 
 ## Publication checkpoint (2026-07-15)
 

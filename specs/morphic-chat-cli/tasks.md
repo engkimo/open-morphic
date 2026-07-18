@@ -368,6 +368,17 @@
 - [x] T3907 Preserve provider, workspace, and permission provenance through resume.
 - [x] T3908 Treat slash-prefixed replacement prompts as provider messages.
 
+## Phase 40 - Recorded Same-Task Agent CLI Benchmark
+
+- [x] T4001 Add RED tests for the manifest, complete trial matrix, metrics, and CLI.
+- [x] T4002 Require Codex, Claude Code, and Morphic-controlled arms on one task revision.
+- [x] T4003 Derive verification and handoff fidelity from predeclared assertions.
+- [x] T4004 Reject duplicate, missing, mismatched, and undeclared observations.
+- [x] T4005 Report metric-specific leaders without a subjective composite score.
+- [x] T4006 Emit deterministic timestamp-free JSON for review and CI artifacts.
+- [x] T4007 Keep agent launch and paid live execution outside the offline evaluator.
+- [x] T4008 Include the benchmark package in built distributions.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
