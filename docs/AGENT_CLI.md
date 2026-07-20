@@ -356,6 +356,50 @@ check/handoff evidence、receipt parse status、review consistency、actual-cost
 失敗trialをacceptedにするreview、authorized cap超過、既存outputへの上書きは拒否する。
 この処理はagentやpaid APIを起動せず、同じ入力からtimestamp-free/sorted-key resultを作る。
 
+### First-party Morphic receipt and zero-cost rehearsal
+
+Morphic-controlled armはwrapperなしでcanonical receiptを出力できる。通常のone-shot出力を
+維持し、最後のstdout lineだけをreceiptにする。
+
+```bash
+morphic code \
+  --benchmark-receipt \
+  --workspace . \
+  "Implement the benchmark task"
+```
+
+`--benchmark-receipt`はcouncil turnのcostを合算し、normalized completion eventに含まれる
+non-negative usage counterだけを集約する。model fieldは
+`morphic-control[<sorted engine ids>]`となる。実行失敗またはCtrl-Cでは、未確定費用を
+0ドルと偽らずreceiptを出さないため、recorder/finalizerは欠損としてfail closedする。
+通常のflagなし出力は変えない。
+
+Phase 43のlocal rehearsalは外部agentやAPIを起動せず、Phase 41-42の全経路を検査する。
+
+```bash
+morphic benchmark agent-cli-rehearse \
+  --source-root . \
+  --revision HEAD \
+  --output-dir ../agent-cli-rehearsal
+```
+
+このコマンドが使うarm commandは内部生成された`python -c` fixtureだけで、利用者が
+Codex/Claude commandへ差し替えるoptionはない。configured estimateとnormalized actual
+costはともに0ドル。pinned detached worktreeで3 armを通し、次のbundleを新規directoryへ
+exclusiveに発行する。
+
+- `manifest.json`
+- `recorder-config.json`
+- `evidence.json`
+- `reviews.json`
+- `results.json`
+
+rehearsal reviewは`accepted_patch=false`に固定される。これはreceipt/parser/join/isolationの
+動作確認であり、agent品質比較ではない。既存output directoryは上書きしない。read-only
+planの編集開始点として`benchmarks/templates/agent_cli_manifest.example.json`と
+`agent_cli_recorder.example.json`も同梱する。実キャンペーンは従来どおり別の
+`agent-cli-record --execute --acknowledge-paid --cost-cap-usd ...`による明示承認が必要。
+
 ---
 
 ## Agent CLI Router

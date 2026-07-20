@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-07-20
-> Latest work: Morphic Chat CLI Phase 42 receipt adjudication
+> Latest work: Morphic Chat CLI Phase 43 first-party receipt rehearsal
 
 ## Latest Session Notes (2026-06-26)
 
@@ -311,6 +311,18 @@ Phase 42 implemented:
 - Final output is timestamp-free, sorted-key JSON and uses the existing exclusive non-overwriting publication path.
 - Verification: 3,582 unit tests passed; repository-wide Ruff clean; all four benchmark modules are present in the built wheel.
 
+Phase 43 implemented:
+- Added explicit `morphic code --benchmark-receipt` while preserving ordinary output when the flag is absent.
+- The final stdout line is a sorted canonical Morphic receipt that aggregates council-turn cost and non-negative normalized completion usage only.
+- Runtime failure and Ctrl-C emit no receipt, so unknown provider cost cannot be misreported as zero and finalization fails closed.
+- Added parseable manifest and recorder configuration examples under `benchmarks/templates/`.
+- Added `morphic benchmark agent-cli-rehearse`, whose commands are fixed internal Python fixtures and cannot be replaced with external agent commands.
+- The rehearsal pins a Git revision and exercises three detached worktrees, all receipt parsers, hashed evidence, review fingerprints, and deterministic finalization at configured and actual cost $0.
+- Rehearsal review fixes `accepted_patch=false`; fixture completion is never represented as patch-quality evidence.
+- Output is a new five-file manifest/config/evidence/reviews/results directory; an existing directory is refused.
+- Real workspace verification completed all three cells with no raw output in evidence and no remaining detached worktree. No paid campaign was executed.
+- Verification: 3,591 unit tests passed; repository-wide Ruff clean; wheel contains the rehearsal module and both JSON templates.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -320,7 +332,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add first-party Morphic receipt emission plus committed dry-run manifest/config/review templates, then run a zero-cost local rehearsal before authorizing any paid three-arm campaign.
+- Add campaign preflight and an independent review-template generator for a user-selected task and pinned revision. Keep paid recording behind the separate acknowledgement and cost-cap gate.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

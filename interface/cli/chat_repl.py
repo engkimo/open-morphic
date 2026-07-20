@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from application.use_cases.send_chat_message import SendChatMessageUseCase
 from application.use_cases.start_chat_session import StartChatSessionUseCase
 from domain.entities.chat_event import ChatEventType
 from domain.entities.chat_session import ChatSession, PermissionMode
+from domain.entities.council_runtime import CouncilTurn
 from domain.entities.execution import Action
 from domain.entities.hook import HookType
 from domain.entities.workspace_context import ContextIndex
@@ -39,6 +41,12 @@ from interface.cli.formatters import console
 from interface.cli.native_event_progress import NativeEventProgressRenderer
 from interface.cli.slash_commands import parse_slash_command
 from interface.cli.turn_control import ActiveTurnController, TurnCancelledError
+
+
+@dataclass(frozen=True)
+class GoalRunResult:
+    output: str
+    turns: tuple[CouncilTurn, ...]
 
 
 class ChatRepl:
@@ -169,6 +177,19 @@ class ChatRepl:
         goal: str,
         permission_mode: PermissionMode = PermissionMode.CONFIRM_DESTRUCTIVE,
     ) -> str:
+        return (
+            await self.run_goal_with_result(
+                goal=goal,
+                permission_mode=permission_mode,
+            )
+        ).output
+
+    async def run_goal_with_result(
+        self,
+        *,
+        goal: str,
+        permission_mode: PermissionMode = PermissionMode.CONFIRM_DESTRUCTIVE,
+    ) -> GoalRunResult:
         session = await self._load_or_start_session(
             resume=None,
             permission_mode=permission_mode,
@@ -182,7 +203,7 @@ class ChatRepl:
         ).execute(session=session, context=context, message=goal)
         output = str(result.events[-1].payload["text"])
         console.print(output)
-        return output
+        return GoalRunResult(output=output, turns=result.turns)
 
     async def _load_or_start_session(
         self,

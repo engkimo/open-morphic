@@ -405,6 +405,19 @@
 - [x] T4209 Reject accepted-patch review for provider or process failure.
 - [x] T4210 Emit exclusive deterministic Phase 40 result JSON without live execution.
 
+## Phase 43 - First-party Receipt and Zero-cost Rehearsal
+
+- [x] T4301 Add RED tests for Morphic receipt output and local rehearsal publication.
+- [x] T4302 Add explicit `morphic code --benchmark-receipt` without changing defaults.
+- [x] T4303 Aggregate council cost and normalized non-negative usage only.
+- [x] T4304 Fail closed without a receipt when failure/cancellation cost is unknown.
+- [x] T4305 Commit parseable manifest and recorder configuration examples.
+- [x] T4306 Generate internal-only zero-cost fixtures for all three provider shapes.
+- [x] T4307 Exercise recorder isolation, receipt parsing, review joins, and finalization.
+- [x] T4308 Keep synthetic accepted-patch decisions false and cost exactly zero.
+- [x] T4309 Publish a complete rehearsal bundle without replacing existing output.
+- [x] T4310 Verify a real pinned-worktree rehearsal leaves no raw output or worktree.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

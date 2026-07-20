@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from benchmarks.agent_cli_comparison import AgentCliArm
+from domain.entities.council_runtime import CouncilTurn
 from domain.services.engine_cost_calculator import EngineCostCalculator
 from infrastructure.agent_cli.claude_jsonl import parse_claude_output
 from infrastructure.agent_cli.codex_jsonl import parse_codex_output
@@ -55,12 +57,58 @@ class ProviderReceipt(_FrozenModel):
         return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
 
 
-class _MorphicReceiptEnvelope(_FrozenModel):
+class MorphicBenchmarkReceiptEnvelope(_FrozenModel):
+    """Canonical final stdout line emitted by Morphic benchmark runs."""
+
     type: Literal["morphic_benchmark_receipt"]
     success: bool
     model: str = Field(min_length=1)
     usage: dict[str, int]
     cost_usd: float = Field(ge=0.0)
+
+    @model_validator(mode="after")
+    def validate_usage(self) -> MorphicBenchmarkReceiptEnvelope:
+        if any(tokens < 0 for tokens in self.usage.values()):
+            raise ValueError("usage token counts must be non-negative")
+        return self
+
+    def to_json(self) -> str:
+        return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
+
+
+def build_morphic_benchmark_receipt(
+    turns: Iterable[CouncilTurn],
+    *,
+    success: bool = True,
+) -> MorphicBenchmarkReceiptEnvelope:
+    """Aggregate privacy-safe usage and cost from one Morphic council run."""
+    materialized = tuple(turns)
+    usage: dict[str, int] = {}
+    for turn in materialized:
+        for event in turn.engine_events:
+            raw_usage = event.payload.get("usage")
+            if not isinstance(raw_usage, dict):
+                continue
+            for name, tokens in raw_usage.items():
+                if (
+                    isinstance(name, str)
+                    and isinstance(tokens, int)
+                    and not isinstance(tokens, bool)
+                ):
+                    if tokens < 0:
+                        continue
+                    usage[name] = usage.get(name, 0) + tokens
+    engines = sorted({turn.engine_id for turn in materialized})
+    model = "morphic-control"
+    if engines:
+        model = f"morphic-control[{','.join(engines)}]"
+    return MorphicBenchmarkReceiptEnvelope(
+        type="morphic_benchmark_receipt",
+        success=success,
+        model=model,
+        usage=usage,
+        cost_usd=round(sum(turn.cost_usd for turn in materialized), 6),
+    )
 
 
 class ProviderReceiptParser:
@@ -119,7 +167,7 @@ class ProviderReceiptParser:
             if not isinstance(raw, dict) or raw.get("type") != "morphic_benchmark_receipt":
                 continue
             try:
-                envelope = _MorphicReceiptEnvelope.model_validate(raw)
+                envelope = MorphicBenchmarkReceiptEnvelope.model_validate(raw)
             except ValueError:
                 return None
             return ProviderReceipt(

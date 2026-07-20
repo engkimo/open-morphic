@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from domain.entities.agent_engine_event import AgentEngineEvent
 from domain.entities.chat_event import ChatEvent, ChatEventType
 from domain.entities.chat_session import ChatSession
+from domain.entities.council_runtime import CouncilTurn
 from domain.entities.workspace_context import ContextIndex
 from domain.ports.agent_engine import AgentEngineEventSinkPort
 from domain.ports.chat_session_store import ChatSessionStorePort
@@ -49,6 +50,7 @@ class _LedgerEngineEventSink(AgentEngineEventSinkPort):
 class SendChatMessageResult:
     session: ChatSession
     events: list[ChatEvent]
+    turns: tuple[CouncilTurn, ...]
 
 
 class SendChatMessageUseCase:
@@ -144,7 +146,7 @@ class SendChatMessageUseCase:
         for event in events[persisted_count:]:
             await self._session_store.append_event(event)
 
-        return SendChatMessageResult(session=current, events=events)
+        return SendChatMessageResult(session=current, events=events, turns=tuple(turns))
 
     async def _append_cancellation(self, session: ChatSession) -> None:
         _, cancelled_event = session.record_event(

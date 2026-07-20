@@ -78,6 +78,39 @@ class _FakeCouncilRuntime:
         return [turn], decision
 
 
+class _FakeReceiptCouncilRuntime:
+    async def deliberate(
+        self,
+        session: ChatSession,
+        context: ContextIndex,
+        user_message: str,
+    ) -> tuple[list[CouncilTurn], CouncilDecision]:
+        del session, context
+        turn = CouncilTurn(
+            role=CouncilRole.IMPLEMENTER,
+            engine_id="codex_cli",
+            content=f"Completed: {user_message}",
+            cost_usd=0.125,
+            engine_events=[
+                AgentEngineEvent(
+                    type=AgentEngineEventType.RUN_COMPLETED,
+                    engine=AgentEngineType.CODEX_CLI,
+                    sequence=0,
+                    payload={
+                        "type": "turn.completed",
+                        "usage": {"input_tokens": 10, "output_tokens": 4},
+                    },
+                )
+            ],
+        )
+        return [turn], CouncilDecision(
+            leader_engine_id="codex_cli",
+            selected_role=CouncilRole.IMPLEMENTER,
+            selected_content=turn.content,
+            rationale="receipt test",
+        )
+
+
 class _FakeStreamingCouncilRuntime(StreamingCouncilRuntimePort):
     async def deliberate(self, session, context, user_message):
         raise AssertionError("streaming path expected")
@@ -627,6 +660,63 @@ def test_code_one_shot_runs_goal_without_repl() -> None:
         assert len(ledgers) == 1
 
 
+def test_code_benchmark_receipt_emits_canonical_final_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from interface.cli import chat_command
+
+    monkeypatch.setattr(chat_command, "_chat_engine_registry", _FakeEngineRegistry)
+    monkeypatch.setattr(
+        chat_command,
+        "_chat_council_runtime",
+        lambda **_kwargs: _FakeReceiptCouncilRuntime(),
+    )
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            app,
+            ["code", "--benchmark-receipt", "implement receipt output"],
+        )
+
+    assert result.exit_code == 0
+    receipt = json.loads(result.output.splitlines()[-1])
+    assert receipt == {
+        "cost_usd": 0.125,
+        "model": "morphic-control[codex_cli]",
+        "success": True,
+        "type": "morphic_benchmark_receipt",
+        "usage": {"input_tokens": 10, "output_tokens": 4},
+    }
+
+
+def test_code_without_benchmark_receipt_preserves_human_output() -> None:
+    with runner.isolated_filesystem():
+        result = runner.invoke(app, ["code", "implement normal output"])
+
+    assert result.exit_code == 0
+    assert "morphic_benchmark_receipt" not in result.output
+
+
+def test_code_benchmark_receipt_does_not_invent_failure_cost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from interface.cli import chat_command
+
+    def fail(coro: object) -> None:
+        coro.close()  # type: ignore[attr-defined]
+        raise RuntimeError("failed locally")
+
+    monkeypatch.setattr(chat_command, "_run", fail)
+
+    result = runner.invoke(
+        app,
+        ["code", "--benchmark-receipt", "implement failing output"],
+    )
+
+    assert result.exit_code == 1
+    assert "morphic_benchmark_receipt" not in result.output
+
+
 def test_code_keyboard_interrupt_exits_with_cancelled_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -642,6 +732,23 @@ def test_code_keyboard_interrupt_exits_with_cancelled_status(
 
     assert result.exit_code == 130
     assert "Cancelled." in result.output
+
+
+def test_code_keyboard_interrupt_does_not_invent_benchmark_cost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from interface.cli import chat_command
+
+    def interrupt(coro: object) -> None:
+        coro.close()  # type: ignore[attr-defined]
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(chat_command, "_run", interrupt)
+
+    result = runner.invoke(app, ["code", "--benchmark-receipt", "fix tests"])
+
+    assert result.exit_code == 130
+    assert "morphic_benchmark_receipt" not in result.output
 
 
 def test_code_permission_mode_option_starts_workspace_write_session() -> None:

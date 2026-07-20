@@ -1,0 +1,44 @@
+{
+  "arm_commands": {
+    "claude_code": [
+      "python3",
+      "-c",
+      "import json; print(json.dumps({'type':'system','subtype':'init','model':'local-rehearsal'})); print(json.dumps({'type':'result','subtype':'success','is_error':False,'result':'ok','usage':{'input_tokens':0,'output_tokens':0},'total_cost_usd':0.0}))"
+    ],
+    "codex_cli": [
+      "python3",
+      "-c",
+      "import json; print(json.dumps({'type':'turn.completed','usage':{'input_tokens':0,'output_tokens':0}}))"
+    ],
+    "morphic_control": [
+      "python3",
+      "-c",
+      "import json; print(json.dumps({'type':'morphic_benchmark_receipt','success':True,'model':'morphic-control[local-rehearsal]','usage':{'input_tokens':0,'output_tokens':0},'cost_usd':0.0}))"
+    ]
+  },
+  "benchmark_id": "agent-cli-local-rehearsal",
+  "check_commands": {
+    "local_process": [
+      "python3",
+      "-c",
+      "raise SystemExit(0)"
+    ]
+  },
+  "estimated_cost_usd_per_trial": {
+    "claude_code": 0.0,
+    "codex_cli": 0.0,
+    "morphic_control": 0.0
+  },
+  "handoff_commands": {
+    "receipt_contract": [
+      "python3",
+      "-c",
+      "raise SystemExit(0)"
+    ]
+  },
+  "model_hints": {
+    "codex_cli": "local-rehearsal"
+  },
+  "schema_version": 1,
+  "timeout_seconds": 10.0
+}

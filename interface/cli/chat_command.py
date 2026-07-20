@@ -87,6 +87,11 @@ _PERMISSION_MODE_OPTION = typer.Option(
     "--permission-mode",
     help="Workspace permission mode.",
 )
+_BENCHMARK_RECEIPT_OPTION = typer.Option(
+    False,
+    "--benchmark-receipt",
+    help="Emit a canonical Morphic benchmark receipt as the final stdout line.",
+)
 
 
 @contextmanager
@@ -190,6 +195,7 @@ def code_cmd(
     critic_engine: str | None = _CRITIC_ENGINE_OPTION,
     leader_engine: str | None = _LEADER_ENGINE_OPTION,
     permission_mode: PermissionMode = _PERMISSION_MODE_OPTION,
+    benchmark_receipt: bool = _BENCHMARK_RECEIPT_OPTION,
     workspace: Path | None = _CODE_WORKSPACE_OPTION,
 ) -> None:
     """Run one coding goal and persist the session ledger."""
@@ -208,14 +214,14 @@ def code_cmd(
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=2) from None
     try:
-        _run(
+        result = _run(
             ChatRepl(
                 workspace_root=workspace or Path.cwd(),
                 council_runtime=council_runtime,
                 engine_registry=engine_registry,
                 hook_executor_factory=lambda root: _chat_hook_executor(workspace_root=root),
                 tool_executor_factory=lambda _root: _chat_tool_executor(),
-            ).run_goal(goal=goal, permission_mode=permission_mode)
+            ).run_goal_with_result(goal=goal, permission_mode=permission_mode)
         )
     except (PermissionError, RuntimeError) as exc:
         typer.echo(f"Error: {exc}", err=True)
@@ -223,6 +229,10 @@ def code_cmd(
     except KeyboardInterrupt:
         typer.echo("Cancelled.", err=True)
         raise typer.Exit(code=130) from None
+    if benchmark_receipt:
+        from benchmarks.agent_cli_receipts import build_morphic_benchmark_receipt
+
+        typer.echo(build_morphic_benchmark_receipt(result.turns).to_json())
 
 
 def _chat_engine_registry() -> EngineRegistryPort:

@@ -334,6 +334,36 @@ local rehearsal.
 Phase 42 passed all 3,582 unit tests with repository-wide Ruff clean, and the built wheel
 contains the comparison, recorder, receipt, and adjudication modules.
 
+## Phase 43 update
+
+Morphic now emits its own canonical benchmark receipt instead of requiring a wrapper to
+manufacture one. `morphic code --benchmark-receipt` preserves the ordinary human output
+and appends one sorted JSON envelope as the final stdout line. The envelope aggregates
+non-negative token counters found in normalized completion events, sums council-turn
+cost, and identifies the participating Morphic engine set. Raw provider payloads never
+enter the receipt.
+
+Failure and cancellation do not manufacture a zero-dollar receipt. Their final provider
+cost may be unknown after an interrupted call, so receipt absence deliberately keeps the
+campaign out of `normalized_receipts` until truthful evidence is available.
+
+The benchmark pipeline also has a committed zero-cost rehearsal contract. Its three
+arms are internal Python fixtures with a hard configured estimate and actual total of
+$0. They exercise detached worktrees, every provider receipt parser, hashed evidence,
+review fingerprints, and deterministic finalization without starting Codex, Claude,
+Morphic routing, or an API. Rehearsal review decisions intentionally leave
+`accepted_patch=false`; synthetic success is not represented as patch quality.
+
+The real-repository rehearsal completed all three cells, published the five-file
+manifest/config/evidence/reviews/results bundle exclusively, retained no raw command
+output, and left no detached worktree behind. This closes the implementation gap before
+a real campaign, but it is not competitive evidence. The next slice should add campaign
+preflight and review-template authoring for a user-selected task/revision before any
+paid execution is authorized.
+
+Phase 43 passed all 3,591 unit tests with repository-wide Ruff clean. The built
+wheel contains the rehearsal module and both committed JSON templates.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

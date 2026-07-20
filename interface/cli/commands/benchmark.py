@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -73,6 +75,8 @@ _FINALIZE_REVIEWS_OPTION = typer.Option(
     help="Independent adjudication reviews JSON.",
 )
 _FINALIZE_OUTPUT_OPTION = typer.Option(None, "--output", help="Final Phase 40 results path.")
+_REHEARSAL_OUTPUT_OPTION = typer.Option(..., "--output-dir", help="New rehearsal bundle directory.")
+_REHEARSAL_REVISION_OPTION = typer.Option("HEAD", "--revision", help="Git revision to pin.")
 
 
 def _write_new_evidence(path: Path, payload: str) -> None:
@@ -394,3 +398,66 @@ def finalize_agent_cli_trials(
         typer.echo(payload)
     else:
         console.print(f"Finalized {len(results.observations)} benchmark observations")
+
+
+@benchmark_app.command("agent-cli-rehearse")
+def rehearse_agent_cli_trials(
+    output_dir: Path = _REHEARSAL_OUTPUT_OPTION,
+    source_root: Path | None = _RECORDER_SOURCE_OPTION,
+    worktree_root: Path | None = _RECORDER_WORKTREE_OPTION,
+    revision: str = _REHEARSAL_REVISION_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Run the complete three-arm evidence pipeline with internal zero-cost fixtures."""
+    from benchmarks.agent_cli_rehearsal import (
+        publish_local_rehearsal,
+        resolve_git_revision,
+        run_local_rehearsal,
+    )
+
+    source = (source_root or Path.cwd()).resolve()
+    output = output_dir.resolve()
+    if output.exists():
+        console.print(f"[red]Rehearsal output already exists: {output}[/red]")
+        raise typer.Exit(code=1)
+    if not output.parent.exists():
+        console.print("[red]Rehearsal output parent must already exist[/red]")
+        raise typer.Exit(code=1)
+
+    temporary_root: tempfile.TemporaryDirectory[str] | None = None
+    if worktree_root is None:
+        temporary_root = tempfile.TemporaryDirectory(prefix="morphic-agent-cli-rehearsal-")
+        isolated_root = Path(temporary_root.name)
+    else:
+        isolated_root = worktree_root.resolve()
+    try:
+        pinned_revision = _run(resolve_git_revision(source, revision))
+        artifacts = _run(
+            run_local_rehearsal(
+                source_root=source,
+                worktree_root=isolated_root,
+                workspace_revision=pinned_revision,
+                python_executable=sys.executable,
+            )
+        )
+        publish_local_rehearsal(output, artifacts)
+    except (OSError, RuntimeError, ValueError) as exc:
+        console.print(f"[red]Agent CLI rehearsal failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+    finally:
+        if temporary_root is not None:
+            temporary_root.cleanup()
+
+    if as_json:
+        typer.echo(
+            json.dumps(
+                artifacts.results.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+    else:
+        console.print(
+            f"Rehearsed {len(artifacts.results.observations)} local trials "
+            f"at $0.000000 into {output}"
+        )
