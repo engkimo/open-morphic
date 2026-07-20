@@ -305,6 +305,57 @@ process内でhard-stopするものではない。実費とaccepted-patch判定�
 `pending_adjudication`として残す。provider receipt parserとreview adjudicatorが
 揃うまでは、recorder evidenceをPhase 40の最終comparison resultへ自動変換しない。
 
+### Receipt normalization and adjudication
+
+Phase 42ではrecorderがagent stdoutを保持している瞬間だけreceiptを解析し、raw出力を
+捨てる前に以下のnormalized fieldsへ変換する。
+
+- provider / success / model
+- non-negative token usage
+- cost USD / cost source
+- parse error count
+
+CodexはJSONL usageと`model_hints.codex_cli`から既存のcost calculatorで再計算し、
+receipt costが一致しない場合は拒否する。Claudeはstream-json resultの
+`total_cost_usd`をprovider-reported valueとして保持する。Morphic-controlled commandは
+最後に次のcanonical envelopeを出力する必要がある。
+
+```json
+{
+  "type": "morphic_benchmark_receipt",
+  "success": true,
+  "model": "o4-mini",
+  "usage": {"input_tokens": 120, "output_tokens": 30},
+  "cost_usd": 0.02
+}
+```
+
+全trialでreceiptが得られた場合だけevidenceの`cost_collection`が
+`normalized_receipts`になる。欠損を0ドルとして補完しない。
+
+independent review bundleは各arm/trialについてagent argv fingerprint、accepted patch、
+human interventions、recovery、reviewer id、review artifact SHA-256を記録する。次のoffline
+commandがmachine evidenceとreview bundleを結合する。
+
+```bash
+morphic benchmark agent-cli-finalize \
+  --manifest benchmark-manifest.json \
+  --evidence benchmark-evidence.json \
+  --reviews benchmark-reviews.json \
+  --output benchmark-results.json \
+  --json
+
+morphic benchmark agent-cli \
+  --manifest benchmark-manifest.json \
+  --results benchmark-results.json \
+  --json
+```
+
+finalizerは完全なarm/trial matrix、task/revision identity、provider、argv fingerprint、
+check/handoff evidence、receipt parse status、review consistency、actual-cost totalを検証する。
+失敗trialをacceptedにするreview、authorized cap超過、既存outputへの上書きは拒否する。
+この処理はagentやpaid APIを起動せず、同じ入力からtimestamp-free/sorted-key resultを作る。
+
 ---
 
 ## Agent CLI Router

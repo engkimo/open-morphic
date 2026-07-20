@@ -10,6 +10,7 @@ import pytest
 from typer.testing import CliRunner
 
 from benchmarks.agent_cli_comparison import AgentCliManifest
+from benchmarks.agent_cli_receipts import ProviderReceipt
 from benchmarks.agent_cli_recorder import (
     AgentCliRecorderConfig,
     AgentCliTrialRecorder,
@@ -98,6 +99,28 @@ class FakeCommands:
         )
 
 
+class FakeReceipts:
+    def parse(
+        self,
+        *,
+        arm: object,
+        stdout: str,
+        model_hint: str | None = None,
+    ) -> ProviderReceipt:
+        return ProviderReceipt(
+            provider=getattr(arm, "value", arm),
+            success=True,
+            model=model_hint or "test-model",
+            usage={"input_tokens": 10, "output_tokens": 2},
+            cost_usd=(0.00006 if getattr(arm, "value", arm) == "codex_cli" else 0.01),
+            cost_source={
+                "codex_cli": "calculated_from_usage",
+                "claude_code": "provider_reported",
+                "morphic_control": "morphic_reported",
+            }[getattr(arm, "value", arm)],
+        )
+
+
 def test_build_recording_plan_is_deterministic_and_reserves_cost() -> None:
     manifest = AgentCliManifest.model_validate(_manifest())
     config = AgentCliRecorderConfig.model_validate(_config())
@@ -181,6 +204,30 @@ async def test_recorder_isolates_trials_and_hashes_raw_output(tmp_path: Path) ->
     assert "secret warning" not in evidence.to_json()
     assert payload["trials"][0]["agent"]["stdout_bytes"] == 13
     assert len(payload["trials"][0]["agent"]["stdout_sha256"]) == 64
+    assert payload["cost_collection"] == "pending_adjudication"
+
+
+@pytest.mark.asyncio
+async def test_recorder_normalizes_all_receipts_before_discarding_output(tmp_path: Path) -> None:
+    recorder = AgentCliTrialRecorder(
+        worktree_manager=FakeWorktrees(),
+        command_runner=FakeCommands(),
+        receipt_parser=FakeReceipts(),
+    )
+
+    evidence = await recorder.record(
+        manifest=AgentCliManifest.model_validate(_manifest()),
+        config=AgentCliRecorderConfig.model_validate(_config()),
+        source_root=tmp_path / "source",
+        worktree_root=tmp_path / "worktrees",
+        acknowledged_paid=True,
+        cost_cap_usd=0.6,
+    )
+    payload = evidence.to_dict()
+
+    assert payload["cost_collection"] == "normalized_receipts"
+    assert payload["trials"][0]["receipt"]["cost_usd"] == 0.00006
+    assert "secret output" not in evidence.to_json()
 
 
 @pytest.mark.asyncio

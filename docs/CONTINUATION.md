@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
-> Last updated: 2026-07-18
-> Latest work: Morphic Chat CLI Phase 41 isolated trial recorder
+> Last updated: 2026-07-20
+> Latest work: Morphic Chat CLI Phase 42 receipt adjudication
 
 ## Latest Session Notes (2026-06-26)
 
@@ -299,6 +299,18 @@ Phase 41 implemented:
 - Authorized estimate cap is recorded, while actual provider cost and accepted-patch review remain explicitly pending adjudication.
 - Verification: 3,566 unit tests passed; repository-wide Ruff clean; detached-worktree lifecycle, exclusive evidence publication, and wheel contents verified.
 
+Phase 42 implemented:
+- Recorder agent output is parsed in memory into a normalized receipt before raw stdout is discarded.
+- Codex receipts require usage plus a model/model hint and recompute cost through the existing deterministic calculator.
+- Claude receipts retain the provider-reported total cost; Morphic-controlled commands use a strict `morphic_benchmark_receipt` envelope.
+- Provider-specific cost sources, non-negative usage, recalculated Codex cost, and zero parse errors are required.
+- Evidence becomes `normalized_receipts` only when every trial has a valid receipt; missing receipts are never converted to zero cost.
+- Independent review decisions bind accepted patch, interventions, and recovery to the exact agent argv SHA-256 plus a review artifact SHA-256.
+- `morphic benchmark agent-cli-finalize` joins complete evidence/review matrices into Phase 40 observations without starting an agent or paid API.
+- Finalization recomputes check/handoff outcomes and rejects identity/provider/fingerprint mismatch, missing/duplicate trials, failed-run acceptance, and authorized-cap overage.
+- Final output is timestamp-free, sorted-key JSON and uses the existing exclusive non-overwriting publication path.
+- Verification: 3,582 unit tests passed; repository-wide Ruff clean; all four benchmark modules are present in the built wheel.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -308,7 +320,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add provider receipt parsers and a deterministic adjudication step that joins actual cost, accepted-patch review, interventions, and recovery evidence into Phase 40 observations before any paid benchmark campaign.
+- Add first-party Morphic receipt emission plus committed dry-run manifest/config/review templates, then run a zero-cost local rehearsal before authorizing any paid three-arm campaign.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

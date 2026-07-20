@@ -1,7 +1,7 @@
 # Morphic Control Plane Strategy
 
 Decision date: 2026-07-14
-Last updated: 2026-07-18
+Last updated: 2026-07-20
 
 ## Product decision
 
@@ -307,6 +307,32 @@ Phase 41 passed all 3,566 unit tests with repository-wide Ruff clean. A real tem
 Git repository test verified pinned detached-worktree creation and removal, and the built
 wheel contains both comparison and recorder modules. Exclusive evidence publication was
 also verified to preserve an existing file under a competing write.
+
+## Phase 42 update
+
+Provider cost and human review now have an explicit evidence join instead of being
+hand-entered directly into comparison observations. While raw agent stdout exists in
+memory, the recorder attempts to normalize a privacy-safe receipt and then discards the
+raw content. Codex usage is priced through the existing deterministic calculator using a
+model or configured model hint; Claude retains its provider-reported total; Morphic uses
+a strict `morphic_benchmark_receipt` envelope.
+
+Receipts enforce provider-specific cost sources, non-negative usage, recalculated Codex
+cost, and zero parse errors. A campaign becomes `normalized_receipts` only when every
+trial parsed successfully. Missing data never silently becomes zero cost.
+
+Independent review decisions bind accepted patch, human interventions, and recovery to
+the exact agent argv SHA-256 and a review artifact SHA-256. The offline finalizer joins
+those reviews with machine evidence, recomputes verification/handoff outcomes, enforces
+the complete trial matrix and authorized actual-cost total, and rejects acceptance of a
+failed provider/process run. It then emits the exact Phase 40 result schema with stable
+JSON ordering and no timestamp.
+
+No paid campaign was executed. The remaining pre-campaign gap is first-party Morphic
+receipt emission and committed configuration/review templates, followed by a zero-cost
+local rehearsal.
+Phase 42 passed all 3,582 unit tests with repository-wide Ruff clean, and the built wheel
+contains the comparison, recorder, receipt, and adjudication modules.
 
 ## Publication checkpoint (2026-07-15)
 

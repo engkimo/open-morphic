@@ -24,6 +24,7 @@ from benchmarks.agent_cli_comparison import (
     AgentCliArm,
     AgentCliManifest,
 )
+from benchmarks.agent_cli_receipts import ProviderReceipt, ProviderReceiptParser
 
 
 class _FrozenModel(BaseModel):
@@ -47,6 +48,7 @@ class AgentCliRecorderConfig(_FrozenModel):
     check_commands: dict[str, tuple[str, ...]]
     handoff_commands: dict[str, tuple[str, ...]]
     estimated_cost_usd_per_trial: dict[AgentCliArm, float]
+    model_hints: dict[AgentCliArm, str] = Field(default_factory=dict)
     timeout_seconds: float = Field(gt=0.0, le=3600.0)
 
     @model_validator(mode="after")
@@ -61,6 +63,10 @@ class AgentCliRecorderConfig(_FrozenModel):
             )
         if any(value < 0.0 for value in self.estimated_cost_usd_per_trial.values()):
             raise ValueError("estimated costs must be non-negative")
+        if not set(self.model_hints).issubset(REQUIRED_ARMS):
+            raise ValueError("model_hints contains an unsupported arm")
+        if any(not model.strip() for model in self.model_hints.values()):
+            raise ValueError("model_hints values must not be blank")
         _validate_command_map("arm_commands", self.arm_commands)
         _validate_command_map("check_commands", self.check_commands)
         _validate_command_map("handoff_commands", self.handoff_commands)
@@ -212,6 +218,7 @@ class TrialEvidence:
     agent: CommandEvidence
     checks: dict[str, CommandEvidence]
     handoff_assertions: dict[str, CommandEvidence]
+    receipt: ProviderReceipt | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -223,6 +230,9 @@ class TrialEvidence:
             "handoff_assertions": {
                 name: asdict(value) for name, value in self.handoff_assertions.items()
             },
+            "receipt": (
+                self.receipt.model_dump(mode="json") if self.receipt is not None else None
+            ),
             "completed": self.agent.exit_code == 0 and not self.agent.timed_out,
             "passed_checks": [
                 name
@@ -248,6 +258,11 @@ class RecordingEvidence:
     trials: list[TrialEvidence]
 
     def to_dict(self) -> dict[str, Any]:
+        cost_collection = (
+            "normalized_receipts"
+            if all(trial.receipt is not None for trial in self.trials)
+            else "pending_adjudication"
+        )
         return {
             "schema_version": self.schema_version,
             "benchmark_id": self.benchmark_id,
@@ -255,7 +270,7 @@ class RecordingEvidence:
             "workspace_revision": self.workspace_revision,
             "estimated_max_cost_usd": self.estimated_max_cost_usd,
             "authorized_cost_cap_usd": self.authorized_cost_cap_usd,
-            "cost_collection": "pending_adjudication",
+            "cost_collection": cost_collection,
             "trials": [trial.to_dict() for trial in self.trials],
         }
 
@@ -277,6 +292,16 @@ class CommandRunnerPort(Protocol):
         cwd: Path,
         timeout_seconds: float,
     ) -> CommandCapture: ...
+
+
+class ReceiptParserPort(Protocol):
+    def parse(
+        self,
+        *,
+        arm: AgentCliArm | str,
+        stdout: str,
+        model_hint: str | None = None,
+    ) -> ProviderReceipt | None: ...
 
 
 def _expand_argv(
@@ -310,9 +335,11 @@ class AgentCliTrialRecorder:
         *,
         worktree_manager: WorktreeManagerPort,
         command_runner: CommandRunnerPort,
+        receipt_parser: ReceiptParserPort | None = None,
     ) -> None:
         self._worktree_manager = worktree_manager
         self._command_runner = command_runner
+        self._receipt_parser = receipt_parser or ProviderReceiptParser()
 
     async def record(
         self,
@@ -352,13 +379,14 @@ class AgentCliTrialRecorder:
                         destination=destination,
                     )
                     created = True
-                    agent = await self._run_evidence(
+                    agent, receipt = await self._run_agent_evidence(
                         config.arm_commands[arm],
                         manifest=manifest,
                         arm=arm,
                         trial=trial,
                         workspace=destination,
                         timeout_seconds=config.timeout_seconds,
+                        model_hint=config.model_hints.get(arm),
                     )
                     checks = {
                         name: await self._run_evidence(
@@ -390,6 +418,7 @@ class AgentCliTrialRecorder:
                             agent=agent,
                             checks=checks,
                             handoff_assertions=handoffs,
+                            receipt=receipt,
                         )
                     )
                 finally:
@@ -432,6 +461,36 @@ class AgentCliTrialRecorder:
             timeout_seconds=timeout_seconds,
         )
         return CommandEvidence.from_capture(argv=argv, capture=capture)
+
+    async def _run_agent_evidence(
+        self,
+        template: tuple[str, ...],
+        *,
+        manifest: AgentCliManifest,
+        arm: AgentCliArm,
+        trial: int,
+        workspace: Path,
+        timeout_seconds: float,
+        model_hint: str | None,
+    ) -> tuple[CommandEvidence, ProviderReceipt | None]:
+        argv = _expand_argv(
+            template,
+            manifest=manifest,
+            arm=arm,
+            trial=trial,
+            workspace=workspace,
+        )
+        capture = await self._command_runner.run(
+            argv=argv,
+            cwd=workspace,
+            timeout_seconds=timeout_seconds,
+        )
+        receipt = self._receipt_parser.parse(
+            arm=arm,
+            stdout=capture.stdout,
+            model_hint=model_hint,
+        )
+        return CommandEvidence.from_capture(argv=argv, capture=capture), receipt
 
 
 class LocalCommandRunner:

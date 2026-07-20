@@ -54,6 +54,25 @@ _RECORDER_COST_CAP_OPTION = typer.Option(
     "--cost-cap-usd",
     help="Explicit cap that must cover the configured maximum estimate.",
 )
+_FINALIZE_EVIDENCE_OPTION = typer.Option(
+    ...,
+    "--evidence",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Normalized recorder evidence JSON.",
+)
+_FINALIZE_REVIEWS_OPTION = typer.Option(
+    ...,
+    "--reviews",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Independent adjudication reviews JSON.",
+)
+_FINALIZE_OUTPUT_OPTION = typer.Option(None, "--output", help="Final Phase 40 results path.")
 
 
 def _write_new_evidence(path: Path, payload: str) -> None:
@@ -336,3 +355,42 @@ def record_agent_cli_trials(
         typer.echo(evidence.to_json())
     else:
         console.print(f"Recorded {len(evidence.trials)} isolated trials to {evidence_path}")
+
+
+@benchmark_app.command("agent-cli-finalize")
+def finalize_agent_cli_trials(
+    manifest_path: Path = _AGENT_CLI_MANIFEST_OPTION,
+    evidence_path: Path = _FINALIZE_EVIDENCE_OPTION,
+    reviews_path: Path = _FINALIZE_REVIEWS_OPTION,
+    output_path: Path | None = _FINALIZE_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Join normalized receipts and reviews into Phase 40 observations."""
+    from benchmarks.agent_cli_adjudication import (
+        AdjudicationReviews,
+        RecordedEvidence,
+        finalize_recorded_results,
+        finalized_results_json,
+    )
+    from benchmarks.agent_cli_comparison import AgentCliManifest
+
+    try:
+        manifest = AgentCliManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+        evidence = RecordedEvidence.model_validate_json(evidence_path.read_text(encoding="utf-8"))
+        reviews = AdjudicationReviews.model_validate_json(reviews_path.read_text(encoding="utf-8"))
+        results = finalize_recorded_results(manifest, evidence, reviews)
+        payload = finalized_results_json(results)
+        if output_path is not None:
+            if not output_path.parent.exists():
+                raise ValueError("output parent must already exist")
+            if output_path.exists():
+                raise ValueError("output already exists")
+            _write_new_evidence(output_path, payload)
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI adjudication failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(payload)
+    else:
+        console.print(f"Finalized {len(results.observations)} benchmark observations")

@@ -392,6 +392,19 @@
 - [x] T4109 Refuse existing evidence output and write new evidence atomically.
 - [x] T4110 Keep actual cost and accepted-patch decisions pending explicit adjudication.
 
+## Phase 42 - Provider Receipts and Deterministic Adjudication
+
+- [x] T4201 Add RED tests for receipt parsing, evidence joins, failures, and CLI output.
+- [x] T4202 Normalize Codex usage with model-hinted deterministic cost calculation.
+- [x] T4203 Normalize Claude provider-reported cost without retaining result text.
+- [x] T4204 Define a strict Morphic benchmark receipt envelope.
+- [x] T4205 Persist normalized receipts only when parsing succeeds for every trial.
+- [x] T4206 Bind independent review decisions to agent argv fingerprints.
+- [x] T4207 Recompute machine check/handoff outcomes instead of trusting copied lists.
+- [x] T4208 Reject missing/duplicate/mismatched/parse-error/over-cap campaigns.
+- [x] T4209 Reject accepted-patch review for provider or process failure.
+- [x] T4210 Emit exclusive deterministic Phase 40 result JSON without live execution.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
