@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-07-20
-> Latest work: Morphic Chat CLI Phase 44 campaign preflight
+> Latest work: Morphic Chat CLI Phase 45 campaign governance status
 
 ## Latest Session Notes (2026-06-26)
 
@@ -337,6 +337,18 @@ Phase 44 implemented:
 - Real zero-cost verification generated a three-arm preflight and three-decision review template on commit `88326ae`; no paid campaign was executed.
 - Verification: 3,605 unit tests passed; repository-wide Ruff clean; wheel contains the preflight module and runtime-version template.
 
+Phase 45 implemented:
+- Added a normalized reviewer policy declaration with operator ID, reviewer allowlist, and minimum distinct reviewer count.
+- Policy SHA-256 is bound into pending templates and completed reviews.
+- Operator self-review, unauthorized reviewers, insufficient diversity, and impossible reviewer minimums fail closed.
+- Reviewer IDs are structural declarations only; no authenticated human identity claim is made.
+- Added read-only `morphic benchmark agent-cli-status` with six deterministic lifecycle stages.
+- Status validates artifact order, manifest/preflight hashes, evidence estimate/matrix, all review bindings, reviewer policy, and recomputed final results.
+- Every status fixes `paid_execution_authorized=false` and cannot start a process or mutate an artifact.
+- Real zero-cost verification reached `review_pending` at commit `d88f1f0`; all input artifact SHA-256 values were identical before and after status.
+- No external agent, version probe, or paid API was started.
+- Verification: 3,621 unit tests passed; repository-wide Ruff clean; wheel contains the campaign status, reviewer policy, and policy template artifacts.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -346,7 +358,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add reviewer-separation validation and a read-only campaign status command. Keep paid recording behind the separate acknowledgement and cost-cap gate.
+- Add authenticated reviewer attestations or signed artifact support while preserving the existing offline, backward-compatible path.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

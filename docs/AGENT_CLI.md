@@ -453,6 +453,63 @@ bound reviewを`--preflight`なしでfinalizeすること、別evidenceへ流用
 利用できる。`benchmarks/templates/agent_cli_runtime_versions.example.json`を編集開始点として
 同梱する。
 
+### Reviewer separation and campaign status
+
+Phase 45ではoperatorとreviewerの構造的分離をpolicy declarationで固定する。
+`benchmarks/templates/agent_cli_review_policy.example.json`をコピーし、operator ID、許可する
+reviewer IDs、必要なminimum distinct reviewer数を記入する。
+
+```json
+{
+  "schema_version": 1,
+  "benchmark_id": "campaign-001",
+  "operator_id": "operator-1",
+  "reviewer_ids": ["reviewer-1", "reviewer-2"],
+  "minimum_distinct_reviewers": 2
+}
+```
+
+このpolicyをreview template生成とfinalizeの両方へ渡す。
+
+```bash
+morphic benchmark agent-cli-review-template \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --review-policy reviewer-policy.json \
+  --output benchmark-reviews.json
+
+morphic benchmark agent-cli-finalize \
+  --manifest benchmark-manifest.json \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --reviews benchmark-reviews.json \
+  --review-policy reviewer-policy.json \
+  --output benchmark-results.json
+```
+
+policyはreviewer IDsをsortしてcanonical SHA-256を作り、review artifactへbindする。
+operator自身のreview、allowlist外ID、minimum distinct reviewer未達、decision数より大きく
+実現不能なminimumは拒否する。これは宣言されたIDの構造的分離であり、本人確認や署名を
+意味しない。
+
+campaignの現在位置はartifactを変更せず確認できる。
+
+```bash
+morphic benchmark agent-cli-status \
+  --manifest benchmark-manifest.json \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --reviews benchmark-reviews.json \
+  --review-policy reviewer-policy.json \
+  --results benchmark-results.json \
+  --json
+```
+
+status stageは`manifest_ready` → `preflight_ready` → `recorded` → `review_pending` →
+`review_complete` → `finalized`。途中artifactの欠落、別manifest/evidenceの混入、estimate、
+policy、review、resultsの不一致はfail closedになる。このcommandはファイルを読むだけで、
+全stageにおいて`paid_execution_authorized=false`を返す。
+
 ---
 
 ## Agent CLI Router

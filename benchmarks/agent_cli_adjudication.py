@@ -112,6 +112,7 @@ class AdjudicationReviews(_FrozenModel):
     workspace_revision: str = Field(min_length=1)
     preflight_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     evidence_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    review_policy_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     review_completed: Literal[True] | None = None
     decisions: tuple[ReviewDecision, ...] = Field(min_length=1)
 

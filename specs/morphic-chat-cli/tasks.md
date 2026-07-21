@@ -432,6 +432,19 @@
 - [x] T4409 Validate bindings during finalization while accepting legacy unbound reviews.
 - [x] T4410 Verify the complete preflight/template path with a zero-cost local campaign.
 
+## Phase 45 - Reviewer Separation and Campaign Status
+
+- [x] T4501 Add RED tests for reviewer policy, lifecycle stages, failures, and CLI.
+- [x] T4502 Normalize and fingerprint operator/reviewer policy declarations.
+- [x] T4503 Reject operator self-review and reviewer IDs outside the allowlist.
+- [x] T4504 Enforce minimum distinct reviewers and reject impossible policy capacity.
+- [x] T4505 Bind policy SHA-256 into pending and completed review artifacts.
+- [x] T4506 Add six deterministic manifest-to-finalized lifecycle stages.
+- [x] T4507 Validate artifact order, identity, hashes, estimates, policy, and results.
+- [x] T4508 Keep campaign status read-only and non-authorizing at every stage.
+- [x] T4509 Preserve legacy review/finalize behavior when no policy binding exists.
+- [x] T4510 Verify zero-cost review-pending status without artifact mutation.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

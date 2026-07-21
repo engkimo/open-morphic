@@ -105,6 +105,42 @@ _OPTIONAL_PREFLIGHT_INPUT = typer.Option(
     readable=True,
     help="Optional campaign preflight binding.",
 )
+_OPTIONAL_REVIEW_POLICY_INPUT = typer.Option(
+    None,
+    "--review-policy",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Optional operator/reviewer separation policy declaration.",
+)
+_STATUS_EVIDENCE_OPTION = typer.Option(
+    None,
+    "--evidence",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Optional normalized evidence JSON.",
+)
+_STATUS_REVIEWS_OPTION = typer.Option(
+    None,
+    "--reviews",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Optional pending template or completed reviews JSON.",
+)
+_STATUS_RESULTS_OPTION = typer.Option(
+    None,
+    "--results",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Optional finalized results JSON.",
+)
 
 
 def _write_new_evidence(path: Path, payload: str) -> None:
@@ -395,6 +431,7 @@ def finalize_agent_cli_trials(
     evidence_path: Path = _FINALIZE_EVIDENCE_OPTION,
     reviews_path: Path = _FINALIZE_REVIEWS_OPTION,
     preflight_path: Path | None = _OPTIONAL_PREFLIGHT_INPUT,
+    review_policy_path: Path | None = _OPTIONAL_REVIEW_POLICY_INPUT,
     output_path: Path | None = _FINALIZE_OUTPUT_OPTION,
     as_json: bool = _AGENT_CLI_JSON_OPTION,
 ) -> None:
@@ -423,6 +460,19 @@ def finalize_agent_cli_trials(
                 preflight_path.read_text(encoding="utf-8")
             )
             validate_review_bindings(preflight, evidence, reviews)
+        if reviews.review_policy_sha256 is not None and review_policy_path is None:
+            raise ValueError("--review-policy is required for a policy-bound review")
+        if review_policy_path is not None:
+            from benchmarks.agent_cli_review_policy import (
+                ReviewerPolicyDeclaration,
+                build_reviewer_policy,
+                validate_reviewer_separation,
+            )
+
+            declaration = ReviewerPolicyDeclaration.model_validate_json(
+                review_policy_path.read_text(encoding="utf-8")
+            )
+            validate_reviewer_separation(build_reviewer_policy(declaration), reviews)
         results = finalize_recorded_results(manifest, evidence, reviews)
         payload = finalized_results_json(results)
         if output_path is not None:
@@ -501,6 +551,7 @@ def create_agent_cli_review_template(
     preflight_path: Path = _PREFLIGHT_INPUT_OPTION,
     evidence_path: Path = _FINALIZE_EVIDENCE_OPTION,
     output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    review_policy_path: Path | None = _OPTIONAL_REVIEW_POLICY_INPUT,
     as_json: bool = _AGENT_CLI_JSON_OPTION,
 ) -> None:
     """Generate null independent review decisions bound to exact campaign evidence."""
@@ -514,11 +565,34 @@ def create_agent_cli_review_template(
         evidence = RecordedEvidence.model_validate_json(
             evidence_path.read_text(encoding="utf-8")
         )
+        review_policy_sha256 = None
+        if review_policy_path is not None:
+            from benchmarks.agent_cli_review_policy import (
+                ReviewerPolicyDeclaration,
+                build_reviewer_policy,
+                validate_reviewer_policy_capacity,
+            )
+
+            declaration = ReviewerPolicyDeclaration.model_validate_json(
+                review_policy_path.read_text(encoding="utf-8")
+            )
+            review_policy = build_reviewer_policy(declaration)
+            if review_policy.benchmark_id != preflight.benchmark_id:
+                raise ValueError("review policy benchmark_id does not match preflight")
+            validate_reviewer_policy_capacity(
+                review_policy,
+                decision_count=len(evidence.trials),
+            )
+            review_policy_sha256 = review_policy.policy_sha256
         if not output_path.parent.exists():
             raise ValueError("review template output parent must already exist")
         if output_path.exists():
             raise ValueError("review template output already exists")
-        template = build_review_template(preflight, evidence)
+        template = build_review_template(
+            preflight,
+            evidence,
+            review_policy_sha256=review_policy_sha256,
+        )
         _write_new_evidence(output_path, template.to_json())
     except (OSError, ValueError) as exc:
         console.print(f"[red]Agent CLI review template failed: {exc}[/red]")
@@ -528,6 +602,85 @@ def create_agent_cli_review_template(
         typer.echo(template.to_json())
     else:
         console.print(f"Created {len(template.decisions)} bound review decisions")
+
+
+@benchmark_app.command("agent-cli-status")
+def show_agent_cli_campaign_status(
+    manifest_path: Path = _AGENT_CLI_MANIFEST_OPTION,
+    preflight_path: Path | None = _OPTIONAL_PREFLIGHT_INPUT,
+    evidence_path: Path | None = _STATUS_EVIDENCE_OPTION,
+    reviews_path: Path | None = _STATUS_REVIEWS_OPTION,
+    results_path: Path | None = _STATUS_RESULTS_OPTION,
+    review_policy_path: Path | None = _OPTIONAL_REVIEW_POLICY_INPUT,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Validate and report campaign lifecycle artifacts without executing commands."""
+    from benchmarks.agent_cli_adjudication import AdjudicationReviews, RecordedEvidence
+    from benchmarks.agent_cli_campaign import build_campaign_status
+    from benchmarks.agent_cli_comparison import AgentCliManifest, RecordedResults
+    from benchmarks.agent_cli_preflight import CampaignPreflight, ReviewTemplate
+    from benchmarks.agent_cli_review_policy import (
+        ReviewerPolicyDeclaration,
+        build_reviewer_policy,
+    )
+
+    try:
+        manifest = AgentCliManifest.model_validate_json(
+            manifest_path.read_text(encoding="utf-8")
+        )
+        preflight = (
+            CampaignPreflight.model_validate_json(
+                preflight_path.read_text(encoding="utf-8")
+            )
+            if preflight_path is not None
+            else None
+        )
+        evidence = (
+            RecordedEvidence.model_validate_json(evidence_path.read_text(encoding="utf-8"))
+            if evidence_path is not None
+            else None
+        )
+        review_template = None
+        reviews = None
+        if reviews_path is not None:
+            review_payload = json.loads(reviews_path.read_text(encoding="utf-8"))
+            if not isinstance(review_payload, dict):
+                raise ValueError("reviews JSON must be an object")
+            if review_payload.get("review_completed") is False:
+                review_template = ReviewTemplate.model_validate(review_payload)
+            else:
+                reviews = AdjudicationReviews.model_validate(review_payload)
+        results = (
+            RecordedResults.model_validate_json(results_path.read_text(encoding="utf-8"))
+            if results_path is not None
+            else None
+        )
+        review_policy = None
+        if review_policy_path is not None:
+            declaration = ReviewerPolicyDeclaration.model_validate_json(
+                review_policy_path.read_text(encoding="utf-8")
+            )
+            review_policy = build_reviewer_policy(declaration)
+        status = build_campaign_status(
+            manifest,
+            preflight=preflight,
+            evidence=evidence,
+            review_template=review_template,
+            reviews=reviews,
+            results=results,
+            review_policy=review_policy,
+        )
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI campaign status failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(status.to_json())
+    else:
+        console.print(
+            f"Campaign stage={status.stage.value} next={status.next_action} "
+            "paid_execution_authorized=false"
+        )
 
 
 @benchmark_app.command("agent-cli-rehearse")

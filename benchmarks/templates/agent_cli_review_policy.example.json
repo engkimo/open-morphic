@@ -1,0 +1,10 @@
+{
+  "benchmark_id": "agent-cli-local-rehearsal",
+  "minimum_distinct_reviewers": 2,
+  "operator_id": "REPLACE_WITH_OPERATOR_ID",
+  "reviewer_ids": [
+    "REPLACE_WITH_REVIEWER_1_ID",
+    "REPLACE_WITH_REVIEWER_2_ID"
+  ],
+  "schema_version": 1
+}

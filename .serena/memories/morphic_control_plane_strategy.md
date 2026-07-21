@@ -404,6 +404,31 @@ read-only campaign status command before any paid run is considered.
 Phase 44 passed all 3,605 unit tests with repository-wide Ruff clean. The built
 wheel contains the preflight module and runtime-version JSON template.
 
+## Phase 45 update
+
+Campaign review now has an explicit structural separation policy. A declaration names
+the recorder/operator, the allowed reviewer IDs, and a minimum number of distinct
+reviewers. Morphic normalizes and fingerprints that policy, binds it into pending and
+completed review artifacts, rejects operator self-review, unauthorized IDs, insufficient
+reviewer diversity, and policies impossible for the trial matrix. These IDs remain
+operator declarations; the policy does not claim cryptographic identity authentication.
+
+`morphic benchmark agent-cli-status` is a read-only lifecycle validator spanning
+`manifest_ready`, `preflight_ready`, `recorded`, `review_pending`, `review_complete`, and
+`finalized`. It validates artifact ordering, manifest/preflight contract hashes, evidence
+estimate and matrix, review/preflight/evidence/policy bindings, reviewer separation, and
+recomputed final results. Every stage reports `paid_execution_authorized=false`; status
+inspection cannot launch or authorize a campaign.
+
+A real zero-cost rehearsal at commit `d88f1f0` reached `review_pending` with a two-reviewer
+policy. SHA-256 checks before and after status were identical for manifest, preflight,
+evidence, review template, and policy files. No external agent, version probe, or paid API
+was started. The next slice should add authenticated reviewer attestations or signed
+artifact support without conflating declared IDs with verified human identity.
+
+Phase 45 passed all 3,621 unit tests with repository-wide Ruff clean. The built wheel
+contains the campaign status, reviewer policy, and policy template artifacts.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

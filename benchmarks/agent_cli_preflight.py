@@ -205,6 +205,7 @@ class ReviewTemplate(_FrozenModel):
     workspace_revision: str = Field(pattern=r"^[0-9a-f]{40}$")
     preflight_sha256: str = Field(pattern=_SHA256_PATTERN)
     evidence_sha256: str = Field(pattern=_SHA256_PATTERN)
+    review_policy_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     decisions: tuple[ReviewDecisionTemplate, ...] = Field(min_length=1)
     review_completed: Literal[False] = False
 
@@ -223,6 +224,8 @@ def _expected_cells(preflight: CampaignPreflight) -> set[tuple[AgentCliArm, int]
 def build_review_template(
     preflight: CampaignPreflight,
     evidence: RecordedEvidence,
+    *,
+    review_policy_sha256: str | None = None,
 ) -> ReviewTemplate:
     """Create null review decisions bound to exact preflight and evidence artifacts."""
     expected_identity = (
@@ -261,6 +264,7 @@ def build_review_template(
         workspace_revision=preflight.workspace_revision,
         preflight_sha256=preflight.preflight_sha256,
         evidence_sha256=recorded_evidence_sha256(evidence),
+        review_policy_sha256=review_policy_sha256,
         decisions=decisions,
     )
 
