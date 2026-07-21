@@ -159,6 +159,24 @@ _OPTIONAL_CAMPAIGN_ENVELOPE_INPUT = typer.Option(
     readable=True,
     help="Optional authority-signed finalized campaign envelope.",
 )
+_OPTIONAL_AUTHORITY_ROOT_LEDGER_INPUT = typer.Option(
+    None,
+    "--authority-root-ledger",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Optional signed authority-root ledger.",
+)
+_OPTIONAL_TRANSPARENCY_PROOF_INPUT = typer.Option(
+    None,
+    "--transparency-proof",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Optional campaign-envelope transparency inclusion proof.",
+)
 _STATUS_EVIDENCE_OPTION = typer.Option(
     None,
     "--evidence",
@@ -186,6 +204,67 @@ _STATUS_RESULTS_OPTION = typer.Option(
     readable=True,
     help="Optional finalized results JSON.",
 )
+_AUTHORITY_ROTATION_GENERATION_OPTION = typer.Option(..., "--generation", min=2)
+_AUTHORITY_PREDECESSOR_OPTION = typer.Option(
+    ...,
+    "--predecessor",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_AUTHORITY_SUCCESSOR_OPTION = typer.Option(
+    ...,
+    "--successor",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_AUTHORITY_GENERATIONS_OPTION = typer.Option(
+    ...,
+    "--generations",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="JSON object containing generations and optional revocations.",
+)
+_TRANSPARENCY_LOG_ID_OPTION = typer.Option(..., "--log-id")
+_TRANSPARENCY_ENTRIES_OPTION = typer.Option(
+    ...,
+    "--entries",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="JSON array of transparency log entries.",
+)
+_TRANSPARENCY_LOG_INPUT = typer.Option(
+    ...,
+    "--log",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_AUTHORITY_ROOT_LEDGER_INPUT = typer.Option(
+    ...,
+    "--authority-root-ledger",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_TRANSPARENCY_TREE_HEAD_INPUT = typer.Option(
+    ...,
+    "--tree-head",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_TRANSPARENCY_LEAF_INDEX_OPTION = typer.Option(..., "--leaf-index", min=0)
 
 
 def _write_new_evidence(path: Path, payload: str) -> None:
@@ -481,6 +560,7 @@ def finalize_agent_cli_trials(
     attestations_path: Path | None = _OPTIONAL_ATTESTATIONS_INPUT,
     reviewer_authority_path: Path | None = _OPTIONAL_REVIEWER_AUTHORITY_INPUT,
     reviewer_enrollments_path: Path | None = _OPTIONAL_REVIEWER_ENROLLMENTS_INPUT,
+    authority_root_ledger_path: Path | None = _OPTIONAL_AUTHORITY_ROOT_LEDGER_INPUT,
     output_path: Path | None = _FINALIZE_OUTPUT_OPTION,
     as_json: bool = _AGENT_CLI_JSON_OPTION,
 ) -> None:
@@ -502,6 +582,7 @@ def finalize_agent_cli_trials(
         attestations = None
         reviewer_authority = None
         reviewer_enrollments = None
+        authority_root_ledger = None
         if reviews.preflight_sha256 is not None and preflight_path is None:
             raise ValueError("--preflight is required for a preflight-bound review")
         if preflight_path is not None:
@@ -579,6 +660,12 @@ def finalize_agent_cli_trials(
             reviewer_enrollments = ReviewerEnrollmentBundle.model_validate_json(
                 reviewer_enrollments_path.read_text(encoding="utf-8")
             )
+        if authority_root_ledger_path is not None:
+            from benchmarks.agent_cli_transparency import SignedAuthorityRootLedger
+
+            authority_root_ledger = SignedAuthorityRootLedger.model_validate_json(
+                authority_root_ledger_path.read_text(encoding="utf-8")
+            )
         results = finalize_recorded_results(
             manifest,
             evidence,
@@ -588,6 +675,7 @@ def finalize_agent_cli_trials(
             attestations=attestations,
             reviewer_authority=reviewer_authority,
             reviewer_enrollments=reviewer_enrollments,
+            authority_root_ledger=authority_root_ledger,
         )
         payload = finalized_results_json(results)
         if output_path is not None:
@@ -853,6 +941,209 @@ def create_agent_cli_reviewer_enrollment_template(
         console.print(f"Created {len(template.requests)} authority enrollment requests")
 
 
+@benchmark_app.command("agent-cli-authority-rotation-template")
+def create_agent_cli_authority_rotation_template(
+    generation: int = _AUTHORITY_ROTATION_GENERATION_OPTION,
+    predecessor_path: Path = _AUTHORITY_PREDECESSOR_OPTION,
+    successor_path: Path = _AUTHORITY_SUCCESSOR_OPTION,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Create a predecessor-root signing payload without reading private keys."""
+    from benchmarks.agent_cli_authority import (
+        BenchmarkAuthorityDeclaration,
+        build_benchmark_authority,
+    )
+    from benchmarks.agent_cli_transparency import build_authority_rotation_request
+
+    try:
+        predecessor = build_benchmark_authority(
+            BenchmarkAuthorityDeclaration.model_validate_json(
+                predecessor_path.read_text(encoding="utf-8")
+            )
+        )
+        successor = build_benchmark_authority(
+            BenchmarkAuthorityDeclaration.model_validate_json(
+                successor_path.read_text(encoding="utf-8")
+            )
+        )
+        request = build_authority_rotation_request(
+            generation=generation,
+            predecessor=predecessor,
+            successor=successor,
+        )
+        if not output_path.parent.exists():
+            raise ValueError("authority rotation output parent must already exist")
+        if output_path.exists():
+            raise ValueError("authority rotation output already exists")
+        _write_new_evidence(output_path, request.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI authority rotation template failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(request.to_json())
+    else:
+        console.print(f"Created authority rotation request for generation {generation}")
+
+
+@benchmark_app.command("agent-cli-authority-root-ledger-template")
+def create_agent_cli_authority_root_ledger_template(
+    generations_path: Path = _AUTHORITY_GENERATIONS_OPTION,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Verify a rotation chain and create the active-root ledger signing payload."""
+    from benchmarks.agent_cli_transparency import (
+        AuthorityRootGeneration,
+        build_authority_root_ledger_request,
+    )
+
+    try:
+        payload = json.loads(generations_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("authority root generations JSON must be an object")
+        generations_payload = payload.get("generations")
+        if not isinstance(generations_payload, list):
+            raise ValueError("authority root generations must be a JSON array")
+        revocations = payload.get("revoked_authority_sha256", [])
+        if not isinstance(revocations, list) or not all(
+            isinstance(value, str) for value in revocations
+        ):
+            raise ValueError("authority root revocations must be a string array")
+        request = build_authority_root_ledger_request(
+            tuple(
+                AuthorityRootGeneration.model_validate(item)
+                for item in generations_payload
+            ),
+            revoked_authority_sha256=tuple(revocations),
+        )
+        if not output_path.parent.exists():
+            raise ValueError("authority root ledger output parent must already exist")
+        if output_path.exists():
+            raise ValueError("authority root ledger output already exists")
+        _write_new_evidence(output_path, request.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI authority root ledger failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(request.to_json())
+    else:
+        console.print("Created active-root ledger signing request")
+
+
+@benchmark_app.command("agent-cli-transparency-log")
+def create_agent_cli_transparency_log(
+    log_id: str = _TRANSPARENCY_LOG_ID_OPTION,
+    entries_path: Path = _TRANSPARENCY_ENTRIES_OPTION,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Build a complete deterministic Merkle transparency log offline."""
+    from benchmarks.agent_cli_transparency import (
+        TransparencyLogEntry,
+        build_transparency_log,
+    )
+
+    try:
+        payload = json.loads(entries_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, list):
+            raise ValueError("transparency entries JSON must be an array")
+        log = build_transparency_log(
+            log_id,
+            tuple(TransparencyLogEntry.model_validate(item) for item in payload),
+        )
+        if not output_path.parent.exists():
+            raise ValueError("transparency log output parent must already exist")
+        if output_path.exists():
+            raise ValueError("transparency log output already exists")
+        _write_new_evidence(output_path, log.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI transparency log failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(log.to_json())
+    else:
+        console.print(f"Created transparency log tree_size={log.tree_size}")
+
+
+@benchmark_app.command("agent-cli-transparency-tree-head-template")
+def create_agent_cli_transparency_tree_head_template(
+    log_path: Path = _TRANSPARENCY_LOG_INPUT,
+    authority_root_ledger_path: Path = _AUTHORITY_ROOT_LEDGER_INPUT,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Create an active-root signing payload for one Merkle tree head."""
+    from benchmarks.agent_cli_transparency import (
+        SignedAuthorityRootLedger,
+        TransparencyLog,
+        build_transparency_tree_head_request,
+    )
+
+    try:
+        log = TransparencyLog.model_validate_json(log_path.read_text(encoding="utf-8"))
+        ledger = SignedAuthorityRootLedger.model_validate_json(
+            authority_root_ledger_path.read_text(encoding="utf-8")
+        )
+        request = build_transparency_tree_head_request(log, ledger)
+        if not output_path.parent.exists():
+            raise ValueError("transparency tree head output parent must already exist")
+        if output_path.exists():
+            raise ValueError("transparency tree head output already exists")
+        _write_new_evidence(output_path, request.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI transparency tree head failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(request.to_json())
+    else:
+        console.print("Created transparency tree-head signing request")
+
+
+@benchmark_app.command("agent-cli-transparency-proof")
+def create_agent_cli_transparency_proof(
+    log_path: Path = _TRANSPARENCY_LOG_INPUT,
+    tree_head_path: Path = _TRANSPARENCY_TREE_HEAD_INPUT,
+    leaf_index: int = _TRANSPARENCY_LEAF_INDEX_OPTION,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Build an inclusion proof for one entry under a signed tree head."""
+    from benchmarks.agent_cli_transparency import (
+        SignedTransparencyTreeHead,
+        TransparencyLog,
+        build_transparency_inclusion_proof,
+    )
+
+    try:
+        log = TransparencyLog.model_validate_json(log_path.read_text(encoding="utf-8"))
+        tree_head = SignedTransparencyTreeHead.model_validate_json(
+            tree_head_path.read_text(encoding="utf-8")
+        )
+        proof = build_transparency_inclusion_proof(
+            log,
+            leaf_index=leaf_index,
+            tree_head=tree_head,
+        )
+        if not output_path.parent.exists():
+            raise ValueError("transparency proof output parent must already exist")
+        if output_path.exists():
+            raise ValueError("transparency proof output already exists")
+        _write_new_evidence(output_path, proof.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI transparency proof failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(proof.to_json())
+    else:
+        console.print(f"Created transparency proof for leaf {leaf_index}")
+
+
 @benchmark_app.command("agent-cli-campaign-envelope-template")
 def create_agent_cli_campaign_envelope_template(
     manifest_path: Path = _AGENT_CLI_MANIFEST_OPTION,
@@ -863,6 +1154,7 @@ def create_agent_cli_campaign_envelope_template(
     reviewer_trust_path: Path = _OPTIONAL_REVIEWER_TRUST_INPUT,
     reviewer_authority_path: Path = _OPTIONAL_REVIEWER_AUTHORITY_INPUT,
     reviewer_enrollments_path: Path = _OPTIONAL_REVIEWER_ENROLLMENTS_INPUT,
+    authority_root_ledger_path: Path | None = _OPTIONAL_AUTHORITY_ROOT_LEDGER_INPUT,
     attestations_path: Path = _OPTIONAL_ATTESTATIONS_INPUT,
     results_path: Path = _AGENT_CLI_RESULTS_OPTION,
     output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
@@ -941,6 +1233,13 @@ def create_agent_cli_campaign_envelope_template(
         results = RecordedResults.model_validate_json(
             results_path.read_text(encoding="utf-8")
         )
+        authority_root_ledger = None
+        if authority_root_ledger_path is not None:
+            from benchmarks.agent_cli_transparency import SignedAuthorityRootLedger
+
+            authority_root_ledger = SignedAuthorityRootLedger.model_validate_json(
+                authority_root_ledger_path.read_text(encoding="utf-8")
+            )
         template = build_campaign_envelope_request(
             authority=authority,
             manifest=manifest,
@@ -952,6 +1251,7 @@ def create_agent_cli_campaign_envelope_template(
             reviewer_enrollments=enrollments,
             attestations=attestations,
             results=results,
+            authority_root_ledger=authority_root_ledger,
         )
         if not output_path.parent.exists():
             raise ValueError("campaign envelope output parent must already exist")
@@ -981,6 +1281,8 @@ def show_agent_cli_campaign_status(
     reviewer_authority_path: Path | None = _OPTIONAL_REVIEWER_AUTHORITY_INPUT,
     reviewer_enrollments_path: Path | None = _OPTIONAL_REVIEWER_ENROLLMENTS_INPUT,
     campaign_envelope_path: Path | None = _OPTIONAL_CAMPAIGN_ENVELOPE_INPUT,
+    authority_root_ledger_path: Path | None = _OPTIONAL_AUTHORITY_ROOT_LEDGER_INPUT,
+    transparency_proof_path: Path | None = _OPTIONAL_TRANSPARENCY_PROOF_INPUT,
     as_json: bool = _AGENT_CLI_JSON_OPTION,
 ) -> None:
     """Validate and report campaign lifecycle artifacts without executing commands."""
@@ -1030,6 +1332,8 @@ def show_agent_cli_campaign_status(
         reviewer_authority = None
         reviewer_enrollments = None
         campaign_envelope = None
+        authority_root_ledger = None
+        transparency_proof = None
         if review_policy_path is not None:
             declaration = ReviewerPolicyDeclaration.model_validate_json(
                 review_policy_path.read_text(encoding="utf-8")
@@ -1078,6 +1382,18 @@ def show_agent_cli_campaign_status(
             campaign_envelope = SignedCampaignEnvelope.model_validate_json(
                 campaign_envelope_path.read_text(encoding="utf-8")
             )
+        if authority_root_ledger_path is not None:
+            from benchmarks.agent_cli_transparency import SignedAuthorityRootLedger
+
+            authority_root_ledger = SignedAuthorityRootLedger.model_validate_json(
+                authority_root_ledger_path.read_text(encoding="utf-8")
+            )
+        if transparency_proof_path is not None:
+            from benchmarks.agent_cli_transparency import TransparencyInclusionProof
+
+            transparency_proof = TransparencyInclusionProof.model_validate_json(
+                transparency_proof_path.read_text(encoding="utf-8")
+            )
         status = build_campaign_status(
             manifest,
             preflight=preflight,
@@ -1091,6 +1407,8 @@ def show_agent_cli_campaign_status(
             reviewer_authority=reviewer_authority,
             reviewer_enrollments=reviewer_enrollments,
             campaign_envelope=campaign_envelope,
+            authority_root_ledger=authority_root_ledger,
+            transparency_proof=transparency_proof,
         )
     except (OSError, ValueError) as exc:
         console.print(f"[red]Agent CLI campaign status failed: {exc}[/red]")

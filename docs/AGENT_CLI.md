@@ -630,6 +630,66 @@ payloadを外部署名した`SignedCampaignEnvelope`をstatusへ渡した場合�
 安全なout-of-band配布、certificate expiry、root revocation/rotation、transparency logは別契約であり、
 現在のartifactだけでは保証しない。
 
+### Authority-root continuity and campaign transparency
+
+Phase 48ではrootをversioned ledgerとして扱う。generation 1はout-of-band genesisで、generation 2以降は
+直前rootが`generation`、predecessor SHA-256、successor SHA-256を外部署名する。Morphicは秘密鍵を読まず、
+rotation signing requestを生成する。
+
+```bash
+morphic benchmark agent-cli-authority-rotation-template \
+  --generation 2 \
+  --predecessor predecessor-authority.json \
+  --successor successor-authority.json \
+  --output rotation-request.json
+```
+
+署名済みrotation certificateをgeneration列へ格納後、active rootが署名するledger payloadを作る。
+`--generations`は`generations`配列とoptional `revoked_authority_sha256`配列を持つJSON objectである。
+
+```bash
+morphic benchmark agent-cli-authority-root-ledger-template \
+  --generations authority-generations.json \
+  --output authority-root-ledger-request.json
+```
+
+ledgerはcontiguous generation、root非再利用、各predecessor署名、既知rootだけのrevocation、非revoked
+active root、active-root ledger署名を検証する。ledger-bound reviewer trustは
+`reviewer_authority_sha256`にactive root、`authority_root_ledger_sha256`にexact ledgerを指定する。
+finalizeとcampaign envelope templateには`--authority-root-ledger`を渡す。fieldを持たないPhase 47 artifactは
+fingerprintと署名bytesを変更せず従来経路を維持する。
+
+透明性ログはcomplete entry arrayからoffline生成できる。
+
+```bash
+morphic benchmark agent-cli-transparency-log \
+  --log-id example-org-agent-cli \
+  --entries transparency-entries.json \
+  --output transparency-log.json
+
+morphic benchmark agent-cli-transparency-tree-head-template \
+  --log transparency-log.json \
+  --authority-root-ledger signed-authority-root-ledger.json \
+  --output tree-head-request.json
+
+morphic benchmark agent-cli-transparency-proof \
+  --log transparency-log.json \
+  --tree-head signed-tree-head.json \
+  --leaf-index 2 \
+  --output campaign-envelope-proof.json
+```
+
+Merkle treeはRFC 6962と同じdomain separation、すなわちleafを
+`SHA256(0x00 || canonical_entry)`、nodeを`SHA256(0x01 || left || right)`で構築する。tree headは
+active rootが外部署名する。ledger-bound campaignはexact campaign envelope SHA-256のinclusion proofを
+`agent-cli-status --transparency-proof ...`で検証するまで`transparency_pending`であり、検証後だけ
+`finalized`になる。旧/new complete logのappend-only検証は旧entriesが新logのexact prefixであることを
+要求する。
+
+この契約は初回genesis鍵の安全な配布やcompromise後のout-of-band trust resetを代替しない。また、現状の
+append-only検証はcomplete log artifactsを必要とし、compact RFC consistency proof、witness gossip、
+certificate expiry、OIDC/Sigstore identityはまだ実装しない。どのCLIもpaid executionを許可しない。
+
 ---
 
 ## Agent CLI Router

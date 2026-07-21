@@ -471,6 +471,19 @@
 - [x] T4709 Require the authority envelope signature before anchored campaign finalization.
 - [x] T4710 Preserve unanchored and unsigned paths and verify distribution contents.
 
+## Phase 48 - Authority-Root Continuity and Transparency
+
+- [x] T4801 Add RED tests for root rotation, revocation, Merkle proofs, lifecycle, and CLI.
+- [x] T4802 Require contiguous root generations signed by each immediate predecessor.
+- [x] T4803 Self-fingerprint and active-root-sign the complete root ledger and revocations.
+- [x] T4804 Reject reused roots, unknown revocations, invalid rotations, and revoked active roots.
+- [x] T4805 Bind reviewer trust, finalization, and campaign envelopes to the exact root ledger.
+- [x] T4806 Build RFC 6962-style domain-separated Merkle roots and inclusion audit paths.
+- [x] T4807 Sign tree heads with the ledger's active root and verify exact envelope inclusion.
+- [x] T4808 Verify append-only complete-log growth through exact prefix preservation.
+- [x] T4809 Add private-key-free rotation/ledger/tree-head and offline log/proof CLI paths.
+- [x] T4810 Preserve Phase 47 and unsigned legacy hashes, signatures, and lifecycle behavior.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

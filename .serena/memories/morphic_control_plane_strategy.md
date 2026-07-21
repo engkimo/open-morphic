@@ -494,6 +494,34 @@ in-memory keys only. The built wheel contains the authority module plus authorit
 anchored-trust templates. No external authority, agent, network identity provider,
 private-key file, version probe, or paid API was started.
 
+## Phase 48 update
+
+The offline organization trust anchor now has a recoverable history instead of being one
+permanent key. Every root after the genesis carries an exact rotation statement signed by
+its predecessor. The active root signs a self-fingerprinted ledger containing the ordered
+generation chain and revocations. Verification rejects gaps, reorderings, reused roots,
+unknown revocations, invalid predecessor signatures, ledger tampering, and a revoked
+active root.
+
+New reviewer trusts can bind the active authority and the exact root-ledger SHA-256.
+Finalization and the complete campaign envelope enforce that binding, while Phase 47
+artifacts omit the new optional field from their fingerprints and signing bytes. This is
+important for Morphic's control-plane strategy: governance artifacts remain portable and
+offline-verifiable instead of depending on one hosted service or one agent vendor.
+
+The campaign envelope can now be published into an append-only Merkle log. Leaves and
+nodes use RFC 6962-style domain separation, the active root signs each tree head, and an
+audit path proves inclusion of the exact campaign-envelope fingerprint. Ledger-bound
+campaigns remain `transparency_pending` until that proof verifies. Complete old/new log
+artifacts are accepted as append-only only when the old entries are an exact prefix.
+
+Phase 48 passed 3,655 unit tests with repository-wide Ruff clean using in-memory Ed25519
+keys only. No external authority, transparency server, identity provider, agent, or paid
+API ran. Remaining boundaries are deliberate: genesis distribution and compromise reset
+remain out-of-band, and complete-log prefix verification is not a compact consistency
+proof or gossip protocol. The next trust slice should add compact consistency checkpoints
+plus witnesses/gossip, or map the same verifier onto OIDC/Sigstore identities.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

@@ -43,6 +43,12 @@ from benchmarks.agent_cli_review_policy import (
     validate_reviewer_policy_capacity,
     validate_reviewer_separation,
 )
+from benchmarks.agent_cli_transparency import (
+    SignedAuthorityRootLedger,
+    TransparencyInclusionProof,
+    verify_authority_root_ledger,
+    verify_transparency_inclusion_proof,
+)
 
 
 class CampaignStage(str, Enum):
@@ -50,10 +56,12 @@ class CampaignStage(str, Enum):
     PREFLIGHT_READY = "preflight_ready"
     RECORDED = "recorded"
     REVIEW_PENDING = "review_pending"
+    AUTHORITY_ROOT_PENDING = "authority_root_pending"
     REVIEWER_ENROLLMENT_PENDING = "reviewer_enrollment_pending"
     REVIEW_ATTESTATION_PENDING = "review_attestation_pending"
     REVIEW_COMPLETE = "review_complete"
     CAMPAIGN_ENVELOPE_PENDING = "campaign_envelope_pending"
+    TRANSPARENCY_PENDING = "transparency_pending"
     FINALIZED = "finalized"
 
 
@@ -72,14 +80,19 @@ class CampaignStatus(BaseModel):
     has_attestations: bool
     has_results: bool
     has_campaign_envelope: bool
+    has_authority_root_ledger: bool
+    has_transparency_proof: bool
     preflight_sha256: str | None = None
     evidence_sha256: str | None = None
     review_policy_sha256: str | None = None
     reviewer_trust_sha256: str | None = None
     reviewer_authority_sha256: str | None = None
+    authority_root_ledger_sha256: str | None = None
     reviewer_enrollments_sha256: str | None = None
     attestations_verified: bool
     campaign_envelope_verified: bool
+    authority_root_ledger_verified: bool
+    transparency_inclusion_verified: bool
     paid_execution_authorized: Literal[False] = False
     next_action: str = Field(min_length=1)
 
@@ -150,6 +163,8 @@ def build_campaign_status(
     reviewer_authority: BenchmarkAuthority | None = None,
     reviewer_enrollments: ReviewerEnrollmentBundle | None = None,
     campaign_envelope: SignedCampaignEnvelope | None = None,
+    authority_root_ledger: SignedAuthorityRootLedger | None = None,
+    transparency_proof: TransparencyInclusionProof | None = None,
 ) -> CampaignStatus:
     """Validate supplied artifacts and report the furthest complete lifecycle stage."""
     if evidence is not None and preflight is None:
@@ -166,11 +181,19 @@ def build_campaign_status(
         raise ValueError("reviewer authority is required before reviewer enrollments")
     if campaign_envelope is not None and results is None:
         raise ValueError("results are required before a signed campaign envelope")
+    if authority_root_ledger is not None and reviewer_authority is None:
+        raise ValueError("reviewer authority is required with an authority root ledger")
+    if transparency_proof is not None and campaign_envelope is None:
+        raise ValueError("signed campaign envelope is required before transparency proof")
+    if transparency_proof is not None and authority_root_ledger is None:
+        raise ValueError("authority root ledger is required before transparency proof")
 
     stage = CampaignStage.MANIFEST_READY
     next_action = "create_preflight"
     attestations_verified = False
     campaign_envelope_verified = False
+    authority_root_ledger_verified = False
+    transparency_inclusion_verified = False
     if preflight is not None:
         _validate_preflight_manifest(manifest, preflight)
         stage = CampaignStage.PREFLIGHT_READY
@@ -214,10 +237,33 @@ def build_campaign_status(
                     raise ValueError(
                         "reviewer trust authority fingerprint does not match authority"
                     )
-                if reviewer_authority is None or reviewer_enrollments is None:
+                ledger_bound = reviewer_trust.authority_root_ledger_sha256 is not None
+                root_ready = True
+                if ledger_bound and authority_root_ledger is None:
+                    stage = CampaignStage.AUTHORITY_ROOT_PENDING
+                    next_action = "provide_authority_root_ledger"
+                    root_ready = False
+                elif ledger_bound:
+                    assert authority_root_ledger is not None
+                    active = verify_authority_root_ledger(authority_root_ledger)
+                    if active != reviewer_authority:
+                        raise ValueError("reviewer authority is not the active authority root")
+                    if (
+                        authority_root_ledger.statement.ledger_sha256
+                        != reviewer_trust.authority_root_ledger_sha256
+                    ):
+                        raise ValueError(
+                            "reviewer trust authority root ledger does not match ledger"
+                        )
+                    authority_root_ledger_verified = True
+                elif authority_root_ledger is not None:
+                    raise ValueError("authority root ledger requires ledger-bound trust")
+                if root_ready and (
+                    reviewer_authority is None or reviewer_enrollments is None
+                ):
                     stage = CampaignStage.REVIEWER_ENROLLMENT_PENDING
                     next_action = "collect_authority_enrollments"
-                else:
+                elif root_ready:
                     assert review_policy is not None
                     verify_reviewer_enrollments(
                         reviewer_authority,
@@ -258,6 +304,7 @@ def build_campaign_status(
             attestations=attestations,
             reviewer_authority=reviewer_authority,
             reviewer_enrollments=reviewer_enrollments,
+            authority_root_ledger=authority_root_ledger,
         )
         if results != expected_results:
             raise ValueError("results do not match finalized campaign artifacts")
@@ -286,10 +333,33 @@ def build_campaign_status(
                     attestations=attestations,
                     results=results,
                     envelope=campaign_envelope,
+                    authority_root_ledger=authority_root_ledger,
                 )
                 campaign_envelope_verified = True
-                stage = CampaignStage.FINALIZED
-                next_action = "campaign_complete"
+                if reviewer_trust.authority_root_ledger_sha256 is not None:
+                    assert authority_root_ledger is not None
+                    if transparency_proof is None:
+                        stage = CampaignStage.TRANSPARENCY_PENDING
+                        next_action = "publish_campaign_envelope_to_transparency_log"
+                    else:
+                        verify_transparency_inclusion_proof(
+                            transparency_proof,
+                            authority_root_ledger,
+                            expected_kind="campaign_envelope",
+                            expected_artifact_sha256=(
+                                campaign_envelope.statement.envelope_sha256
+                            ),
+                        )
+                        transparency_inclusion_verified = True
+                        stage = CampaignStage.FINALIZED
+                        next_action = "campaign_complete"
+                else:
+                    if transparency_proof is not None:
+                        raise ValueError(
+                            "transparency proof requires ledger-bound trust"
+                        )
+                    stage = CampaignStage.FINALIZED
+                    next_action = "campaign_complete"
         else:
             if campaign_envelope is not None:
                 raise ValueError("campaign envelope requires an authority-bound trust")
@@ -309,6 +379,8 @@ def build_campaign_status(
         has_attestations=attestations is not None,
         has_results=results is not None,
         has_campaign_envelope=campaign_envelope is not None,
+        has_authority_root_ledger=authority_root_ledger is not None,
+        has_transparency_proof=transparency_proof is not None,
         preflight_sha256=(preflight.preflight_sha256 if preflight is not None else None),
         evidence_sha256=(
             recorded_evidence_sha256(evidence) if evidence is not None else None
@@ -326,6 +398,11 @@ def build_campaign_status(
             if reviewer_authority is not None
             else None
         ),
+        authority_root_ledger_sha256=(
+            authority_root_ledger.statement.ledger_sha256
+            if authority_root_ledger is not None
+            else None
+        ),
         reviewer_enrollments_sha256=(
             reviewer_enrollments.reviewer_enrollments_sha256
             if reviewer_enrollments is not None
@@ -333,5 +410,7 @@ def build_campaign_status(
         ),
         attestations_verified=attestations_verified,
         campaign_envelope_verified=campaign_envelope_verified,
+        authority_root_ledger_verified=authority_root_ledger_verified,
+        transparency_inclusion_verified=transparency_inclusion_verified,
         next_action=next_action,
     )

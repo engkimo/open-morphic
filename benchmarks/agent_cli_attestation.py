@@ -70,6 +70,10 @@ class ReviewerTrustDeclaration(_FrozenModel):
     benchmark_id: str = Field(min_length=1)
     review_policy_sha256: str = Field(pattern=_SHA256_PATTERN)
     reviewer_authority_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    authority_root_ledger_sha256: str | None = Field(
+        default=None,
+        pattern=_SHA256_PATTERN,
+    )
     keys: tuple[ReviewerPublicKeyDeclaration, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -81,6 +85,11 @@ class ReviewerTrustDeclaration(_FrozenModel):
             raise ValueError("reviewer key identities must be unique")
         if len({key.key_id for key in self.keys}) != len(self.keys):
             raise ValueError("key_id values must be globally unique")
+        if (
+            self.authority_root_ledger_sha256 is not None
+            and self.reviewer_authority_sha256 is None
+        ):
+            raise ValueError("authority root ledger requires a reviewer authority")
         return self
 
 
@@ -116,6 +125,10 @@ class ReviewerTrust(_FrozenModel):
     benchmark_id: str = Field(min_length=1)
     review_policy_sha256: str = Field(pattern=_SHA256_PATTERN)
     reviewer_authority_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    authority_root_ledger_sha256: str | None = Field(
+        default=None,
+        pattern=_SHA256_PATTERN,
+    )
     keys: tuple[ReviewerPublicKey, ...] = Field(min_length=1)
     reviewer_trust_sha256: str = Field(pattern=_SHA256_PATTERN)
 
@@ -128,6 +141,7 @@ class ReviewerTrust(_FrozenModel):
             benchmark_id=self.benchmark_id,
             review_policy_sha256=self.review_policy_sha256,
             reviewer_authority_sha256=self.reviewer_authority_sha256,
+            authority_root_ledger_sha256=self.authority_root_ledger_sha256,
             keys=tuple(
                 ReviewerPublicKeyDeclaration(
                     reviewer_id=key.reviewer_id,
@@ -153,7 +167,11 @@ class ReviewerTrust(_FrozenModel):
         )
 
     def to_json(self) -> str:
-        return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
+        return json.dumps(
+            self.model_dump(mode="json", exclude_none=True),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
 
 
 def build_reviewer_trust(
@@ -210,6 +228,12 @@ def build_reviewer_trust(
     }
     if declaration.reviewer_authority_sha256 is not None:
         payload["reviewer_authority_sha256"] = declaration.reviewer_authority_sha256
+    if declaration.authority_root_ledger_sha256 is not None:
+        if declaration.reviewer_authority_sha256 is None:
+            raise ValueError("authority root ledger requires a reviewer authority")
+        payload["authority_root_ledger_sha256"] = (
+            declaration.authority_root_ledger_sha256
+        )
     return ReviewerTrust(**payload, reviewer_trust_sha256=_canonical_sha256(payload))
 
 

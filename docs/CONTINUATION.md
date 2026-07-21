@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-07-21
-> Latest work: Morphic Chat CLI Phase 47 authority-anchored campaign provenance
+> Latest work: Morphic Chat CLI Phase 48 authority-root continuity and transparency
 
 ## Latest Session Notes (2026-06-26)
 
@@ -379,6 +379,17 @@ Phase 47 implemented:
 - Verification: 3,646 unit tests passed; repository-wide Ruff clean; wheel contains the authority module plus authority and anchored-trust templates.
 - Real Ed25519 enrollment, reviewer attestation, and final envelope signatures were exercised with in-memory keys only. No external authority, agent, network identity provider, or paid API was started.
 - Security boundary: authority root distribution, certificate expiry, authority revocation/rotation, and transparency logging are not yet anchored.
+
+Phase 48 implemented:
+- Added a versioned authority-root ledger: genesis is out-of-band and each later root carries an exact rotation statement signed by its immediate predecessor.
+- The active Ed25519 root signs the self-fingerprinted generation/revocation ledger; gaps, reuse, unknown revocations, invalid rotations, tampering, and revoked active roots fail closed.
+- Reviewer trust, finalization, and campaign envelopes can bind the exact root-ledger SHA-256 while Phase 47 fingerprints and signing bytes remain backward compatible when the field is absent.
+- Added RFC 6962-style domain-separated SHA-256 Merkle roots, active-root-signed tree heads, and inclusion audit paths for campaign artifacts.
+- Complete old/new transparency logs validate append-only growth by requiring the old entry sequence to be an exact prefix of the new log.
+- Ledger-bound status adds `authority_root_pending` and `transparency_pending`; the exact signed envelope must have a valid inclusion proof before `finalized`.
+- Added private-key-free rotation, ledger, and tree-head signing templates plus offline log and inclusion-proof CLI commands.
+- Verification: 3,655 unit tests passed; repository-wide Ruff clean; no external authority, log service, identity provider, agent, version probe, or paid API ran.
+- Security boundary: genesis delivery and compromise reset remain out-of-band; complete-log prefix verification is not a compact consistency proof or gossip protocol.
 
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.

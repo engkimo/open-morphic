@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -29,6 +29,9 @@ from benchmarks.agent_cli_comparison import (
 )
 from benchmarks.agent_cli_preflight import CampaignPreflight, validate_review_bindings
 from benchmarks.agent_cli_review_policy import ReviewerPolicy
+
+if TYPE_CHECKING:
+    from benchmarks.agent_cli_transparency import SignedAuthorityRootLedger
 
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
 
@@ -154,7 +157,9 @@ class ReviewerEnrollmentStatement(_FrozenModel):
         return self
 
     def signing_bytes(self) -> bytes:
-        return _canonical_json(self.model_dump(mode="json")).encode()
+        return _canonical_json(
+            self.model_dump(mode="json", exclude_none=True)
+        ).encode()
 
 
 class ReviewerEnrollmentSigningRequest(_FrozenModel):
@@ -380,6 +385,10 @@ def verify_reviewer_enrollments(
 class CampaignEnvelopeStatement(_FrozenModel):
     schema_version: int
     authority_sha256: str = Field(pattern=_SHA256_PATTERN)
+    authority_root_ledger_sha256: str | None = Field(
+        default=None,
+        pattern=_SHA256_PATTERN,
+    )
     benchmark_id: str = Field(min_length=1)
     task_id: str = Field(min_length=1)
     workspace_revision: str = Field(pattern=r"^[0-9a-f]{40}$")
@@ -400,14 +409,20 @@ class CampaignEnvelopeStatement(_FrozenModel):
         if self.schema_version != SCHEMA_VERSION:
             raise ValueError(f"schema_version must be {SCHEMA_VERSION}")
         expected = _canonical_sha256(
-            self.model_dump(mode="json", exclude={"envelope_sha256"})
+            self.model_dump(
+                mode="json",
+                exclude={"envelope_sha256"},
+                exclude_none=True,
+            )
         )
         if self.envelope_sha256 != expected:
             raise ValueError("campaign envelope fingerprint does not match artifacts")
         return self
 
     def signing_bytes(self) -> bytes:
-        return _canonical_json(self.model_dump(mode="json")).encode()
+        return _canonical_json(
+            self.model_dump(mode="json", exclude_none=True)
+        ).encode()
 
 
 class CampaignEnvelopeSigningRequest(_FrozenModel):
@@ -465,6 +480,7 @@ def build_campaign_envelope_request(
     reviewer_enrollments: ReviewerEnrollmentBundle,
     attestations: ReviewAttestationBundle,
     results: RecordedResults,
+    authority_root_ledger: SignedAuthorityRootLedger | None = None,
 ) -> CampaignEnvelopeSigningRequest:
     """Bind a validated campaign into one non-authorizing authority signing payload."""
     _validate_manifest_preflight(manifest, preflight)
@@ -475,6 +491,21 @@ def build_campaign_envelope_request(
         reviewer_trust,
         reviewer_enrollments,
     )
+    if reviewer_trust.authority_root_ledger_sha256 is not None:
+        if authority_root_ledger is None:
+            raise ValueError("authority root ledger is required for ledger-bound trust")
+        from benchmarks.agent_cli_transparency import verify_authority_root_ledger
+
+        active_authority = verify_authority_root_ledger(authority_root_ledger)
+        if active_authority != authority:
+            raise ValueError("reviewer authority is not the active authority root")
+        if (
+            authority_root_ledger.statement.ledger_sha256
+            != reviewer_trust.authority_root_ledger_sha256
+        ):
+            raise ValueError("reviewer trust authority root ledger does not match ledger")
+    elif authority_root_ledger is not None:
+        raise ValueError("authority root ledger requires ledger-bound trust")
     expected_results = finalize_recorded_results(
         manifest,
         evidence,
@@ -484,6 +515,7 @@ def build_campaign_envelope_request(
         attestations=attestations,
         reviewer_authority=authority,
         reviewer_enrollments=reviewer_enrollments,
+        authority_root_ledger=authority_root_ledger,
     )
     if results != expected_results:
         raise ValueError("results do not match authority-anchored campaign artifacts")
@@ -506,6 +538,10 @@ def build_campaign_envelope_request(
         "results_sha256": _model_sha256(results),
         "paid_execution_authorized": False,
     }
+    if authority_root_ledger is not None:
+        payload["authority_root_ledger_sha256"] = (
+            authority_root_ledger.statement.ledger_sha256
+        )
     statement = CampaignEnvelopeStatement(
         **payload,
         envelope_sha256=_canonical_sha256(payload),
@@ -529,6 +565,7 @@ def verify_signed_campaign_envelope(
     attestations: ReviewAttestationBundle,
     results: RecordedResults,
     envelope: SignedCampaignEnvelope,
+    authority_root_ledger: SignedAuthorityRootLedger | None = None,
 ) -> None:
     """Verify the authority signature over the complete finalized campaign chain."""
     expected = build_campaign_envelope_request(
@@ -542,6 +579,7 @@ def verify_signed_campaign_envelope(
         reviewer_enrollments=reviewer_enrollments,
         attestations=attestations,
         results=results,
+        authority_root_ledger=authority_root_ledger,
     )
     if envelope.statement != expected.statement:
         raise ValueError("signed campaign envelope does not match campaign artifacts")

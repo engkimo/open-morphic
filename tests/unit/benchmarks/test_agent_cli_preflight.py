@@ -55,6 +55,18 @@ from benchmarks.agent_cli_review_policy import (
     validate_reviewer_policy_capacity,
     validate_reviewer_separation,
 )
+from benchmarks.agent_cli_transparency import (
+    AuthorityRootGeneration,
+    AuthorityRotationCertificate,
+    SignedAuthorityRootLedger,
+    SignedTransparencyTreeHead,
+    TransparencyLogEntry,
+    build_authority_root_ledger_request,
+    build_authority_rotation_request,
+    build_transparency_inclusion_proof,
+    build_transparency_log,
+    build_transparency_tree_head_request,
+)
 from interface.cli.main import app
 
 runner = CliRunner()
@@ -258,6 +270,7 @@ def _trust_declaration(
     *,
     revoke_reviewer_2: bool = False,
     reviewer_authority_sha256: str | None = None,
+    authority_root_ledger_sha256: str | None = None,
 ) -> ReviewerTrustDeclaration:
     keys = _private_keys()
     declarations = []
@@ -283,6 +296,7 @@ def _trust_declaration(
         benchmark_id="campaign-001",
         review_policy_sha256=_policy().policy_sha256,
         reviewer_authority_sha256=reviewer_authority_sha256,
+        authority_root_ledger_sha256=authority_root_ledger_sha256,
         keys=tuple(reversed(declarations)),
     )
 
@@ -404,6 +418,152 @@ def _anchored_artifacts():
         results,
         request,
         envelope,
+    )
+
+
+def _ledger_bound_artifacts():
+    genesis_private = Ed25519PrivateKey.from_private_bytes(b"\x04" * 32)
+    genesis_public = genesis_private.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    genesis = build_benchmark_authority(
+        BenchmarkAuthorityDeclaration(
+            schema_version=1,
+            authority_id="example-org-benchmark-ca-genesis",
+            public_key_base64=base64.b64encode(genesis_public).decode(),
+        )
+    )
+    authority = build_benchmark_authority(_authority_declaration())
+    rotation_request = build_authority_rotation_request(
+        generation=2,
+        predecessor=genesis,
+        successor=authority,
+    )
+    rotation = AuthorityRotationCertificate(
+        statement=rotation_request.statement,
+        signature_base64=base64.b64encode(
+            genesis_private.sign(rotation_request.statement.signing_bytes())
+        ).decode(),
+    )
+    ledger_request = build_authority_root_ledger_request(
+        (
+            AuthorityRootGeneration(
+                schema_version=1,
+                generation=1,
+                authority=genesis,
+            ),
+            AuthorityRootGeneration(
+                schema_version=1,
+                generation=2,
+                authority=authority,
+                rotation=rotation,
+            ),
+        ),
+        revoked_authority_sha256=(genesis.authority_sha256,),
+    )
+    ledger = SignedAuthorityRootLedger(
+        statement=ledger_request.statement,
+        signature_base64=base64.b64encode(
+            _authority_private_key().sign(ledger_request.statement.signing_bytes())
+        ).decode(),
+    )
+    policy = _policy()
+    trust = build_reviewer_trust(
+        _trust_declaration(
+            reviewer_authority_sha256=authority.authority_sha256,
+            authority_root_ledger_sha256=ledger.statement.ledger_sha256,
+        ),
+        policy,
+    )
+    reviews = _completed_reviews(reviewer_trust_sha256=trust.reviewer_trust_sha256)
+    attestations = _review_attestation_bundle(policy, trust, reviews)
+    certificates = []
+    for key in trust.keys:
+        statement = build_reviewer_enrollment_statement(authority, policy, trust, key)
+        certificates.append(
+            ReviewerEnrollmentCertificate(
+                statement=statement,
+                signature_base64=base64.b64encode(
+                    _authority_private_key().sign(statement.signing_bytes())
+                ).decode(),
+            )
+        )
+    enrollments = build_reviewer_enrollment_bundle(
+        authority,
+        policy,
+        trust,
+        tuple(certificates),
+    )
+    results = finalize_recorded_results(
+        _manifest(),
+        _evidence(),
+        reviews,
+        review_policy=policy,
+        reviewer_trust=trust,
+        attestations=attestations,
+        reviewer_authority=authority,
+        reviewer_enrollments=enrollments,
+        authority_root_ledger=ledger,
+    )
+    envelope_request = build_campaign_envelope_request(
+        authority=authority,
+        manifest=_manifest(),
+        preflight=_preflight(),
+        evidence=_evidence(),
+        reviews=reviews,
+        review_policy=policy,
+        reviewer_trust=trust,
+        reviewer_enrollments=enrollments,
+        attestations=attestations,
+        results=results,
+        authority_root_ledger=ledger,
+    )
+    envelope = SignedCampaignEnvelope(
+        statement=envelope_request.statement,
+        signature_base64=base64.b64encode(
+            _authority_private_key().sign(envelope_request.statement.signing_bytes())
+        ).decode(),
+    )
+    log = build_transparency_log(
+        "example-org-agent-cli",
+        (
+            TransparencyLogEntry(
+                sequence=0,
+                kind="authority_root_ledger",
+                artifact_sha256=ledger.statement.ledger_sha256,
+            ),
+            TransparencyLogEntry(
+                sequence=1,
+                kind="reviewer_enrollments",
+                artifact_sha256=enrollments.reviewer_enrollments_sha256,
+            ),
+            TransparencyLogEntry(
+                sequence=2,
+                kind="campaign_envelope",
+                artifact_sha256=envelope.statement.envelope_sha256,
+            ),
+        ),
+    )
+    head_request = build_transparency_tree_head_request(log, ledger)
+    head = SignedTransparencyTreeHead(
+        statement=head_request.statement,
+        signature_base64=base64.b64encode(
+            _authority_private_key().sign(head_request.statement.signing_bytes())
+        ).decode(),
+    )
+    proof = build_transparency_inclusion_proof(log, leaf_index=2, tree_head=head)
+    return (
+        authority,
+        policy,
+        trust,
+        enrollments,
+        reviews,
+        attestations,
+        results,
+        ledger,
+        envelope,
+        proof,
     )
 
 
@@ -1499,6 +1659,96 @@ def test_authority_bound_campaign_waits_for_signed_envelope_before_finalized() -
     assert finalized.stage is CampaignStage.FINALIZED
     assert finalized.campaign_envelope_verified is True
     assert finalized.paid_execution_authorized is False
+    assert b"authority_root_ledger_sha256" not in envelope.statement.signing_bytes()
+
+
+def test_ledger_bound_campaign_requires_root_then_envelope_inclusion() -> None:
+    (
+        authority,
+        policy,
+        trust,
+        enrollments,
+        reviews,
+        attestations,
+        results,
+        ledger,
+        envelope,
+        proof,
+    ) = _ledger_bound_artifacts()
+    review_common = {
+        "preflight": _preflight(),
+        "evidence": _evidence(),
+        "reviews": reviews,
+        "review_policy": policy,
+        "reviewer_trust": trust,
+        "attestations": attestations,
+        "reviewer_authority": authority,
+        "reviewer_enrollments": enrollments,
+    }
+
+    root_pending = build_campaign_status(_manifest(), **review_common)
+    envelope_pending = build_campaign_status(
+        _manifest(),
+        **review_common,
+        results=results,
+        authority_root_ledger=ledger,
+    )
+    transparency_pending = build_campaign_status(
+        _manifest(),
+        **review_common,
+        results=results,
+        authority_root_ledger=ledger,
+        campaign_envelope=envelope,
+    )
+    finalized = build_campaign_status(
+        _manifest(),
+        **review_common,
+        results=results,
+        authority_root_ledger=ledger,
+        campaign_envelope=envelope,
+        transparency_proof=proof,
+    )
+
+    assert root_pending.stage is CampaignStage.AUTHORITY_ROOT_PENDING
+    assert envelope_pending.stage is CampaignStage.CAMPAIGN_ENVELOPE_PENDING
+    assert transparency_pending.stage is CampaignStage.TRANSPARENCY_PENDING
+    assert transparency_pending.campaign_envelope_verified is True
+    assert finalized.stage is CampaignStage.FINALIZED
+    assert finalized.authority_root_ledger_verified is True
+    assert finalized.transparency_inclusion_verified is True
+    assert finalized.paid_execution_authorized is False
+
+
+def test_ledger_bound_results_reject_a_different_signed_root_ledger() -> None:
+    (
+        authority,
+        policy,
+        trust,
+        enrollments,
+        reviews,
+        attestations,
+        _results,
+        ledger,
+        _envelope,
+        _proof,
+    ) = _ledger_bound_artifacts()
+    changed_statement = ledger.statement.model_copy(
+        update={"ledger_sha256": "f" * 64}
+    )
+    changed = ledger.model_copy(update={"statement": changed_statement})
+
+    with pytest.raises(ValueError, match="ledger fingerprint"):
+        finalize_recorded_results(
+            _manifest(),
+            _evidence(),
+            reviews,
+            review_policy=policy,
+            reviewer_trust=trust,
+            attestations=attestations,
+            reviewer_authority=authority,
+            reviewer_enrollments=enrollments,
+            authority_root_ledger=changed,
+        )
 
 
 def test_campaign_envelope_template_cli_preserves_all_inputs(tmp_path: Path) -> None:
