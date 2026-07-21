@@ -364,6 +364,19 @@ paid execution is authorized.
 Phase 43 passed all 3,591 unit tests with repository-wide Ruff clean. The built
 wheel contains the rehearsal module and both committed JSON templates.
 
+## Phase 43 publication checkpoint (2026-07-20)
+
+Phase 43 was committed as `5678d43` (`Rehearse agent CLI receipts locally`) and
+pushed to `agent/codex-direct-stream-resume`. Draft PR #44 recognized that commit as
+its head, and lint, unit tests, UI build, Docker build, GitGuardian, and the draft review
+gate all passed. The local source branch and origin are synchronized.
+
+No paid benchmark campaign was executed. The next authorized development slice is
+Phase 44: validate a user-selected manifest before execution, fingerprint required CLI
+versions and commands, and generate an evidence-bound independent review template.
+Campaign execution must remain a separate action requiring explicit paid acknowledgement
+and a cost cap; preflight success alone never authorizes agent launch.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:
