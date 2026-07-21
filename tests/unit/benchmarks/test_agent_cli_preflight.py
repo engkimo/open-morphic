@@ -26,6 +26,18 @@ from benchmarks.agent_cli_attestation import (
     build_reviewer_trust,
     verify_review_attestations,
 )
+from benchmarks.agent_cli_authority import (
+    BenchmarkAuthorityDeclaration,
+    ReviewerEnrollmentCertificate,
+    SignedCampaignEnvelope,
+    build_benchmark_authority,
+    build_campaign_envelope_request,
+    build_reviewer_enrollment_bundle,
+    build_reviewer_enrollment_statement,
+    build_reviewer_enrollment_template,
+    verify_reviewer_enrollments,
+    verify_signed_campaign_envelope,
+)
 from benchmarks.agent_cli_campaign import CampaignStage, build_campaign_status
 from benchmarks.agent_cli_comparison import AgentCliArm, AgentCliManifest
 from benchmarks.agent_cli_preflight import (
@@ -242,7 +254,11 @@ def _private_keys() -> dict[str, Ed25519PrivateKey]:
     }
 
 
-def _trust_declaration(*, revoke_reviewer_2: bool = False) -> ReviewerTrustDeclaration:
+def _trust_declaration(
+    *,
+    revoke_reviewer_2: bool = False,
+    reviewer_authority_sha256: str | None = None,
+) -> ReviewerTrustDeclaration:
     keys = _private_keys()
     declarations = []
     for reviewer_id, private_key in keys.items():
@@ -266,14 +282,12 @@ def _trust_declaration(*, revoke_reviewer_2: bool = False) -> ReviewerTrustDecla
         schema_version=1,
         benchmark_id="campaign-001",
         review_policy_sha256=_policy().policy_sha256,
+        reviewer_authority_sha256=reviewer_authority_sha256,
         keys=tuple(reversed(declarations)),
     )
 
 
-def _signed_attestations():
-    policy = _policy()
-    trust = build_reviewer_trust(_trust_declaration(), policy)
-    reviews = _completed_reviews(reviewer_trust_sha256=trust.reviewer_trust_sha256)
+def _review_attestation_bundle(policy, trust, reviews):
     template = build_review_attestation_template(policy, trust, reviews)
     private_keys = _private_keys()
     signed = tuple(
@@ -288,18 +302,108 @@ def _signed_attestations():
         )
         for request in template.requests
     )
-    return (
+    return ReviewAttestationBundle(
+        schema_version=1,
+        benchmark_id=reviews.benchmark_id,
+        review_policy_sha256=policy.policy_sha256,
+        reviewer_trust_sha256=trust.reviewer_trust_sha256,
+        reviews_sha256=template.reviews_sha256,
+        attestations=signed,
+    )
+
+
+def _signed_attestations():
+    policy = _policy()
+    trust = build_reviewer_trust(_trust_declaration(), policy)
+    reviews = _completed_reviews(reviewer_trust_sha256=trust.reviewer_trust_sha256)
+    return policy, trust, reviews, _review_attestation_bundle(policy, trust, reviews)
+
+
+def _authority_private_key() -> Ed25519PrivateKey:
+    return Ed25519PrivateKey.from_private_bytes(b"\x03" * 32)
+
+
+def _authority_declaration() -> BenchmarkAuthorityDeclaration:
+    public_bytes = _authority_private_key().public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    return BenchmarkAuthorityDeclaration(
+        schema_version=1,
+        authority_id="example-org-benchmark-ca",
+        public_key_base64=base64.b64encode(public_bytes).decode(),
+    )
+
+
+def _anchored_artifacts():
+    policy = _policy()
+    authority = build_benchmark_authority(_authority_declaration())
+    trust = build_reviewer_trust(
+        _trust_declaration(reviewer_authority_sha256=authority.authority_sha256),
+        policy,
+    )
+    reviews = _completed_reviews(reviewer_trust_sha256=trust.reviewer_trust_sha256)
+    attestations = _review_attestation_bundle(policy, trust, reviews)
+    certificates = []
+    for key in trust.keys:
+        statement = build_reviewer_enrollment_statement(
+            authority,
+            policy,
+            trust,
+            key,
+        )
+        certificates.append(
+            ReviewerEnrollmentCertificate(
+                statement=statement,
+                signature_base64=base64.b64encode(
+                    _authority_private_key().sign(statement.signing_bytes())
+                ).decode(),
+            )
+        )
+    enrollments = build_reviewer_enrollment_bundle(
+        authority,
         policy,
         trust,
+        tuple(reversed(certificates)),
+    )
+    results = finalize_recorded_results(
+        _manifest(),
+        _evidence(),
         reviews,
-        ReviewAttestationBundle(
-            schema_version=1,
-            benchmark_id=reviews.benchmark_id,
-            review_policy_sha256=policy.policy_sha256,
-            reviewer_trust_sha256=trust.reviewer_trust_sha256,
-            reviews_sha256=template.reviews_sha256,
-            attestations=signed,
-        ),
+        review_policy=policy,
+        reviewer_trust=trust,
+        attestations=attestations,
+        reviewer_authority=authority,
+        reviewer_enrollments=enrollments,
+    )
+    request = build_campaign_envelope_request(
+        authority=authority,
+        manifest=_manifest(),
+        preflight=_preflight(),
+        evidence=_evidence(),
+        reviews=reviews,
+        review_policy=policy,
+        reviewer_trust=trust,
+        reviewer_enrollments=enrollments,
+        attestations=attestations,
+        results=results,
+    )
+    envelope = SignedCampaignEnvelope(
+        statement=request.statement,
+        signature_base64=base64.b64encode(
+            _authority_private_key().sign(request.statement.signing_bytes())
+        ).decode(),
+    )
+    return (
+        authority,
+        policy,
+        trust,
+        enrollments,
+        reviews,
+        attestations,
+        results,
+        request,
+        envelope,
     )
 
 
@@ -745,7 +849,15 @@ def test_campaign_status_advances_deterministically_without_authorization() -> N
         ),
     ]
 
-    assert [status.stage for status in statuses] == list(CampaignStage)
+    assert [status.stage for status in statuses] == [
+        CampaignStage.MANIFEST_READY,
+        CampaignStage.PREFLIGHT_READY,
+        CampaignStage.RECORDED,
+        CampaignStage.REVIEW_PENDING,
+        CampaignStage.REVIEW_ATTESTATION_PENDING,
+        CampaignStage.REVIEW_COMPLETE,
+        CampaignStage.FINALIZED,
+    ]
     assert all(status.paid_execution_authorized is False for status in statuses)
     assert statuses[-2].attestations_verified is True
     assert statuses[-1].next_action == "campaign_complete"
@@ -1150,3 +1262,378 @@ def test_committed_reviewer_trust_template_validates() -> None:
     trust = build_reviewer_trust(ReviewerTrustDeclaration.model_validate(payload), policy)
 
     assert trust.benchmark_id == "agent-cli-local-rehearsal"
+
+
+def test_benchmark_authority_is_deterministic_and_self_fingerprinted() -> None:
+    first = build_benchmark_authority(_authority_declaration())
+    second = build_benchmark_authority(_authority_declaration())
+
+    assert first.to_json() == second.to_json()
+    assert len(first.public_key_sha256) == 64
+    assert len(first.authority_sha256) == 64
+
+
+def test_reviewer_enrollments_verify_every_trust_key() -> None:
+    authority, policy, trust, enrollments, *_rest = _anchored_artifacts()
+
+    verify_reviewer_enrollments(authority, policy, trust, enrollments)
+
+    assert [
+        certificate.statement.key_id for certificate in enrollments.certificates
+    ] == ["reviewer-1-key-1", "reviewer-2-key-1"]
+    assert len(enrollments.reviewer_enrollments_sha256) == 64
+
+
+def test_reviewer_enrollment_template_cli_is_private_key_free_and_read_only(
+    tmp_path: Path,
+) -> None:
+    authority, policy, trust, *_rest = _anchored_artifacts()
+    template = build_reviewer_enrollment_template(authority, policy, trust)
+    policy_path = tmp_path / "policy.json"
+    trust_path = tmp_path / "trust.json"
+    authority_path = tmp_path / "authority.json"
+    output_path = tmp_path / "enrollment-template.json"
+    policy_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "benchmark_id": policy.benchmark_id,
+                "operator_id": policy.operator_id,
+                "reviewer_ids": list(policy.reviewer_ids),
+                "minimum_distinct_reviewers": policy.minimum_distinct_reviewers,
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    trust_path.write_text(
+        _trust_declaration(
+            reviewer_authority_sha256=authority.authority_sha256
+        ).model_dump_json(),
+        encoding="utf-8",
+    )
+    authority_path.write_text(_authority_declaration().model_dump_json(), encoding="utf-8")
+    before = {path: path.read_bytes() for path in tmp_path.iterdir()}
+
+    result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "agent-cli-reviewer-enrollment-template",
+            "--review-policy",
+            str(policy_path),
+            "--reviewer-trust",
+            str(trust_path),
+            "--reviewer-authority",
+            str(authority_path),
+            "--output",
+            str(output_path),
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == json.loads(template.to_json())
+    assert len(template.requests) == 2
+    assert "private" not in template.to_json().lower()
+    assert before == {path: path.read_bytes() for path in before}
+
+
+@pytest.mark.parametrize("mutation", ["signature", "missing", "mixed_trust"])
+def test_reviewer_enrollments_reject_tampering_and_incomplete_coverage(
+    mutation: str,
+) -> None:
+    authority, policy, trust, enrollments, *_rest = _anchored_artifacts()
+    payload = enrollments.model_dump(mode="json")
+    if mutation == "signature":
+        payload["certificates"][0]["signature_base64"] = base64.b64encode(
+            b"x" * 64
+        ).decode()
+    elif mutation == "missing":
+        payload["certificates"].pop()
+    else:
+        payload["reviewer_trust_sha256"] = "f" * 64
+
+    with pytest.raises(
+        ValueError,
+        match="signature|coverage|trust fingerprint|enrollment fingerprint",
+    ):
+        verify_reviewer_enrollments(
+            authority,
+            policy,
+            trust,
+            type(enrollments).model_validate(payload),
+        )
+
+
+def test_reviewer_enrollment_rejects_invalid_authority_signature() -> None:
+    authority, policy, trust, enrollments, *_rest = _anchored_artifacts()
+    certificates = list(enrollments.certificates)
+    certificates[0] = certificates[0].model_copy(
+        update={"signature_base64": base64.b64encode(b"x" * 64).decode()}
+    )
+
+    with pytest.raises(ValueError, match="enrollment signature"):
+        build_reviewer_enrollment_bundle(
+            authority,
+            policy,
+            trust,
+            tuple(certificates),
+        )
+
+
+def test_authority_bound_finalization_requires_enrollment_certificates() -> None:
+    (
+        authority,
+        policy,
+        trust,
+        enrollments,
+        reviews,
+        attestations,
+        _results,
+        _request,
+        _envelope,
+    ) = _anchored_artifacts()
+
+    with pytest.raises(ValueError, match="authority and reviewer enrollments"):
+        finalize_recorded_results(
+            _manifest(),
+            _evidence(),
+            reviews,
+            review_policy=policy,
+            reviewer_trust=trust,
+            attestations=attestations,
+        )
+
+    results = finalize_recorded_results(
+        _manifest(),
+        _evidence(),
+        reviews,
+        review_policy=policy,
+        reviewer_trust=trust,
+        attestations=attestations,
+        reviewer_authority=authority,
+        reviewer_enrollments=enrollments,
+    )
+
+    assert len(results.observations) == 3
+
+
+def test_campaign_envelope_binds_every_artifact_without_authorizing_execution() -> None:
+    *_, request, _envelope = _anchored_artifacts()
+    second = _anchored_artifacts()[-2]
+
+    assert request.to_json() == second.to_json()
+    assert request.statement.paid_execution_authorized is False
+    assert len(request.statement.results_sha256) == 64
+    assert len(request.statement.reviewer_enrollments_sha256) == 64
+    assert len(request.statement.attestations_sha256) == 64
+
+
+def test_signed_campaign_envelope_verifies_and_rejects_tampering() -> None:
+    (
+        authority,
+        policy,
+        trust,
+        enrollments,
+        reviews,
+        attestations,
+        results,
+        _request,
+        envelope,
+    ) = _anchored_artifacts()
+    kwargs = {
+        "authority": authority,
+        "manifest": _manifest(),
+        "preflight": _preflight(),
+        "evidence": _evidence(),
+        "reviews": reviews,
+        "review_policy": policy,
+        "reviewer_trust": trust,
+        "reviewer_enrollments": enrollments,
+        "attestations": attestations,
+        "results": results,
+    }
+
+    verify_signed_campaign_envelope(**kwargs, envelope=envelope)
+    tampered = envelope.model_copy(
+        update={"signature_base64": base64.b64encode(b"x" * 64).decode()}
+    )
+    with pytest.raises(ValueError, match="campaign envelope signature"):
+        verify_signed_campaign_envelope(**kwargs, envelope=tampered)
+
+
+def test_authority_bound_campaign_waits_for_signed_envelope_before_finalized() -> None:
+    (
+        authority,
+        policy,
+        trust,
+        enrollments,
+        reviews,
+        attestations,
+        results,
+        _request,
+        envelope,
+    ) = _anchored_artifacts()
+    common = {
+        "preflight": _preflight(),
+        "evidence": _evidence(),
+        "reviews": reviews,
+        "results": results,
+        "review_policy": policy,
+        "reviewer_trust": trust,
+        "attestations": attestations,
+        "reviewer_authority": authority,
+        "reviewer_enrollments": enrollments,
+    }
+
+    pending = build_campaign_status(_manifest(), **common)
+    finalized = build_campaign_status(
+        _manifest(),
+        **common,
+        campaign_envelope=envelope,
+    )
+
+    assert pending.stage is CampaignStage.CAMPAIGN_ENVELOPE_PENDING
+    assert pending.next_action == "sign_campaign_envelope"
+    assert finalized.stage is CampaignStage.FINALIZED
+    assert finalized.campaign_envelope_verified is True
+    assert finalized.paid_execution_authorized is False
+
+
+def test_campaign_envelope_template_cli_preserves_all_inputs(tmp_path: Path) -> None:
+    (
+        authority,
+        policy,
+        trust,
+        enrollments,
+        reviews,
+        attestations,
+        results,
+        request,
+        envelope,
+    ) = _anchored_artifacts()
+    payloads = {
+        "manifest": _manifest().model_dump_json(),
+        "preflight": _preflight().to_json(),
+        "evidence": _evidence().model_dump_json(),
+        "reviews": reviews.model_dump_json(),
+        "policy": json.dumps(
+            {
+                "schema_version": 1,
+                "benchmark_id": policy.benchmark_id,
+                "operator_id": policy.operator_id,
+                "reviewer_ids": list(policy.reviewer_ids),
+                "minimum_distinct_reviewers": policy.minimum_distinct_reviewers,
+            },
+            sort_keys=True,
+        ),
+        "trust": _trust_declaration(
+            reviewer_authority_sha256=authority.authority_sha256
+        ).model_dump_json(),
+        "authority": _authority_declaration().model_dump_json(),
+        "enrollments": enrollments.to_json(),
+        "attestations": attestations.to_json(),
+        "results": results.model_dump_json(),
+    }
+    paths = {}
+    for name, payload in payloads.items():
+        paths[name] = tmp_path / f"{name}.json"
+        paths[name].write_text(payload, encoding="utf-8")
+    finalized = tmp_path / "finalized.json"
+    before_finalize = {path: path.read_bytes() for path in paths.values()}
+    finalize_result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "agent-cli-finalize",
+            "--manifest",
+            str(paths["manifest"]),
+            "--preflight",
+            str(paths["preflight"]),
+            "--evidence",
+            str(paths["evidence"]),
+            "--reviews",
+            str(paths["reviews"]),
+            "--review-policy",
+            str(paths["policy"]),
+            "--reviewer-trust",
+            str(paths["trust"]),
+            "--reviewer-authority",
+            str(paths["authority"]),
+            "--reviewer-enrollments",
+            str(paths["enrollments"]),
+            "--attestations",
+            str(paths["attestations"]),
+            "--output",
+            str(finalized),
+        ],
+    )
+
+    assert finalize_result.exit_code == 0
+    assert json.loads(finalized.read_text()) == results.model_dump(mode="json")
+    assert before_finalize == {path: path.read_bytes() for path in paths.values()}
+    output = tmp_path / "campaign-envelope-template.json"
+    before = {path: path.read_bytes() for path in paths.values()}
+    args = ["benchmark", "agent-cli-campaign-envelope-template"]
+    for name in payloads:
+        option = "--review-policy" if name == "policy" else f"--{name}"
+        option = "--reviewer-trust" if name == "trust" else option
+        option = "--reviewer-authority" if name == "authority" else option
+        option = "--reviewer-enrollments" if name == "enrollments" else option
+        args.extend([option, str(paths[name])])
+    args.extend(["--output", str(output), "--json"])
+
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == json.loads(request.to_json())
+    assert before == {path: path.read_bytes() for path in paths.values()}
+    assert output.exists()
+    envelope_path = tmp_path / "campaign-envelope.json"
+    envelope_path.write_text(envelope.to_json(), encoding="utf-8")
+    status_before = {
+        path: path.read_bytes() for path in [*paths.values(), envelope_path]
+    }
+    status_args = ["benchmark", "agent-cli-status"]
+    for name in payloads:
+        option = "--review-policy" if name == "policy" else f"--{name}"
+        option = "--reviewer-trust" if name == "trust" else option
+        option = "--reviewer-authority" if name == "authority" else option
+        option = "--reviewer-enrollments" if name == "enrollments" else option
+        status_args.extend([option, str(paths[name])])
+    status_args.extend(
+        ["--campaign-envelope", str(envelope_path), "--json"]
+    )
+
+    status = runner.invoke(app, status_args)
+
+    assert status.exit_code == 0
+    assert json.loads(status.output)["stage"] == "finalized"
+    assert json.loads(status.output)["campaign_envelope_verified"] is True
+    assert status_before == {
+        path: path.read_bytes() for path in [*paths.values(), envelope_path]
+    }
+
+
+def test_committed_authority_and_anchored_trust_templates_validate() -> None:
+    root = Path(__file__).parents[3]
+    authority_declaration = BenchmarkAuthorityDeclaration.model_validate_json(
+        (root / "benchmarks/templates/agent_cli_reviewer_authority.example.json").read_text()
+    )
+    trust_declaration = ReviewerTrustDeclaration.model_validate_json(
+        (
+            root
+            / "benchmarks/templates/agent_cli_anchored_reviewer_trust.example.json"
+        ).read_text()
+    )
+    policy = build_reviewer_policy(
+        ReviewerPolicyDeclaration.model_validate_json(
+            (root / "benchmarks/templates/agent_cli_review_policy.example.json").read_text()
+        )
+    )
+    authority = build_benchmark_authority(authority_declaration)
+
+    trust = build_reviewer_trust(trust_declaration, policy)
+
+    assert trust.reviewer_authority_sha256 == authority.authority_sha256

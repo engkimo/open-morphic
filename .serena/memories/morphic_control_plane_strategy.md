@@ -462,6 +462,38 @@ contains the attestation module and reviewer trust template and directly declare
 `cryptography>=46.0.5`. No external agent, private-key file, version probe, or paid API
 was started.
 
+## Phase 47 update
+
+Reviewer key enrollment can now be anchored outside the recorder/operator. A normalized,
+self-fingerprinted offline Ed25519 organization authority is bound into anchored reviewer
+trust. `agent-cli-reviewer-enrollment-template` produces a canonical signing payload for
+every retained reviewer key without exposing or reading the authority private key. Each
+authority certificate binds the authority, benchmark, review policy, exact reviewer trust,
+reviewer/key IDs, and reviewer public-key fingerprint. Missing, duplicate, mixed, or
+invalid certificates fail closed, and anchored finalization requires the complete bundle.
+
+The final campaign now has an optional authority-sealed boundary as well.
+`agent-cli-campaign-envelope-template` binds manifest, preflight, evidence, completed
+reviews, review policy, reviewer trust, authority enrollments, reviewer attestations,
+results, and immutable campaign identity into one deterministic payload. It explicitly
+fixes `paid_execution_authorized=false`. An authority-bound campaign remains at
+`campaign_envelope_pending` until the external Ed25519 signature verifies; before key
+enrollment it reports `reviewer_enrollment_pending`. Unanchored Phase 46 and unsigned
+legacy campaigns retain their existing behavior.
+
+This closes the operator-controlled key-enrollment gap when an organization distributes
+the authority root independently. The remaining trust-distribution gap is explicit:
+Morphic does not yet prove safe delivery of the root public key, certificate expiry,
+authority revocation/rotation, or append-only transparency inclusion. The next slice
+should add versioned root rotation and revocation plus a transparency proof, and only then
+map the same contracts onto OIDC/Sigstore if online identity is desired.
+
+Phase 47 passed all 3,646 unit tests with repository-wide Ruff clean. Real Ed25519
+enrollment, reviewer attestation, and final campaign envelope signatures ran with
+in-memory keys only. The built wheel contains the authority module plus authority and
+anchored-trust templates. No external authority, agent, network identity provider,
+private-key file, version probe, or paid API was started.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-07-21
-> Latest work: Morphic Chat CLI Phase 46 signed reviewer provenance
+> Latest work: Morphic Chat CLI Phase 47 authority-anchored campaign provenance
 
 ## Latest Session Notes (2026-06-26)
 
@@ -364,6 +364,22 @@ Phase 46 implemented:
 - No external agent, private-key file, version probe, or paid API was started.
 - Security boundary: signatures prove possession of a trust-enrolled key, not real-world identity or independently anchored key enrollment.
 
+Phase 47 implemented:
+- Added a normalized, self-fingerprinted offline Ed25519 organization authority declaration.
+- Anchored reviewer trust includes the exact authority SHA-256; unanchored Phase 46 trust fingerprints remain backward compatible.
+- Added canonical enrollment signing requests for every reviewer key without reading an authority private key.
+- Authority enrollment certificates bind authority, benchmark, policy, exact trust artifact, reviewer/key identity, and reviewer public-key fingerprint.
+- Every active or revoked key retained in trust must have exactly one valid authority certificate; missing, duplicate, mixed, or invalid certificates fail closed.
+- Authority-bound finalization requires both the authority declaration and complete enrollment bundle in addition to Phase 46 reviewer attestations.
+- Added a campaign envelope signing request covering manifest, preflight, evidence, reviews, policy, trust, enrollments, attestations, results, and immutable campaign identity.
+- The envelope fixes `paid_execution_authorized=false`; successful provenance verification never authorizes a recording run.
+- Authority-bound status adds `reviewer_enrollment_pending` and `campaign_envelope_pending` and reaches `finalized` only after the external authority signature verifies.
+- Added `agent-cli-reviewer-enrollment-template` and `agent-cli-campaign-envelope-template`; both exclusively publish deterministic signing payloads and never read private keys.
+- Legacy unsigned and unanchored signed campaigns retain their previous lifecycle and finalization behavior.
+- Verification: 3,646 unit tests passed; repository-wide Ruff clean; wheel contains the authority module plus authority and anchored-trust templates.
+- Real Ed25519 enrollment, reviewer attestation, and final envelope signatures were exercised with in-memory keys only. No external authority, agent, network identity provider, or paid API was started.
+- Security boundary: authority root distribution, certificate expiry, authority revocation/rotation, and transparency logging are not yet anchored.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -373,7 +389,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add externally anchored reviewer key enrollment (organization CA or OIDC/Sigstore) and a signed immutable campaign/result envelope while preserving the offline verification path.
+- Add authority root rotation/revocation and an append-only transparency proof, then optionally project the same identity contract onto OIDC/Sigstore without weakening offline verification.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

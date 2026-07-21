@@ -132,6 +132,33 @@ _OPTIONAL_ATTESTATIONS_INPUT = typer.Option(
     readable=True,
     help="Optional signed reviewer attestation bundle.",
 )
+_OPTIONAL_REVIEWER_AUTHORITY_INPUT = typer.Option(
+    None,
+    "--reviewer-authority",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Optional organization benchmark authority declaration.",
+)
+_OPTIONAL_REVIEWER_ENROLLMENTS_INPUT = typer.Option(
+    None,
+    "--reviewer-enrollments",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Optional authority-signed reviewer enrollment bundle.",
+)
+_OPTIONAL_CAMPAIGN_ENVELOPE_INPUT = typer.Option(
+    None,
+    "--campaign-envelope",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Optional authority-signed finalized campaign envelope.",
+)
 _STATUS_EVIDENCE_OPTION = typer.Option(
     None,
     "--evidence",
@@ -452,6 +479,8 @@ def finalize_agent_cli_trials(
     review_policy_path: Path | None = _OPTIONAL_REVIEW_POLICY_INPUT,
     reviewer_trust_path: Path | None = _OPTIONAL_REVIEWER_TRUST_INPUT,
     attestations_path: Path | None = _OPTIONAL_ATTESTATIONS_INPUT,
+    reviewer_authority_path: Path | None = _OPTIONAL_REVIEWER_AUTHORITY_INPUT,
+    reviewer_enrollments_path: Path | None = _OPTIONAL_REVIEWER_ENROLLMENTS_INPUT,
     output_path: Path | None = _FINALIZE_OUTPUT_OPTION,
     as_json: bool = _AGENT_CLI_JSON_OPTION,
 ) -> None:
@@ -471,6 +500,8 @@ def finalize_agent_cli_trials(
         review_policy = None
         reviewer_trust = None
         attestations = None
+        reviewer_authority = None
+        reviewer_enrollments = None
         if reviews.preflight_sha256 is not None and preflight_path is None:
             raise ValueError("--preflight is required for a preflight-bound review")
         if preflight_path is not None:
@@ -513,11 +544,40 @@ def finalize_agent_cli_trials(
                 reviewer_trust_path.read_text(encoding="utf-8")
             )
             reviewer_trust = build_reviewer_trust(trust_declaration, review_policy)
+        if (
+            reviewer_trust is not None
+            and reviewer_trust.reviewer_authority_sha256 is not None
+            and reviewer_authority_path is None
+        ):
+            raise ValueError("--reviewer-authority is required for authority-bound trust")
+        if (
+            reviewer_trust is not None
+            and reviewer_trust.reviewer_authority_sha256 is not None
+            and reviewer_enrollments_path is None
+        ):
+            raise ValueError("--reviewer-enrollments is required for authority-bound trust")
         if attestations_path is not None:
             from benchmarks.agent_cli_attestation import ReviewAttestationBundle
 
             attestations = ReviewAttestationBundle.model_validate_json(
                 attestations_path.read_text(encoding="utf-8")
+            )
+        if reviewer_authority_path is not None:
+            from benchmarks.agent_cli_authority import (
+                BenchmarkAuthorityDeclaration,
+                build_benchmark_authority,
+            )
+
+            reviewer_authority = build_benchmark_authority(
+                BenchmarkAuthorityDeclaration.model_validate_json(
+                    reviewer_authority_path.read_text(encoding="utf-8")
+                )
+            )
+        if reviewer_enrollments_path is not None:
+            from benchmarks.agent_cli_authority import ReviewerEnrollmentBundle
+
+            reviewer_enrollments = ReviewerEnrollmentBundle.model_validate_json(
+                reviewer_enrollments_path.read_text(encoding="utf-8")
             )
         results = finalize_recorded_results(
             manifest,
@@ -526,6 +586,8 @@ def finalize_agent_cli_trials(
             review_policy=review_policy,
             reviewer_trust=reviewer_trust,
             attestations=attestations,
+            reviewer_authority=reviewer_authority,
+            reviewer_enrollments=reviewer_enrollments,
         )
         payload = finalized_results_json(results)
         if output_path is not None:
@@ -727,6 +789,185 @@ def create_agent_cli_attestation_template(
         console.print(f"Created {len(template.requests)} reviewer signing requests")
 
 
+@benchmark_app.command("agent-cli-reviewer-enrollment-template")
+def create_agent_cli_reviewer_enrollment_template(
+    review_policy_path: Path = _OPTIONAL_REVIEW_POLICY_INPUT,
+    reviewer_trust_path: Path = _OPTIONAL_REVIEWER_TRUST_INPUT,
+    reviewer_authority_path: Path = _OPTIONAL_REVIEWER_AUTHORITY_INPUT,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Create authority signing payloads for reviewer keys without private keys."""
+    from benchmarks.agent_cli_attestation import (
+        ReviewerTrustDeclaration,
+        build_reviewer_trust,
+    )
+    from benchmarks.agent_cli_authority import (
+        BenchmarkAuthorityDeclaration,
+        build_benchmark_authority,
+        build_reviewer_enrollment_template,
+    )
+    from benchmarks.agent_cli_review_policy import (
+        ReviewerPolicyDeclaration,
+        build_reviewer_policy,
+    )
+
+    try:
+        if (
+            review_policy_path is None
+            or reviewer_trust_path is None
+            or reviewer_authority_path is None
+        ):
+            raise ValueError(
+                "--review-policy, --reviewer-trust, and --reviewer-authority are required"
+            )
+        policy = build_reviewer_policy(
+            ReviewerPolicyDeclaration.model_validate_json(
+                review_policy_path.read_text(encoding="utf-8")
+            )
+        )
+        trust = build_reviewer_trust(
+            ReviewerTrustDeclaration.model_validate_json(
+                reviewer_trust_path.read_text(encoding="utf-8")
+            ),
+            policy,
+        )
+        authority = build_benchmark_authority(
+            BenchmarkAuthorityDeclaration.model_validate_json(
+                reviewer_authority_path.read_text(encoding="utf-8")
+            )
+        )
+        template = build_reviewer_enrollment_template(authority, policy, trust)
+        if not output_path.parent.exists():
+            raise ValueError("reviewer enrollment output parent must already exist")
+        if output_path.exists():
+            raise ValueError("reviewer enrollment output already exists")
+        _write_new_evidence(output_path, template.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI reviewer enrollment template failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(template.to_json())
+    else:
+        console.print(f"Created {len(template.requests)} authority enrollment requests")
+
+
+@benchmark_app.command("agent-cli-campaign-envelope-template")
+def create_agent_cli_campaign_envelope_template(
+    manifest_path: Path = _AGENT_CLI_MANIFEST_OPTION,
+    preflight_path: Path = _PREFLIGHT_INPUT_OPTION,
+    evidence_path: Path = _FINALIZE_EVIDENCE_OPTION,
+    reviews_path: Path = _FINALIZE_REVIEWS_OPTION,
+    review_policy_path: Path = _OPTIONAL_REVIEW_POLICY_INPUT,
+    reviewer_trust_path: Path = _OPTIONAL_REVIEWER_TRUST_INPUT,
+    reviewer_authority_path: Path = _OPTIONAL_REVIEWER_AUTHORITY_INPUT,
+    reviewer_enrollments_path: Path = _OPTIONAL_REVIEWER_ENROLLMENTS_INPUT,
+    attestations_path: Path = _OPTIONAL_ATTESTATIONS_INPUT,
+    results_path: Path = _AGENT_CLI_RESULTS_OPTION,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Create one authority signing payload for the complete finalized campaign."""
+    from benchmarks.agent_cli_adjudication import AdjudicationReviews, RecordedEvidence
+    from benchmarks.agent_cli_attestation import (
+        ReviewAttestationBundle,
+        ReviewerTrustDeclaration,
+        build_reviewer_trust,
+    )
+    from benchmarks.agent_cli_authority import (
+        BenchmarkAuthorityDeclaration,
+        ReviewerEnrollmentBundle,
+        build_benchmark_authority,
+        build_campaign_envelope_request,
+    )
+    from benchmarks.agent_cli_comparison import AgentCliManifest, RecordedResults
+    from benchmarks.agent_cli_preflight import CampaignPreflight
+    from benchmarks.agent_cli_review_policy import (
+        ReviewerPolicyDeclaration,
+        build_reviewer_policy,
+    )
+
+    try:
+        required = {
+            "--review-policy": review_policy_path,
+            "--reviewer-trust": reviewer_trust_path,
+            "--reviewer-authority": reviewer_authority_path,
+            "--reviewer-enrollments": reviewer_enrollments_path,
+            "--attestations": attestations_path,
+        }
+        missing = [name for name, path in required.items() if path is None]
+        if missing:
+            raise ValueError(f"required authority artifact missing: {', '.join(missing)}")
+        assert review_policy_path is not None
+        assert reviewer_trust_path is not None
+        assert reviewer_authority_path is not None
+        assert reviewer_enrollments_path is not None
+        assert attestations_path is not None
+        manifest = AgentCliManifest.model_validate_json(
+            manifest_path.read_text(encoding="utf-8")
+        )
+        preflight = CampaignPreflight.model_validate_json(
+            preflight_path.read_text(encoding="utf-8")
+        )
+        evidence = RecordedEvidence.model_validate_json(
+            evidence_path.read_text(encoding="utf-8")
+        )
+        reviews = AdjudicationReviews.model_validate_json(
+            reviews_path.read_text(encoding="utf-8")
+        )
+        policy = build_reviewer_policy(
+            ReviewerPolicyDeclaration.model_validate_json(
+                review_policy_path.read_text(encoding="utf-8")
+            )
+        )
+        authority = build_benchmark_authority(
+            BenchmarkAuthorityDeclaration.model_validate_json(
+                reviewer_authority_path.read_text(encoding="utf-8")
+            )
+        )
+        trust = build_reviewer_trust(
+            ReviewerTrustDeclaration.model_validate_json(
+                reviewer_trust_path.read_text(encoding="utf-8")
+            ),
+            policy,
+        )
+        enrollments = ReviewerEnrollmentBundle.model_validate_json(
+            reviewer_enrollments_path.read_text(encoding="utf-8")
+        )
+        attestations = ReviewAttestationBundle.model_validate_json(
+            attestations_path.read_text(encoding="utf-8")
+        )
+        results = RecordedResults.model_validate_json(
+            results_path.read_text(encoding="utf-8")
+        )
+        template = build_campaign_envelope_request(
+            authority=authority,
+            manifest=manifest,
+            preflight=preflight,
+            evidence=evidence,
+            reviews=reviews,
+            review_policy=policy,
+            reviewer_trust=trust,
+            reviewer_enrollments=enrollments,
+            attestations=attestations,
+            results=results,
+        )
+        if not output_path.parent.exists():
+            raise ValueError("campaign envelope output parent must already exist")
+        if output_path.exists():
+            raise ValueError("campaign envelope output already exists")
+        _write_new_evidence(output_path, template.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI campaign envelope template failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(template.to_json())
+    else:
+        console.print("Created authority campaign envelope signing request")
+
+
 @benchmark_app.command("agent-cli-status")
 def show_agent_cli_campaign_status(
     manifest_path: Path = _AGENT_CLI_MANIFEST_OPTION,
@@ -737,6 +978,9 @@ def show_agent_cli_campaign_status(
     review_policy_path: Path | None = _OPTIONAL_REVIEW_POLICY_INPUT,
     reviewer_trust_path: Path | None = _OPTIONAL_REVIEWER_TRUST_INPUT,
     attestations_path: Path | None = _OPTIONAL_ATTESTATIONS_INPUT,
+    reviewer_authority_path: Path | None = _OPTIONAL_REVIEWER_AUTHORITY_INPUT,
+    reviewer_enrollments_path: Path | None = _OPTIONAL_REVIEWER_ENROLLMENTS_INPUT,
+    campaign_envelope_path: Path | None = _OPTIONAL_CAMPAIGN_ENVELOPE_INPUT,
     as_json: bool = _AGENT_CLI_JSON_OPTION,
 ) -> None:
     """Validate and report campaign lifecycle artifacts without executing commands."""
@@ -783,6 +1027,9 @@ def show_agent_cli_campaign_status(
         review_policy = None
         reviewer_trust = None
         attestations = None
+        reviewer_authority = None
+        reviewer_enrollments = None
+        campaign_envelope = None
         if review_policy_path is not None:
             declaration = ReviewerPolicyDeclaration.model_validate_json(
                 review_policy_path.read_text(encoding="utf-8")
@@ -808,6 +1055,29 @@ def show_agent_cli_campaign_status(
             attestations = ReviewAttestationBundle.model_validate_json(
                 attestations_path.read_text(encoding="utf-8")
             )
+        if reviewer_authority_path is not None:
+            from benchmarks.agent_cli_authority import (
+                BenchmarkAuthorityDeclaration,
+                build_benchmark_authority,
+            )
+
+            reviewer_authority = build_benchmark_authority(
+                BenchmarkAuthorityDeclaration.model_validate_json(
+                    reviewer_authority_path.read_text(encoding="utf-8")
+                )
+            )
+        if reviewer_enrollments_path is not None:
+            from benchmarks.agent_cli_authority import ReviewerEnrollmentBundle
+
+            reviewer_enrollments = ReviewerEnrollmentBundle.model_validate_json(
+                reviewer_enrollments_path.read_text(encoding="utf-8")
+            )
+        if campaign_envelope_path is not None:
+            from benchmarks.agent_cli_authority import SignedCampaignEnvelope
+
+            campaign_envelope = SignedCampaignEnvelope.model_validate_json(
+                campaign_envelope_path.read_text(encoding="utf-8")
+            )
         status = build_campaign_status(
             manifest,
             preflight=preflight,
@@ -818,6 +1088,9 @@ def show_agent_cli_campaign_status(
             review_policy=review_policy,
             reviewer_trust=reviewer_trust,
             attestations=attestations,
+            reviewer_authority=reviewer_authority,
+            reviewer_enrollments=reviewer_enrollments,
+            campaign_envelope=campaign_envelope,
         )
     except (OSError, ValueError) as exc:
         console.print(f"[red]Agent CLI campaign status failed: {exc}[/red]")

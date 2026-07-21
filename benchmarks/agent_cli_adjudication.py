@@ -19,6 +19,7 @@ from benchmarks.agent_cli_receipts import ProviderReceipt
 
 if TYPE_CHECKING:
     from benchmarks.agent_cli_attestation import ReviewAttestationBundle, ReviewerTrust
+    from benchmarks.agent_cli_authority import BenchmarkAuthority, ReviewerEnrollmentBundle
     from benchmarks.agent_cli_review_policy import ReviewerPolicy
 
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
@@ -184,6 +185,8 @@ def finalize_recorded_results(
     review_policy: ReviewerPolicy | None = None,
     reviewer_trust: ReviewerTrust | None = None,
     attestations: ReviewAttestationBundle | None = None,
+    reviewer_authority: BenchmarkAuthority | None = None,
+    reviewer_enrollments: ReviewerEnrollmentBundle | None = None,
 ) -> RecordedResults:
     """Create Phase 40 observations only after every evidence join validates."""
     attestation_inputs = (review_policy, reviewer_trust, attestations)
@@ -201,7 +204,33 @@ def finalize_recorded_results(
             reviews,
             attestations,
         )
-    elif any(value is not None for value in (reviewer_trust, attestations)):
+        authority_inputs = (reviewer_authority, reviewer_enrollments)
+        if reviewer_trust.reviewer_authority_sha256 is not None:
+            if any(value is None for value in authority_inputs):
+                raise ValueError(
+                    "authority-bound reviews require authority and reviewer enrollments"
+                )
+            from benchmarks.agent_cli_authority import verify_reviewer_enrollments
+
+            assert reviewer_authority is not None
+            assert reviewer_enrollments is not None
+            verify_reviewer_enrollments(
+                reviewer_authority,
+                review_policy,
+                reviewer_trust,
+                reviewer_enrollments,
+            )
+        elif any(value is not None for value in authority_inputs):
+            raise ValueError("reviewer enrollments require an authority-bound trust")
+    elif any(
+        value is not None
+        for value in (
+            reviewer_trust,
+            attestations,
+            reviewer_authority,
+            reviewer_enrollments,
+        )
+    ):
         raise ValueError("attestations require a reviewer trust binding")
     _validate_identity(manifest, evidence, reviews)
     if (

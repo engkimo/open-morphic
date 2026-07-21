@@ -69,6 +69,7 @@ class ReviewerTrustDeclaration(_FrozenModel):
     schema_version: int
     benchmark_id: str = Field(min_length=1)
     review_policy_sha256: str = Field(pattern=_SHA256_PATTERN)
+    reviewer_authority_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     keys: tuple[ReviewerPublicKeyDeclaration, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -114,6 +115,7 @@ class ReviewerTrust(_FrozenModel):
     schema_version: int
     benchmark_id: str = Field(min_length=1)
     review_policy_sha256: str = Field(pattern=_SHA256_PATTERN)
+    reviewer_authority_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     keys: tuple[ReviewerPublicKey, ...] = Field(min_length=1)
     reviewer_trust_sha256: str = Field(pattern=_SHA256_PATTERN)
 
@@ -125,6 +127,7 @@ class ReviewerTrust(_FrozenModel):
             schema_version=self.schema_version,
             benchmark_id=self.benchmark_id,
             review_policy_sha256=self.review_policy_sha256,
+            reviewer_authority_sha256=self.reviewer_authority_sha256,
             keys=tuple(
                 ReviewerPublicKeyDeclaration(
                     reviewer_id=key.reviewer_id,
@@ -143,7 +146,11 @@ class ReviewerTrust(_FrozenModel):
         return self
 
     def _binding_payload(self) -> dict[str, object]:
-        return self.model_dump(mode="json", exclude={"reviewer_trust_sha256"})
+        return self.model_dump(
+            mode="json",
+            exclude={"reviewer_trust_sha256"},
+            exclude_none=True,
+        )
 
     def to_json(self) -> str:
         return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
@@ -201,6 +208,8 @@ def build_reviewer_trust(
         "review_policy_sha256": declaration.review_policy_sha256,
         "keys": [key.model_dump(mode="json") for key in keys],
     }
+    if declaration.reviewer_authority_sha256 is not None:
+        payload["reviewer_authority_sha256"] = declaration.reviewer_authority_sha256
     return ReviewerTrust(**payload, reviewer_trust_sha256=_canonical_sha256(payload))
 
 

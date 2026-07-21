@@ -1,0 +1,6 @@
+{
+  "algorithm": "ed25519",
+  "authority_id": "REPLACE_WITH_ORG_BENCHMARK_CA",
+  "public_key_base64": "7UkoxijRwsbq6QM4kFmVYSlZJzpcY/k2NsFGFKyHN9E=",
+  "schema_version": 1
+}

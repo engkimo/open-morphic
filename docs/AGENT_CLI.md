@@ -563,6 +563,73 @@ campaignは従来の6段階とfinalize behaviorを維持する。署名は登録
 trust declarationのkey enrollment自体は実在人物の本人確認ではない。組織CA、OIDC/Sigstore、
 または外部key directoryとの結合は次段階である。
 
+### Organization-authority anchored campaigns
+
+Phase 47では、offline Ed25519 organization authorityをout-of-band trust anchorとして追加する。
+`agent_cli_reviewer_authority.example.json`と`agent_cli_anchored_reviewer_trust.example.json`を
+開始点にできるが、同梱example公開鍵は実運用で必ず組織管理鍵へ置き換える。authority artifactは
+authority ID、algorithm、public key、public-key SHA-256、self fingerprintを固定する。秘密鍵は
+Morphicへ渡さない。
+
+anchored trustを作成後、全reviewer keyについてCA署名payloadを生成する。
+
+```bash
+morphic benchmark agent-cli-reviewer-enrollment-template \
+  --review-policy reviewer-policy.json \
+  --reviewer-trust anchored-reviewer-trust.json \
+  --reviewer-authority reviewer-authority.json \
+  --output reviewer-enrollment-template.json \
+  --json
+```
+
+organization authorityは各`signing_payload_base64`を外部署名し、statementとsignatureを
+`ReviewerEnrollmentBundle`へ格納する。statementはauthority、benchmark、review policy、
+exact reviewer trust、reviewer/key ID、reviewer public-key fingerprintをbindする。trust内の
+active/revokedを含む全鍵がexactly once CA enrollmentされなければ検証は失敗する。
+
+authority-bound finalizeは通常のreview attestationsに加えてauthorityとenrollmentsを要求する。
+
+```bash
+morphic benchmark agent-cli-finalize \
+  --manifest benchmark-manifest.json \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --reviews benchmark-reviews.json \
+  --review-policy reviewer-policy.json \
+  --reviewer-trust anchored-reviewer-trust.json \
+  --reviewer-authority reviewer-authority.json \
+  --reviewer-enrollments reviewer-enrollments.json \
+  --attestations benchmark-attestations.json \
+  --output benchmark-results.json
+```
+
+results生成後、全artifactを1つのauthority signing payloadへ固定する。
+
+```bash
+morphic benchmark agent-cli-campaign-envelope-template \
+  --manifest benchmark-manifest.json \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --reviews benchmark-reviews.json \
+  --review-policy reviewer-policy.json \
+  --reviewer-trust anchored-reviewer-trust.json \
+  --reviewer-authority reviewer-authority.json \
+  --reviewer-enrollments reviewer-enrollments.json \
+  --attestations benchmark-attestations.json \
+  --results benchmark-results.json \
+  --output campaign-envelope-template.json
+```
+
+envelopeはmanifest、preflight、evidence、reviews、policy、trust、enrollments、attestations、
+resultsのSHA-256とidentityをbindし、`paid_execution_authorized=false`を固定する。authorityが
+payloadを外部署名した`SignedCampaignEnvelope`をstatusへ渡した場合だけauthority-bound campaignは
+`finalized`になる。署名前は`campaign_envelope_pending`、CA enrollment不足時は
+`reviewer_enrollment_pending`を返す。unanchored Phase 46とunsigned legacy campaignは従来どおり。
+
+このoffline CA経路はoperatorだけが作ったreviewer鍵を排除できる。ただしauthority root公開鍵の
+安全なout-of-band配布、certificate expiry、root revocation/rotation、transparency logは別契約であり、
+現在のartifactだけでは保証しない。
+
 ---
 
 ## Agent CLI Router

@@ -20,6 +20,13 @@ from benchmarks.agent_cli_attestation import (
     ReviewerTrust,
     verify_review_attestations,
 )
+from benchmarks.agent_cli_authority import (
+    BenchmarkAuthority,
+    ReviewerEnrollmentBundle,
+    SignedCampaignEnvelope,
+    verify_reviewer_enrollments,
+    verify_signed_campaign_envelope,
+)
 from benchmarks.agent_cli_comparison import (
     SCHEMA_VERSION,
     AgentCliManifest,
@@ -43,8 +50,10 @@ class CampaignStage(str, Enum):
     PREFLIGHT_READY = "preflight_ready"
     RECORDED = "recorded"
     REVIEW_PENDING = "review_pending"
+    REVIEWER_ENROLLMENT_PENDING = "reviewer_enrollment_pending"
     REVIEW_ATTESTATION_PENDING = "review_attestation_pending"
     REVIEW_COMPLETE = "review_complete"
+    CAMPAIGN_ENVELOPE_PENDING = "campaign_envelope_pending"
     FINALIZED = "finalized"
 
 
@@ -59,13 +68,18 @@ class CampaignStatus(BaseModel):
     has_preflight: bool
     has_evidence: bool
     has_review: bool
+    has_reviewer_enrollments: bool
     has_attestations: bool
     has_results: bool
+    has_campaign_envelope: bool
     preflight_sha256: str | None = None
     evidence_sha256: str | None = None
     review_policy_sha256: str | None = None
     reviewer_trust_sha256: str | None = None
+    reviewer_authority_sha256: str | None = None
+    reviewer_enrollments_sha256: str | None = None
     attestations_verified: bool
+    campaign_envelope_verified: bool
     paid_execution_authorized: Literal[False] = False
     next_action: str = Field(min_length=1)
 
@@ -133,6 +147,9 @@ def build_campaign_status(
     review_policy: ReviewerPolicy | None = None,
     reviewer_trust: ReviewerTrust | None = None,
     attestations: ReviewAttestationBundle | None = None,
+    reviewer_authority: BenchmarkAuthority | None = None,
+    reviewer_enrollments: ReviewerEnrollmentBundle | None = None,
+    campaign_envelope: SignedCampaignEnvelope | None = None,
 ) -> CampaignStatus:
     """Validate supplied artifacts and report the furthest complete lifecycle stage."""
     if evidence is not None and preflight is None:
@@ -145,10 +162,15 @@ def build_campaign_status(
         raise ValueError("completed reviews are required before results")
     if attestations is not None and reviews is None:
         raise ValueError("completed reviews are required before attestations")
+    if reviewer_enrollments is not None and reviewer_authority is None:
+        raise ValueError("reviewer authority is required before reviewer enrollments")
+    if campaign_envelope is not None and results is None:
+        raise ValueError("results are required before a signed campaign envelope")
 
     stage = CampaignStage.MANIFEST_READY
     next_action = "create_preflight"
     attestations_verified = False
+    campaign_envelope_verified = False
     if preflight is not None:
         _validate_preflight_manifest(manifest, preflight)
         stage = CampaignStage.PREFLIGHT_READY
@@ -181,10 +203,35 @@ def build_campaign_status(
         if reviews.reviewer_trust_sha256 is not None:
             if reviewer_trust is None:
                 raise ValueError("reviewer trust is required for trust-bound reviews")
-            if attestations is None:
+            authority_bound = reviewer_trust.reviewer_authority_sha256 is not None
+            enrollments_verified = not authority_bound
+            if authority_bound:
+                if (
+                    reviewer_authority is not None
+                    and reviewer_trust.reviewer_authority_sha256
+                    != reviewer_authority.authority_sha256
+                ):
+                    raise ValueError(
+                        "reviewer trust authority fingerprint does not match authority"
+                    )
+                if reviewer_authority is None or reviewer_enrollments is None:
+                    stage = CampaignStage.REVIEWER_ENROLLMENT_PENDING
+                    next_action = "collect_authority_enrollments"
+                else:
+                    assert review_policy is not None
+                    verify_reviewer_enrollments(
+                        reviewer_authority,
+                        review_policy,
+                        reviewer_trust,
+                        reviewer_enrollments,
+                    )
+                    enrollments_verified = True
+            elif reviewer_authority is not None or reviewer_enrollments is not None:
+                raise ValueError("reviewer enrollments require an authority-bound trust")
+            if enrollments_verified and attestations is None:
                 stage = CampaignStage.REVIEW_ATTESTATION_PENDING
                 next_action = "collect_reviewer_attestations"
-            else:
+            elif enrollments_verified:
                 assert review_policy is not None
                 verify_review_attestations(
                     review_policy,
@@ -209,11 +256,45 @@ def build_campaign_status(
             review_policy=review_policy,
             reviewer_trust=reviewer_trust,
             attestations=attestations,
+            reviewer_authority=reviewer_authority,
+            reviewer_enrollments=reviewer_enrollments,
         )
         if results != expected_results:
             raise ValueError("results do not match finalized campaign artifacts")
-        stage = CampaignStage.FINALIZED
-        next_action = "campaign_complete"
+        if (
+            reviewer_trust is not None
+            and reviewer_trust.reviewer_authority_sha256 is not None
+        ):
+            assert preflight is not None
+            assert review_policy is not None
+            assert reviewer_authority is not None
+            assert reviewer_enrollments is not None
+            assert attestations is not None
+            if campaign_envelope is None:
+                stage = CampaignStage.CAMPAIGN_ENVELOPE_PENDING
+                next_action = "sign_campaign_envelope"
+            else:
+                verify_signed_campaign_envelope(
+                    authority=reviewer_authority,
+                    manifest=manifest,
+                    preflight=preflight,
+                    evidence=evidence,
+                    reviews=reviews,
+                    review_policy=review_policy,
+                    reviewer_trust=reviewer_trust,
+                    reviewer_enrollments=reviewer_enrollments,
+                    attestations=attestations,
+                    results=results,
+                    envelope=campaign_envelope,
+                )
+                campaign_envelope_verified = True
+                stage = CampaignStage.FINALIZED
+                next_action = "campaign_complete"
+        else:
+            if campaign_envelope is not None:
+                raise ValueError("campaign envelope requires an authority-bound trust")
+            stage = CampaignStage.FINALIZED
+            next_action = "campaign_complete"
 
     return CampaignStatus(
         schema_version=SCHEMA_VERSION,
@@ -224,8 +305,10 @@ def build_campaign_status(
         has_preflight=preflight is not None,
         has_evidence=evidence is not None,
         has_review=review_template is not None or reviews is not None,
+        has_reviewer_enrollments=reviewer_enrollments is not None,
         has_attestations=attestations is not None,
         has_results=results is not None,
+        has_campaign_envelope=campaign_envelope is not None,
         preflight_sha256=(preflight.preflight_sha256 if preflight is not None else None),
         evidence_sha256=(
             recorded_evidence_sha256(evidence) if evidence is not None else None
@@ -238,6 +321,17 @@ def build_campaign_status(
             if reviewer_trust is not None
             else None
         ),
+        reviewer_authority_sha256=(
+            reviewer_authority.authority_sha256
+            if reviewer_authority is not None
+            else None
+        ),
+        reviewer_enrollments_sha256=(
+            reviewer_enrollments.reviewer_enrollments_sha256
+            if reviewer_enrollments is not None
+            else None
+        ),
         attestations_verified=attestations_verified,
+        campaign_envelope_verified=campaign_envelope_verified,
         next_action=next_action,
     )

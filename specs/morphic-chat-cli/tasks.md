@@ -458,6 +458,19 @@
 - [x] T4609 Add attestation-pending campaign status and trust-bound finalize enforcement.
 - [x] T4610 Preserve the unsigned legacy campaign path and verify distribution contents.
 
+## Phase 47 - Authority-Anchored Campaign Provenance
+
+- [x] T4701 Add RED tests for authority identity, enrollment, envelopes, failures, and CLI.
+- [x] T4702 Normalize and self-fingerprint an offline Ed25519 organization authority.
+- [x] T4703 Bind anchored reviewer trust to the exact authority fingerprint.
+- [x] T4704 Generate private-key-free enrollment signing requests for every reviewer key.
+- [x] T4705 Verify exactly one authority certificate for every retained trust key.
+- [x] T4706 Reject invalid signatures, missing coverage, duplicates, and mixed trust artifacts.
+- [x] T4707 Require authority enrollment during anchored finalization and status validation.
+- [x] T4708 Bind the complete finalized artifact chain into one non-authorizing envelope.
+- [x] T4709 Require the authority envelope signature before anchored campaign finalization.
+- [x] T4710 Preserve unanchored and unsigned paths and verify distribution contents.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
