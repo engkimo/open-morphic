@@ -45,9 +45,16 @@ from benchmarks.agent_cli_review_policy import (
 )
 from benchmarks.agent_cli_transparency import (
     SignedAuthorityRootLedger,
+    TransparencyConsistencyProof,
     TransparencyInclusionProof,
     verify_authority_root_ledger,
+    verify_transparency_consistency_proof,
     verify_transparency_inclusion_proof,
+)
+from benchmarks.agent_cli_witness import (
+    SignedWitnessCheckpoint,
+    TransparencyWitnessTrust,
+    verify_witness_checkpoint_bundle,
 )
 
 
@@ -62,6 +69,7 @@ class CampaignStage(str, Enum):
     REVIEW_COMPLETE = "review_complete"
     CAMPAIGN_ENVELOPE_PENDING = "campaign_envelope_pending"
     TRANSPARENCY_PENDING = "transparency_pending"
+    WITNESS_PENDING = "witness_pending"
     FINALIZED = "finalized"
 
 
@@ -82,6 +90,9 @@ class CampaignStatus(BaseModel):
     has_campaign_envelope: bool
     has_authority_root_ledger: bool
     has_transparency_proof: bool
+    has_consistency_proof: bool
+    has_witness_trust: bool
+    has_witness_checkpoint: bool
     preflight_sha256: str | None = None
     evidence_sha256: str | None = None
     review_policy_sha256: str | None = None
@@ -89,10 +100,15 @@ class CampaignStatus(BaseModel):
     reviewer_authority_sha256: str | None = None
     authority_root_ledger_sha256: str | None = None
     reviewer_enrollments_sha256: str | None = None
+    transparency_consistency_proof_sha256: str | None = None
+    transparency_witness_trust_sha256: str | None = None
+    witness_checkpoint_sha256: str | None = None
     attestations_verified: bool
     campaign_envelope_verified: bool
     authority_root_ledger_verified: bool
     transparency_inclusion_verified: bool
+    transparency_consistency_verified: bool
+    witness_checkpoint_verified: bool
     paid_execution_authorized: Literal[False] = False
     next_action: str = Field(min_length=1)
 
@@ -165,6 +181,9 @@ def build_campaign_status(
     campaign_envelope: SignedCampaignEnvelope | None = None,
     authority_root_ledger: SignedAuthorityRootLedger | None = None,
     transparency_proof: TransparencyInclusionProof | None = None,
+    transparency_consistency_proof: TransparencyConsistencyProof | None = None,
+    transparency_witness_trust: TransparencyWitnessTrust | None = None,
+    witness_checkpoint: SignedWitnessCheckpoint | None = None,
 ) -> CampaignStatus:
     """Validate supplied artifacts and report the furthest complete lifecycle stage."""
     if evidence is not None and preflight is None:
@@ -187,6 +206,20 @@ def build_campaign_status(
         raise ValueError("signed campaign envelope is required before transparency proof")
     if transparency_proof is not None and authority_root_ledger is None:
         raise ValueError("authority root ledger is required before transparency proof")
+    if witness_checkpoint is not None and transparency_witness_trust is None:
+        raise ValueError("witness trust is required before witness checkpoint")
+    if witness_checkpoint is not None and transparency_consistency_proof is None:
+        raise ValueError("consistency proof is required before witness checkpoint")
+    if (
+        transparency_consistency_proof is not None
+        and transparency_witness_trust is None
+    ):
+        raise ValueError("witness trust is required with a consistency proof")
+    if transparency_witness_trust is not None and (
+        reviewer_trust is None
+        or reviewer_trust.authority_root_ledger_sha256 is None
+    ):
+        raise ValueError("witness trust requires ledger-bound reviewer trust")
 
     stage = CampaignStage.MANIFEST_READY
     next_action = "create_preflight"
@@ -194,6 +227,8 @@ def build_campaign_status(
     campaign_envelope_verified = False
     authority_root_ledger_verified = False
     transparency_inclusion_verified = False
+    transparency_consistency_verified = False
+    witness_checkpoint_verified = False
     if preflight is not None:
         _validate_preflight_manifest(manifest, preflight)
         stage = CampaignStage.PREFLIGHT_READY
@@ -351,8 +386,38 @@ def build_campaign_status(
                             ),
                         )
                         transparency_inclusion_verified = True
-                        stage = CampaignStage.FINALIZED
-                        next_action = "campaign_complete"
+                        if transparency_witness_trust is None:
+                            stage = CampaignStage.FINALIZED
+                            next_action = "campaign_complete"
+                        elif (
+                            transparency_consistency_proof is None
+                            or witness_checkpoint is None
+                        ):
+                            stage = CampaignStage.WITNESS_PENDING
+                            next_action = "collect_witness_checkpoint"
+                        else:
+                            if (
+                                transparency_consistency_proof.current_tree_head
+                                != transparency_proof.tree_head
+                            ):
+                                raise ValueError(
+                                    "consistency proof current tree head does not "
+                                    "match inclusion proof"
+                                )
+                            verify_transparency_consistency_proof(
+                                transparency_consistency_proof,
+                                authority_root_ledger,
+                            )
+                            transparency_consistency_verified = True
+                            verify_witness_checkpoint_bundle(
+                                transparency_witness_trust,
+                                transparency_consistency_proof,
+                                authority_root_ledger,
+                                witness_checkpoint,
+                            )
+                            witness_checkpoint_verified = True
+                            stage = CampaignStage.FINALIZED
+                            next_action = "campaign_complete"
                 else:
                     if transparency_proof is not None:
                         raise ValueError(
@@ -381,6 +446,9 @@ def build_campaign_status(
         has_campaign_envelope=campaign_envelope is not None,
         has_authority_root_ledger=authority_root_ledger is not None,
         has_transparency_proof=transparency_proof is not None,
+        has_consistency_proof=transparency_consistency_proof is not None,
+        has_witness_trust=transparency_witness_trust is not None,
+        has_witness_checkpoint=witness_checkpoint is not None,
         preflight_sha256=(preflight.preflight_sha256 if preflight is not None else None),
         evidence_sha256=(
             recorded_evidence_sha256(evidence) if evidence is not None else None
@@ -408,9 +476,26 @@ def build_campaign_status(
             if reviewer_enrollments is not None
             else None
         ),
+        transparency_consistency_proof_sha256=(
+            transparency_consistency_proof.consistency_proof_sha256
+            if transparency_consistency_proof is not None
+            else None
+        ),
+        transparency_witness_trust_sha256=(
+            transparency_witness_trust.witness_trust_sha256
+            if transparency_witness_trust is not None
+            else None
+        ),
+        witness_checkpoint_sha256=(
+            witness_checkpoint.witness_checkpoint_sha256
+            if witness_checkpoint is not None
+            else None
+        ),
         attestations_verified=attestations_verified,
         campaign_envelope_verified=campaign_envelope_verified,
         authority_root_ledger_verified=authority_root_ledger_verified,
         transparency_inclusion_verified=transparency_inclusion_verified,
+        transparency_consistency_verified=transparency_consistency_verified,
+        witness_checkpoint_verified=witness_checkpoint_verified,
         next_action=next_action,
     )

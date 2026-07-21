@@ -177,6 +177,33 @@ _OPTIONAL_TRANSPARENCY_PROOF_INPUT = typer.Option(
     readable=True,
     help="Optional campaign-envelope transparency inclusion proof.",
 )
+_OPTIONAL_TRANSPARENCY_CONSISTENCY_INPUT = typer.Option(
+    None,
+    "--transparency-consistency-proof",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Optional compact Merkle consistency proof.",
+)
+_OPTIONAL_TRANSPARENCY_WITNESS_TRUST_INPUT = typer.Option(
+    None,
+    "--transparency-witness-trust",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Optional transparency witness trust declaration.",
+)
+_OPTIONAL_WITNESS_CHECKPOINT_INPUT = typer.Option(
+    None,
+    "--witness-checkpoint",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Optional signed witness checkpoint bundle.",
+)
 _STATUS_EVIDENCE_OPTION = typer.Option(
     None,
     "--evidence",
@@ -265,6 +292,54 @@ _TRANSPARENCY_TREE_HEAD_INPUT = typer.Option(
     readable=True,
 )
 _TRANSPARENCY_LEAF_INDEX_OPTION = typer.Option(..., "--leaf-index", min=0)
+_TRANSPARENCY_CURRENT_LOG_INPUT = typer.Option(
+    ...,
+    "--current-log",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_TRANSPARENCY_PREVIOUS_TREE_HEAD_INPUT = typer.Option(
+    ...,
+    "--previous-tree-head",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_TRANSPARENCY_CURRENT_TREE_HEAD_INPUT = typer.Option(
+    ...,
+    "--current-tree-head",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_WITNESS_TRUST_DECLARATION_INPUT = typer.Option(
+    ...,
+    "--declaration",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_WITNESS_TRUST_INPUT = typer.Option(
+    ...,
+    "--witness-trust",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_TRANSPARENCY_CONSISTENCY_INPUT = typer.Option(
+    ...,
+    "--consistency-proof",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
 
 
 def _write_new_evidence(path: Path, payload: str) -> None:
@@ -1144,6 +1219,141 @@ def create_agent_cli_transparency_proof(
         console.print(f"Created transparency proof for leaf {leaf_index}")
 
 
+@benchmark_app.command("agent-cli-transparency-consistency-proof")
+def create_agent_cli_transparency_consistency_proof(
+    current_log_path: Path = _TRANSPARENCY_CURRENT_LOG_INPUT,
+    previous_tree_head_path: Path = _TRANSPARENCY_PREVIOUS_TREE_HEAD_INPUT,
+    current_tree_head_path: Path = _TRANSPARENCY_CURRENT_TREE_HEAD_INPUT,
+    authority_root_ledger_path: Path = _AUTHORITY_ROOT_LEDGER_INPUT,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Build a compact append-only proof between two signed tree heads."""
+    from benchmarks.agent_cli_transparency import (
+        SignedAuthorityRootLedger,
+        SignedTransparencyTreeHead,
+        TransparencyLog,
+        build_transparency_consistency_proof,
+    )
+
+    try:
+        current_log = TransparencyLog.model_validate_json(
+            current_log_path.read_text(encoding="utf-8")
+        )
+        previous_tree_head = SignedTransparencyTreeHead.model_validate_json(
+            previous_tree_head_path.read_text(encoding="utf-8")
+        )
+        current_tree_head = SignedTransparencyTreeHead.model_validate_json(
+            current_tree_head_path.read_text(encoding="utf-8")
+        )
+        ledger = SignedAuthorityRootLedger.model_validate_json(
+            authority_root_ledger_path.read_text(encoding="utf-8")
+        )
+        proof = build_transparency_consistency_proof(
+            current_log,
+            previous_tree_head=previous_tree_head,
+            current_tree_head=current_tree_head,
+            authority_root_ledger=ledger,
+        )
+        if not output_path.parent.exists():
+            raise ValueError("consistency proof output parent must already exist")
+        if output_path.exists():
+            raise ValueError("consistency proof output already exists")
+        _write_new_evidence(output_path, proof.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI consistency proof failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(proof.to_json())
+    else:
+        console.print(
+            "Created compact consistency proof "
+            f"{proof.previous_tree_head.statement.tree_size}->"
+            f"{proof.current_tree_head.statement.tree_size}"
+        )
+
+
+@benchmark_app.command("agent-cli-witness-trust")
+def create_agent_cli_witness_trust(
+    declaration_path: Path = _WITNESS_TRUST_DECLARATION_INPUT,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Normalize an intersecting transparency-witness quorum declaration."""
+    from benchmarks.agent_cli_witness import (
+        TransparencyWitnessTrustDeclaration,
+        build_transparency_witness_trust,
+    )
+
+    try:
+        trust = build_transparency_witness_trust(
+            TransparencyWitnessTrustDeclaration.model_validate_json(
+                declaration_path.read_text(encoding="utf-8")
+            )
+        )
+        if not output_path.parent.exists():
+            raise ValueError("witness trust output parent must already exist")
+        if output_path.exists():
+            raise ValueError("witness trust output already exists")
+        _write_new_evidence(output_path, trust.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI witness trust failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(trust.to_json())
+    else:
+        console.print(
+            "Created witness trust "
+            f"minimum_distinct_witnesses={trust.minimum_distinct_witnesses}"
+        )
+
+
+@benchmark_app.command("agent-cli-witness-checkpoint-template")
+def create_agent_cli_witness_checkpoint_template(
+    witness_trust_path: Path = _WITNESS_TRUST_INPUT,
+    consistency_proof_path: Path = _TRANSPARENCY_CONSISTENCY_INPUT,
+    authority_root_ledger_path: Path = _AUTHORITY_ROOT_LEDGER_INPUT,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Create private-key-free signing requests for a witness checkpoint."""
+    from benchmarks.agent_cli_transparency import (
+        SignedAuthorityRootLedger,
+        TransparencyConsistencyProof,
+    )
+    from benchmarks.agent_cli_witness import (
+        TransparencyWitnessTrust,
+        build_witness_checkpoint_template,
+    )
+
+    try:
+        trust = TransparencyWitnessTrust.model_validate_json(
+            witness_trust_path.read_text(encoding="utf-8")
+        )
+        proof = TransparencyConsistencyProof.model_validate_json(
+            consistency_proof_path.read_text(encoding="utf-8")
+        )
+        ledger = SignedAuthorityRootLedger.model_validate_json(
+            authority_root_ledger_path.read_text(encoding="utf-8")
+        )
+        template = build_witness_checkpoint_template(trust, proof, ledger)
+        if not output_path.parent.exists():
+            raise ValueError("witness checkpoint output parent must already exist")
+        if output_path.exists():
+            raise ValueError("witness checkpoint output already exists")
+        _write_new_evidence(output_path, template.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI witness checkpoint failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(template.to_json())
+    else:
+        console.print(f"Created {len(template.requests)} witness signing requests")
+
+
 @benchmark_app.command("agent-cli-campaign-envelope-template")
 def create_agent_cli_campaign_envelope_template(
     manifest_path: Path = _AGENT_CLI_MANIFEST_OPTION,
@@ -1283,6 +1493,13 @@ def show_agent_cli_campaign_status(
     campaign_envelope_path: Path | None = _OPTIONAL_CAMPAIGN_ENVELOPE_INPUT,
     authority_root_ledger_path: Path | None = _OPTIONAL_AUTHORITY_ROOT_LEDGER_INPUT,
     transparency_proof_path: Path | None = _OPTIONAL_TRANSPARENCY_PROOF_INPUT,
+    transparency_consistency_path: Path | None = (
+        _OPTIONAL_TRANSPARENCY_CONSISTENCY_INPUT
+    ),
+    transparency_witness_trust_path: Path | None = (
+        _OPTIONAL_TRANSPARENCY_WITNESS_TRUST_INPUT
+    ),
+    witness_checkpoint_path: Path | None = _OPTIONAL_WITNESS_CHECKPOINT_INPUT,
     as_json: bool = _AGENT_CLI_JSON_OPTION,
 ) -> None:
     """Validate and report campaign lifecycle artifacts without executing commands."""
@@ -1334,6 +1551,9 @@ def show_agent_cli_campaign_status(
         campaign_envelope = None
         authority_root_ledger = None
         transparency_proof = None
+        transparency_consistency_proof = None
+        transparency_witness_trust = None
+        witness_checkpoint = None
         if review_policy_path is not None:
             declaration = ReviewerPolicyDeclaration.model_validate_json(
                 review_policy_path.read_text(encoding="utf-8")
@@ -1394,6 +1614,33 @@ def show_agent_cli_campaign_status(
             transparency_proof = TransparencyInclusionProof.model_validate_json(
                 transparency_proof_path.read_text(encoding="utf-8")
             )
+        if transparency_consistency_path is not None:
+            from benchmarks.agent_cli_transparency import (
+                TransparencyConsistencyProof,
+            )
+
+            transparency_consistency_proof = (
+                TransparencyConsistencyProof.model_validate_json(
+                    transparency_consistency_path.read_text(encoding="utf-8")
+                )
+            )
+        if transparency_witness_trust_path is not None:
+            from benchmarks.agent_cli_witness import (
+                TransparencyWitnessTrustDeclaration,
+                build_transparency_witness_trust,
+            )
+
+            transparency_witness_trust = build_transparency_witness_trust(
+                TransparencyWitnessTrustDeclaration.model_validate_json(
+                    transparency_witness_trust_path.read_text(encoding="utf-8")
+                )
+            )
+        if witness_checkpoint_path is not None:
+            from benchmarks.agent_cli_witness import SignedWitnessCheckpoint
+
+            witness_checkpoint = SignedWitnessCheckpoint.model_validate_json(
+                witness_checkpoint_path.read_text(encoding="utf-8")
+            )
         status = build_campaign_status(
             manifest,
             preflight=preflight,
@@ -1409,6 +1656,9 @@ def show_agent_cli_campaign_status(
             campaign_envelope=campaign_envelope,
             authority_root_ledger=authority_root_ledger,
             transparency_proof=transparency_proof,
+            transparency_consistency_proof=transparency_consistency_proof,
+            transparency_witness_trust=transparency_witness_trust,
+            witness_checkpoint=witness_checkpoint,
         )
     except (OSError, ValueError) as exc:
         console.print(f"[red]Agent CLI campaign status failed: {exc}[/red]")

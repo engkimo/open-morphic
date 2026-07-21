@@ -63,9 +63,18 @@ from benchmarks.agent_cli_transparency import (
     TransparencyLogEntry,
     build_authority_root_ledger_request,
     build_authority_rotation_request,
+    build_transparency_consistency_proof,
     build_transparency_inclusion_proof,
     build_transparency_log,
     build_transparency_tree_head_request,
+)
+from benchmarks.agent_cli_witness import (
+    TransparencyWitnessKeyDeclaration,
+    TransparencyWitnessSignature,
+    TransparencyWitnessTrustDeclaration,
+    build_transparency_witness_trust,
+    build_witness_checkpoint_bundle,
+    build_witness_checkpoint_template,
 )
 from interface.cli.main import app
 
@@ -564,6 +573,7 @@ def _ledger_bound_artifacts():
         ledger,
         envelope,
         proof,
+        log,
     )
 
 
@@ -1674,6 +1684,7 @@ def test_ledger_bound_campaign_requires_root_then_envelope_inclusion() -> None:
         ledger,
         envelope,
         proof,
+        _log,
     ) = _ledger_bound_artifacts()
     review_common = {
         "preflight": _preflight(),
@@ -1719,6 +1730,118 @@ def test_ledger_bound_campaign_requires_root_then_envelope_inclusion() -> None:
     assert finalized.paid_execution_authorized is False
 
 
+def test_witnessed_campaign_requires_consistent_quorum_checkpoint() -> None:
+    (
+        authority,
+        policy,
+        trust,
+        enrollments,
+        reviews,
+        attestations,
+        results,
+        ledger,
+        envelope,
+        inclusion_proof,
+        log,
+    ) = _ledger_bound_artifacts()
+    previous_log = build_transparency_log(log.log_id, log.entries[:2])
+    previous_request = build_transparency_tree_head_request(previous_log, ledger)
+    previous_head = SignedTransparencyTreeHead(
+        statement=previous_request.statement,
+        signature_base64=base64.b64encode(
+            _authority_private_key().sign(previous_request.statement.signing_bytes())
+        ).decode(),
+    )
+    consistency_proof = build_transparency_consistency_proof(
+        log,
+        previous_tree_head=previous_head,
+        current_tree_head=inclusion_proof.tree_head,
+        authority_root_ledger=ledger,
+    )
+    witness_private_keys = {
+        f"witness-{index}": Ed25519PrivateKey.from_private_bytes(bytes([index + 4]) * 32)
+        for index in range(1, 4)
+    }
+    witness_trust = build_transparency_witness_trust(
+        TransparencyWitnessTrustDeclaration(
+            schema_version=1,
+            log_id=log.log_id,
+            minimum_distinct_witnesses=2,
+            keys=tuple(
+                TransparencyWitnessKeyDeclaration(
+                    witness_id=witness_id,
+                    key_id=f"{witness_id}-key-1",
+                    public_key_base64=base64.b64encode(
+                        private_key.public_key().public_bytes_raw()
+                    ).decode(),
+                )
+                for witness_id, private_key in witness_private_keys.items()
+            ),
+        )
+    )
+    template = build_witness_checkpoint_template(
+        witness_trust,
+        consistency_proof,
+        ledger,
+    )
+    signatures = tuple(
+        TransparencyWitnessSignature(
+            witness_id=request.witness_id,
+            key_id=f"{request.witness_id}-key-1",
+            signature_base64=base64.b64encode(
+                witness_private_keys[request.witness_id].sign(
+                    request.statement.signing_bytes()
+                )
+            ).decode(),
+        )
+        for request in template.requests[:2]
+    )
+    checkpoint = build_witness_checkpoint_bundle(
+        witness_trust,
+        consistency_proof,
+        ledger,
+        signatures,
+    )
+    common = {
+        "preflight": _preflight(),
+        "evidence": _evidence(),
+        "reviews": reviews,
+        "results": results,
+        "review_policy": policy,
+        "reviewer_trust": trust,
+        "attestations": attestations,
+        "reviewer_authority": authority,
+        "reviewer_enrollments": enrollments,
+        "authority_root_ledger": ledger,
+        "campaign_envelope": envelope,
+        "transparency_proof": inclusion_proof,
+        "transparency_witness_trust": witness_trust,
+    }
+
+    pending = build_campaign_status(_manifest(), **common)
+    finalized = build_campaign_status(
+        _manifest(),
+        **common,
+        transparency_consistency_proof=consistency_proof,
+        witness_checkpoint=checkpoint,
+    )
+
+    assert pending.stage is CampaignStage.WITNESS_PENDING
+    assert pending.next_action == "collect_witness_checkpoint"
+    assert finalized.stage is CampaignStage.FINALIZED
+    assert finalized.transparency_consistency_verified is True
+    assert finalized.witness_checkpoint_verified is True
+    assert (
+        finalized.transparency_consistency_proof_sha256
+        == consistency_proof.consistency_proof_sha256
+    )
+    assert (
+        finalized.witness_checkpoint_sha256
+        == checkpoint.witness_checkpoint_sha256
+    )
+    assert finalized.paid_execution_authorized is False
+
+
 def test_ledger_bound_results_reject_a_different_signed_root_ledger() -> None:
     (
         authority,
@@ -1731,6 +1854,7 @@ def test_ledger_bound_results_reject_a_different_signed_root_ledger() -> None:
         ledger,
         _envelope,
         _proof,
+        _log,
     ) = _ledger_bound_artifacts()
     changed_statement = ledger.statement.model_copy(
         update={"ledger_sha256": "f" * 64}

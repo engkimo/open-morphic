@@ -686,9 +686,64 @@ active rootが外部署名する。ledger-bound campaignはexact campaign envelo
 `finalized`になる。旧/new complete logのappend-only検証は旧entriesが新logのexact prefixであることを
 要求する。
 
-この契約は初回genesis鍵の安全な配布やcompromise後のout-of-band trust resetを代替しない。また、現状の
-append-only検証はcomplete log artifactsを必要とし、compact RFC consistency proof、witness gossip、
-certificate expiry、OIDC/Sigstore identityはまだ実装しない。どのCLIもpaid executionを許可しない。
+この契約は初回genesis鍵の安全な配布やcompromise後のout-of-band trust resetを代替しない。
+certificate expiry、OIDC/Sigstore identityもまだ実装しない。どのCLIもpaid executionを許可しない。
+
+### Compact consistency and witness checkpoints
+
+Phase 49では、complete旧logを配布せずにappend-only growthを検証できる。current complete log、旧/newの
+active-root-signed tree head、root ledgerからRFC 6962 minimal consistency proofを作る。
+
+```bash
+morphic benchmark agent-cli-transparency-consistency-proof \
+  --current-log transparency-log-current.json \
+  --previous-tree-head signed-tree-head-previous.json \
+  --current-tree-head signed-tree-head-current.json \
+  --authority-root-ledger signed-authority-root-ledger.json \
+  --output consistency-proof.json
+```
+
+proofは`SUBPROOF` recursionが返す最大`ceil(log2(n)) + 1`個のSHA-256 nodeだけを保持する。検証側は
+complete logなしで旧rootとnew rootを同時に再構成し、log ID、tree size、root ledger、tree-head署名、
+proof fingerprint、audit path、両rootのどれかが一致しなければ拒否する。
+
+単一log authorityのequivocationへ追加の監視境界を置く場合は、exampleを組織ごとのwitness公開鍵へ
+置き換えてtrustを正規化する。
+
+```bash
+morphic benchmark agent-cli-witness-trust \
+  --declaration benchmarks/templates/agent_cli_witness_trust.example.json \
+  --output witness-trust.json
+
+morphic benchmark agent-cli-witness-checkpoint-template \
+  --witness-trust witness-trust.json \
+  --consistency-proof consistency-proof.json \
+  --authority-root-ledger signed-authority-root-ledger.json \
+  --output witness-checkpoint-template.json
+```
+
+witness trustはwitness/key ID、Ed25519 public key、active/revoked status、minimum distinct countを
+self-fingerprintする。minimumはactive witness総数のstrict majorityでなければならず、任意の2 accepted
+quorumが少なくとも1 witnessで交差する。各witnessは同じcheckpoint statementを外部署名する。statementは
+old/new sizeとroot、両tree-head fingerprint、root ledger、consistency proof、witness trustをbindする。
+Morphicは秘密鍵を読まない。
+
+opt-in witness pathでは`agent-cli-status`へ次を追加する。
+
+```bash
+  --transparency-consistency-proof consistency-proof.json \
+  --transparency-witness-trust witness-trust-declaration.json \
+  --witness-checkpoint signed-witness-checkpoint.json
+```
+
+inclusion proofだけが揃った状態は`witness_pending`となり、compact consistencyとstrict-majority witness
+signaturesを検証後だけ`finalized`になる。witness inputを指定しないPhase 48 campaignは従来どおり
+inclusion verificationでfinalizeできる。同じlog IDとtree sizeに異なるwitnessed rootが存在した場合は
+split viewとして拒否する。
+
+これはartifact-level witness contractであり、witness間のnetwork gossip、real-world witness identity、
+global checkpoint registry、durable exchange serviceを提供するものではない。運用者はcheckpoint artifactを
+独立経路で交換・保存する必要がある。
 
 ---
 

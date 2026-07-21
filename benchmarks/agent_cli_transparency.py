@@ -332,6 +332,10 @@ def _leaf_hash(entry: TransparencyLogEntry) -> bytes:
     return hashlib.sha256(b"\x00" + entry.leaf_bytes()).digest()
 
 
+def _node_hash(left: bytes, right: bytes) -> bytes:
+    return hashlib.sha256(b"\x01" + left + right).digest()
+
+
 def _largest_power_of_two_less_than(value: int) -> int:
     return 1 << ((value - 1).bit_length() - 1)
 
@@ -342,9 +346,7 @@ def _merkle_root(entries: tuple[TransparencyLogEntry, ...]) -> bytes:
     if len(entries) == 1:
         return _leaf_hash(entries[0])
     split = _largest_power_of_two_less_than(len(entries))
-    return hashlib.sha256(
-        b"\x01" + _merkle_root(entries[:split]) + _merkle_root(entries[split:])
-    ).digest()
+    return _node_hash(_merkle_root(entries[:split]), _merkle_root(entries[split:]))
 
 
 class TransparencyLog(_FrozenModel):
@@ -503,6 +505,44 @@ class TransparencyInclusionProof(_FrozenModel):
         return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
 
 
+class TransparencyConsistencyProof(_FrozenModel):
+    schema_version: int
+    previous_tree_head: SignedTransparencyTreeHead
+    current_tree_head: SignedTransparencyTreeHead
+    audit_path_sha256: tuple[str, ...]
+    consistency_proof_sha256: str = Field(pattern=_SHA256_PATTERN)
+
+    @model_validator(mode="after")
+    def validate_proof(self) -> TransparencyConsistencyProof:
+        if self.schema_version != SCHEMA_VERSION:
+            raise ValueError(f"schema_version must be {SCHEMA_VERSION}")
+        previous = self.previous_tree_head.statement
+        current = self.current_tree_head.statement
+        if previous.log_id != current.log_id:
+            raise ValueError("consistency proof tree heads must use the same log_id")
+        if previous.tree_size < 1 or previous.tree_size >= current.tree_size:
+            raise ValueError("consistency proof requires 0 < previous size < current size")
+        if (
+            previous.authority_root_ledger_sha256
+            != current.authority_root_ledger_sha256
+        ):
+            raise ValueError("consistency proof tree heads use different root ledgers")
+        for digest in self.audit_path_sha256:
+            if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+                raise ValueError("consistency audit path must contain SHA-256 hex")
+        if self.consistency_proof_sha256 != _canonical_sha256(
+            self._binding_payload()
+        ):
+            raise ValueError("consistency proof fingerprint does not match tree heads")
+        return self
+
+    def _binding_payload(self) -> dict[str, object]:
+        return self.model_dump(mode="json", exclude={"consistency_proof_sha256"})
+
+    def to_json(self) -> str:
+        return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
+
+
 def build_transparency_tree_head_request(
     log: TransparencyLog,
     ledger: SignedAuthorityRootLedger,
@@ -524,6 +564,152 @@ def build_transparency_tree_head_request(
         statement=statement,
         signing_payload_base64=base64.b64encode(statement.signing_bytes()).decode(),
     )
+
+
+def verify_signed_transparency_tree_head(
+    tree_head: SignedTransparencyTreeHead,
+    ledger: SignedAuthorityRootLedger,
+) -> TransparencyTreeHeadStatement:
+    """Verify one tree head against the active authority-root ledger."""
+    active = verify_authority_root_ledger(ledger)
+    statement = TransparencyTreeHeadStatement.model_validate(
+        tree_head.statement.model_dump(mode="json")
+    )
+    if statement.authority_root_ledger_sha256 != ledger.statement.ledger_sha256:
+        raise ValueError("transparency tree head does not match authority root ledger")
+    try:
+        _public_key(active).verify(
+            _decode_base64(
+                tree_head.signature_base64,
+                label="transparency tree head signature",
+                length=64,
+            ),
+            statement.signing_bytes(),
+        )
+    except (InvalidSignature, ValueError) as exc:
+        raise ValueError("transparency tree head signature is invalid") from exc
+    return statement
+
+
+def _consistency_path(
+    entries: tuple[TransparencyLogEntry, ...],
+    previous_size: int,
+    *,
+    complete_subtree: bool,
+) -> tuple[bytes, ...]:
+    if previous_size == len(entries):
+        return () if complete_subtree else (_merkle_root(entries),)
+    split = _largest_power_of_two_less_than(len(entries))
+    if previous_size <= split:
+        return _consistency_path(
+            entries[:split],
+            previous_size,
+            complete_subtree=complete_subtree,
+        ) + (_merkle_root(entries[split:]),)
+    return _consistency_path(
+        entries[split:],
+        previous_size - split,
+        complete_subtree=False,
+    ) + (_merkle_root(entries[:split]),)
+
+
+def build_transparency_consistency_proof(
+    current_log: TransparencyLog,
+    *,
+    previous_tree_head: SignedTransparencyTreeHead,
+    current_tree_head: SignedTransparencyTreeHead,
+    authority_root_ledger: SignedAuthorityRootLedger,
+) -> TransparencyConsistencyProof:
+    """Build the RFC 6962 minimal consistency proof from one complete current log."""
+    current_log = TransparencyLog.model_validate(current_log.model_dump(mode="json"))
+    previous = verify_signed_transparency_tree_head(
+        previous_tree_head,
+        authority_root_ledger,
+    )
+    current = verify_signed_transparency_tree_head(
+        current_tree_head,
+        authority_root_ledger,
+    )
+    if (current.log_id, current.tree_size, current.root_sha256) != (
+        current_log.log_id,
+        current_log.tree_size,
+        current_log.root_sha256,
+    ):
+        raise ValueError("current consistency tree head does not match complete log")
+    if previous.log_id != current.log_id:
+        raise ValueError("consistency proof tree heads must use the same log_id")
+    if previous.tree_size < 1 or previous.tree_size >= current.tree_size:
+        raise ValueError("consistency proof requires 0 < previous size < current size")
+    if _merkle_root(current_log.entries[: previous.tree_size]).hex() != (
+        previous.root_sha256
+    ):
+        raise ValueError("previous tree head is not a prefix root of current log")
+    audit_path = tuple(
+        item.hex()
+        for item in _consistency_path(
+            current_log.entries,
+            previous.tree_size,
+            complete_subtree=True,
+        )
+    )
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "previous_tree_head": previous_tree_head.model_dump(mode="json"),
+        "current_tree_head": current_tree_head.model_dump(mode="json"),
+        "audit_path_sha256": list(audit_path),
+    }
+    return TransparencyConsistencyProof(
+        **payload,
+        consistency_proof_sha256=_canonical_sha256(payload),
+    )
+
+
+def verify_transparency_consistency_proof(
+    proof: TransparencyConsistencyProof,
+    ledger: SignedAuthorityRootLedger,
+) -> None:
+    """Verify append-only growth using only two signed roots and a compact path."""
+    proof = TransparencyConsistencyProof.model_validate(proof.model_dump(mode="json"))
+    previous = verify_signed_transparency_tree_head(proof.previous_tree_head, ledger)
+    current = verify_signed_transparency_tree_head(proof.current_tree_head, ledger)
+    old_size = previous.tree_size
+    new_size = current.tree_size
+    old_index = old_size - 1
+    new_index = new_size - 1
+    while old_index & 1:
+        old_index >>= 1
+        new_index >>= 1
+    path = tuple(bytes.fromhex(item) for item in proof.audit_path_sha256)
+    position = 0
+    if old_index == 0:
+        old_root = bytes.fromhex(previous.root_sha256)
+        new_root = old_root
+    else:
+        if not path:
+            raise ValueError("consistency proof audit path is incomplete")
+        old_root = path[0]
+        new_root = path[0]
+        position = 1
+    while position < len(path):
+        if new_index == 0:
+            raise ValueError("consistency proof audit path has extra nodes")
+        node = path[position]
+        if old_index & 1 or old_index == new_index:
+            old_root = _node_hash(node, old_root)
+            new_root = _node_hash(node, new_root)
+            while old_index and not old_index & 1:
+                old_index >>= 1
+                new_index >>= 1
+        else:
+            new_root = _node_hash(new_root, node)
+        old_index >>= 1
+        new_index >>= 1
+        position += 1
+    if (
+        old_root.hex() != previous.root_sha256
+        or new_root.hex() != current.root_sha256
+    ):
+        raise ValueError("consistency proof roots do not match signed tree heads")
 
 
 def _audit_path(
@@ -588,13 +774,13 @@ def _root_from_audit_path(
                 raise ValueError("transparency inclusion proof audit path is incomplete")
             right = audit_path[position]
             position += 1
-            return hashlib.sha256(b"\x01" + left + right).digest()
+            return _node_hash(left, right)
         right = rebuild(current, index - split, size - split)
         if position >= len(audit_path):
             raise ValueError("transparency inclusion proof audit path is incomplete")
         left = audit_path[position]
         position += 1
-        return hashlib.sha256(b"\x01" + left + right).digest()
+        return _node_hash(left, right)
 
     root = rebuild(leaf_hash, leaf_index, tree_size)
     if position != len(audit_path):
@@ -611,25 +797,7 @@ def verify_transparency_inclusion_proof(
 ) -> None:
     """Verify the artifact leaf, signed tree head, and authority-root ledger."""
     proof = TransparencyInclusionProof.model_validate(proof.model_dump(mode="json"))
-    active = verify_authority_root_ledger(ledger)
-    statement = TransparencyTreeHeadStatement.model_validate(
-        proof.tree_head.statement.model_dump(mode="json")
-    )
-    if statement.authority_root_ledger_sha256 != ledger.statement.ledger_sha256:
-        raise ValueError("transparency tree head does not match authority root ledger")
-    if statement.tree_head_sha256 != _canonical_sha256(statement._binding_payload()):
-        raise ValueError("transparency tree head fingerprint does not match statement")
-    try:
-        _public_key(active).verify(
-            _decode_base64(
-                proof.tree_head.signature_base64,
-                label="transparency tree head signature",
-                length=64,
-            ),
-            statement.signing_bytes(),
-        )
-    except (InvalidSignature, ValueError) as exc:
-        raise ValueError("transparency tree head signature is invalid") from exc
+    statement = verify_signed_transparency_tree_head(proof.tree_head, ledger)
     if (proof.entry.kind, proof.entry.artifact_sha256) != (
         expected_kind,
         expected_artifact_sha256,

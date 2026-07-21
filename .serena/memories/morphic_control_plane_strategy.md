@@ -522,6 +522,36 @@ remain out-of-band, and complete-log prefix verification is not a compact consis
 proof or gossip protocol. The next trust slice should add compact consistency checkpoints
 plus witnesses/gossip, or map the same verifier onto OIDC/Sigstore identities.
 
+## Phase 49 update
+
+Transparency growth can now be verified without exchanging complete historical logs.
+Morphic implements the RFC 6962 `SUBPROOF` recursion and emits the unique minimal
+consistency path between two active-root-signed tree heads. The verifier reconstructs
+both advertised roots from the compact node list and rejects mismatched sizes, log IDs,
+root ledgers, tree-head fingerprints or signatures, paths, and roots. The RFC seven-leaf
+3-to-7 example shape and every prior size for trees through twelve leaves are covered.
+
+An optional witness layer reduces reliance on one log authority. Witness trust binds a
+log ID, globally unique Ed25519 keys, active/revoked state, and a strict-majority quorum.
+The majority rule guarantees that any two accepted quorums intersect. Detached witness
+signatures cover the exact old/new roots and sizes, both tree-head fingerprints, authority
+root ledger, compact proof, and witness trust. Missing quorum, duplicate witnesses,
+unknown or revoked keys, invalid signatures, and same-size different-root checkpoints
+fail closed.
+
+Campaign status preserves the Phase 48 inclusion-only path. When witness trust is
+explicitly supplied, a campaign remains `witness_pending` until the compact proof and
+witness checkpoint verify. Private-key-free consistency, witness-trust, and checkpoint
+template CLI paths keep this governance portable across agent vendors and offline
+environments.
+
+Phase 49 passed 3,664 unit tests with repository-wide Ruff clean using in-memory keys
+only. No external log, witness, identity provider, agent, or paid API ran. The remaining
+boundary is operational exchange: Morphic verifies witness artifacts but does not yet run
+a gossip network, attest real-world witness identity, or maintain a durable global
+checkpoint registry. The next slice should add an append-only local checkpoint store and
+authenticated peer exchange before considering an online witness service.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

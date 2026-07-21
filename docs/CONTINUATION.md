@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-07-21
-> Latest work: Morphic Chat CLI Phase 48 authority-root continuity and transparency
+> Latest work: Morphic Chat CLI Phase 49 compact consistency and witness checkpoints
 
 ## Latest Session Notes (2026-06-26)
 
@@ -390,6 +390,17 @@ Phase 48 implemented:
 - Added private-key-free rotation, ledger, and tree-head signing templates plus offline log and inclusion-proof CLI commands.
 - Verification: 3,655 unit tests passed; repository-wide Ruff clean; no external authority, log service, identity provider, agent, version probe, or paid API ran.
 - Security boundary: genesis delivery and compromise reset remain out-of-band; complete-log prefix verification is not a compact consistency proof or gossip protocol.
+
+Phase 49 implemented:
+- Added RFC 6962 minimal consistency proofs using the specified `SUBPROOF` recursion and compact SHA-256 node paths.
+- Verification reconstructs both prior and current signed roots without requiring either complete log and rejects size, log, ledger, path, fingerprint, root, or signature mismatch.
+- Added self-fingerprinted Ed25519 witness trust with globally unique keys, active/revoked status, and a strict-majority quorum so any two accepted quorums intersect.
+- Witness signatures bind the exact log, old/new sizes and roots, both signed tree-head fingerprints, authority-root ledger, consistency proof, and witness trust.
+- Missing quorum, duplicate witnesses, unknown/revoked keys, invalid signatures, and same-size different-root split views fail closed.
+- Opt-in witnessed campaign status adds `witness_pending`; Phase 48 inclusion-only campaigns remain backward compatible and still finalize without witness inputs.
+- Added offline consistency-proof, witness-trust, and checkpoint-template CLI paths plus a parseable three-witness example declaration.
+- Verification: 3,664 unit tests passed; repository-wide Ruff clean; RFC seven-leaf proof shape, all prefix sizes through twelve leaves, and the committed witness template were exercised.
+- Security boundary: witnesses exchange artifacts out-of-band; Morphic does not yet run a gossip network, attest real-world witness identities, or persist a global checkpoint registry.
 
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.

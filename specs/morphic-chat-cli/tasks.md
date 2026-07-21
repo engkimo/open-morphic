@@ -484,6 +484,19 @@
 - [x] T4809 Add private-key-free rotation/ledger/tree-head and offline log/proof CLI paths.
 - [x] T4810 Preserve Phase 47 and unsigned legacy hashes, signatures, and lifecycle behavior.
 
+## Phase 49 - Compact Consistency and Witness Checkpoints
+
+- [x] T4901 Add RED tests for compact proofs, witness quorum, split views, lifecycle, and CLI.
+- [x] T4902 Generate the unique minimal RFC 6962 consistency path with `SUBPROOF` recursion.
+- [x] T4903 Reconstruct and verify both signed roots without complete log artifacts.
+- [x] T4904 Reject mismatched log IDs, ledgers, sizes, paths, roots, and tree-head signatures.
+- [x] T4905 Normalize and self-fingerprint Ed25519 witness trust with active/revoked keys.
+- [x] T4906 Require a strict-majority distinct-witness quorum for checkpoint acceptance.
+- [x] T4907 Bind witness signatures to old/new heads, root ledger, proof, and witness trust.
+- [x] T4908 Detect same-size different-root witnessed split views.
+- [x] T4909 Add offline consistency, witness-trust, and checkpoint-template CLI paths.
+- [x] T4910 Preserve Phase 48 inclusion-only and all earlier campaign lifecycle behavior.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
