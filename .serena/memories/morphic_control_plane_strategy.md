@@ -429,6 +429,39 @@ artifact support without conflating declared IDs with verified human identity.
 Phase 45 passed all 3,621 unit tests with repository-wide Ruff clean. The built wheel
 contains the campaign status, reviewer policy, and policy template artifacts.
 
+## Phase 46 update
+
+Reviewer separation now has cryptographic provenance without moving private keys into
+Morphic. A self-fingerprinted trust declaration binds the exact Phase 45 review policy to
+reviewer IDs, globally unique key IDs, Ed25519 public keys, public-key fingerprints, and
+active/revoked status. New trust declarations require at least one active key for every
+allowed reviewer; retained revoked keys support explicit rotation history and fail closed
+if used for a new signature.
+
+`morphic benchmark agent-cli-attestation-template` produces one deterministic signing
+request per distinct reviewer. Each statement binds the immutable task revision,
+preflight and evidence hashes, policy and trust hashes, the completed reviews artifact,
+and the canonical subset of decisions owned by that reviewer. The output contains the
+exact base64 signing payload and no private-key material. Reviewers sign outside Morphic.
+
+Trust-bound finalization and read-only status require a complete detached-signature bundle.
+One valid active-key Ed25519 signature is required for every distinct reviewer. Unknown or
+revoked keys, invalid signatures, missing reviewer coverage, modified statements, and
+reviews/policy/trust mixing are rejected. Status exposes `review_attestation_pending`
+until verification succeeds, while unsigned Phase 42-45 campaigns keep their existing
+backward-compatible path. Every status remains non-authorizing for paid execution.
+
+The important remaining boundary is key enrollment: a valid signature proves possession
+of a key already placed in the trust declaration, but does not by itself prove real-world
+identity or that the operator did not enroll a key they control. The next slice should
+anchor reviewer keys in an organization CA or OIDC/Sigstore identity and sign the complete
+campaign/result envelope, while retaining offline verification.
+
+Phase 46 passed all 3,633 unit tests with repository-wide Ruff clean. The built wheel
+contains the attestation module and reviewer trust template and directly declares
+`cryptography>=46.0.5`. No external agent, private-key file, version probe, or paid API
+was started.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

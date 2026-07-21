@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -16,6 +16,10 @@ from benchmarks.agent_cli_comparison import (
     TrialObservation,
 )
 from benchmarks.agent_cli_receipts import ProviderReceipt
+
+if TYPE_CHECKING:
+    from benchmarks.agent_cli_attestation import ReviewAttestationBundle, ReviewerTrust
+    from benchmarks.agent_cli_review_policy import ReviewerPolicy
 
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
 
@@ -113,6 +117,7 @@ class AdjudicationReviews(_FrozenModel):
     preflight_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     evidence_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     review_policy_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    reviewer_trust_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     review_completed: Literal[True] | None = None
     decisions: tuple[ReviewDecision, ...] = Field(min_length=1)
 
@@ -120,6 +125,8 @@ class AdjudicationReviews(_FrozenModel):
     def validate_schema(self) -> AdjudicationReviews:
         if self.schema_version != SCHEMA_VERSION:
             raise ValueError(f"schema_version must be {SCHEMA_VERSION}")
+        if self.reviewer_trust_sha256 is not None and self.review_policy_sha256 is None:
+            raise ValueError("reviewer trust binding requires a review policy binding")
         return self
 
 
@@ -173,8 +180,29 @@ def finalize_recorded_results(
     manifest: AgentCliManifest,
     evidence: RecordedEvidence,
     reviews: AdjudicationReviews,
+    *,
+    review_policy: ReviewerPolicy | None = None,
+    reviewer_trust: ReviewerTrust | None = None,
+    attestations: ReviewAttestationBundle | None = None,
 ) -> RecordedResults:
     """Create Phase 40 observations only after every evidence join validates."""
+    attestation_inputs = (review_policy, reviewer_trust, attestations)
+    if reviews.reviewer_trust_sha256 is not None:
+        if any(value is None for value in attestation_inputs):
+            raise ValueError("trust-bound reviews require policy, trust, and attestations")
+        from benchmarks.agent_cli_attestation import verify_review_attestations
+
+        assert review_policy is not None
+        assert reviewer_trust is not None
+        assert attestations is not None
+        verify_review_attestations(
+            review_policy,
+            reviewer_trust,
+            reviews,
+            attestations,
+        )
+    elif any(value is not None for value in (reviewer_trust, attestations)):
+        raise ValueError("attestations require a reviewer trust binding")
     _validate_identity(manifest, evidence, reviews)
     if (
         reviews.evidence_sha256 is not None

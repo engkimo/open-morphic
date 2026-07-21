@@ -510,6 +510,59 @@ status stageは`manifest_ready` → `preflight_ready` → `recorded` → `review
 policy、review、resultsの不一致はfail closedになる。このcommandはファイルを読むだけで、
 全stageにおいて`paid_execution_authorized=false`を返す。
 
+### Signed reviewer attestations
+
+Phase 46では、policyのreviewer IDをEd25519公開鍵へ結び付ける。まず
+`benchmarks/templates/agent_cli_reviewer_trust.example.json`をコピーし、example公開鍵を
+各reviewerが管理する実鍵へ必ず置き換える。trust declarationはreview policy SHA-256、
+reviewer ID、key ID、公開鍵、`active` / `revoked` statusをcanonical SHA-256へ固定する。
+key rotation時は旧鍵を`revoked`で残し、新しいactive keyを追加する。
+
+trust-bound review templateを生成し、reviewerがdecisionを完了した後、canonical signing
+payloadを生成する。
+
+```bash
+morphic benchmark agent-cli-review-template \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --review-policy reviewer-policy.json \
+  --reviewer-trust reviewer-trust.json \
+  --output benchmark-reviews.json
+
+# reviewerがbenchmark-reviews.jsonを完成させ、review_completed=trueにした後
+morphic benchmark agent-cli-attestation-template \
+  --reviews benchmark-reviews.json \
+  --review-policy reviewer-policy.json \
+  --reviewer-trust reviewer-trust.json \
+  --output benchmark-attestation-template.json \
+  --json
+```
+
+attestation templateはdistinct reviewerごとに1つのstatementと
+`signing_payload_base64`を出す。statementはbenchmark/task/revision、preflight、evidence、
+review policy、reviewer trust、completed reviews全体、当該reviewerのdecision集合をbindする。
+Morphicは秘密鍵を読まず、reviewerはpayloadを自身のEd25519秘密鍵で外部署名し、署名とkey IDを
+`ReviewAttestationBundle`へ格納する。
+
+```bash
+morphic benchmark agent-cli-finalize \
+  --manifest benchmark-manifest.json \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --reviews benchmark-reviews.json \
+  --review-policy reviewer-policy.json \
+  --reviewer-trust reviewer-trust.json \
+  --attestations benchmark-attestations.json \
+  --output benchmark-results.json
+```
+
+trust-bound reviewはdistinct reviewer全員の署名が揃わない限りfinalizeできない。unknown key、
+revoked key、invalid signature、欠落reviewer、別review/evidence/policy/trustからの混入は拒否する。
+statusには`review_attestation_pending`が加わり、検証後だけ`review_complete`へ進む。unsigned legacy
+campaignは従来の6段階とfinalize behaviorを維持する。署名は登録済み秘密鍵の保有を証明するが、
+trust declarationのkey enrollment自体は実在人物の本人確認ではない。組織CA、OIDC/Sigstore、
+または外部key directoryとの結合は次段階である。
+
 ---
 
 ## Agent CLI Router

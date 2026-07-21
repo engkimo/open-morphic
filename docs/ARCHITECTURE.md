@@ -557,6 +557,7 @@ morphic-agent/
 ├── benchmarks/                      # Deterministic and opt-in live benchmark utilities
 │   ├── __init__.py
 │   ├── agent_cli_adjudication.py   # Evidence/review join into final observations
+│   ├── agent_cli_attestation.py    # Offline Ed25519 reviewer provenance verification
 │   ├── agent_cli_campaign.py       # Read-only lifecycle status across artifacts
 │   ├── agent_cli_comparison.py     # Recorded same-task 3-arm validation and metrics
 │   ├── agent_cli_preflight.py      # Non-authorizing campaign and review bindings

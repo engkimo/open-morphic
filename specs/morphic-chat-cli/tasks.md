@@ -445,6 +445,19 @@
 - [x] T4509 Preserve legacy review/finalize behavior when no policy binding exists.
 - [x] T4510 Verify zero-cost review-pending status without artifact mutation.
 
+## Phase 46 - Signed Reviewer Provenance
+
+- [x] T4601 Add RED tests for reviewer trust, signing payloads, signature failures, and CLI paths.
+- [x] T4602 Normalize Ed25519 public keys and self-fingerprint the reviewer trust declaration.
+- [x] T4603 Bind reviewer trust to the exact benchmark and Phase 45 review policy.
+- [x] T4604 Require an active key for each allowed reviewer while retaining revoked keys.
+- [x] T4605 Bind completed reviews and each reviewer's decision subset into canonical payloads.
+- [x] T4606 Generate signing requests without reading or persisting reviewer private keys.
+- [x] T4607 Require one valid active-key signature per distinct reviewer.
+- [x] T4608 Reject invalid/revoked/unknown signatures, missing coverage, and mixed artifacts.
+- [x] T4609 Add attestation-pending campaign status and trust-bound finalize enforcement.
+- [x] T4610 Preserve the unsigned legacy campaign path and verify distribution contents.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pydantic import ValidationError
 from typer.testing import CliRunner
 
@@ -13,6 +16,15 @@ from benchmarks.agent_cli_adjudication import (
     AdjudicationReviews,
     RecordedEvidence,
     finalize_recorded_results,
+)
+from benchmarks.agent_cli_attestation import (
+    ReviewAttestationBundle,
+    ReviewerPublicKeyDeclaration,
+    ReviewerTrustDeclaration,
+    SignedReviewAttestation,
+    build_review_attestation_template,
+    build_reviewer_trust,
+    verify_review_attestations,
 )
 from benchmarks.agent_cli_campaign import CampaignStage, build_campaign_status
 from benchmarks.agent_cli_comparison import AgentCliArm, AgentCliManifest
@@ -196,13 +208,18 @@ def _policy():
     )
 
 
-def _completed_reviews(*, reviewer_ids: tuple[str, str, str] | None = None):
+def _completed_reviews(
+    *,
+    reviewer_ids: tuple[str, str, str] | None = None,
+    reviewer_trust_sha256: str | None = None,
+):
     evidence = _evidence()
     policy = _policy()
     payload = build_review_template(
         _preflight(),
         evidence,
         review_policy_sha256=policy.policy_sha256,
+        reviewer_trust_sha256=reviewer_trust_sha256,
     ).model_dump(mode="json")
     payload["review_completed"] = True
     assigned = reviewer_ids or ("reviewer-1", "reviewer-2", "reviewer-1")
@@ -216,6 +233,74 @@ def _completed_reviews(*, reviewer_ids: tuple[str, str, str] | None = None):
             review_artifact_sha256="f" * 64,
         )
     return AdjudicationReviews.model_validate(payload)
+
+
+def _private_keys() -> dict[str, Ed25519PrivateKey]:
+    return {
+        "reviewer-1": Ed25519PrivateKey.from_private_bytes(b"\x01" * 32),
+        "reviewer-2": Ed25519PrivateKey.from_private_bytes(b"\x02" * 32),
+    }
+
+
+def _trust_declaration(*, revoke_reviewer_2: bool = False) -> ReviewerTrustDeclaration:
+    keys = _private_keys()
+    declarations = []
+    for reviewer_id, private_key in keys.items():
+        public_bytes = private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        declarations.append(
+            ReviewerPublicKeyDeclaration(
+                reviewer_id=reviewer_id,
+                key_id=f"{reviewer_id}-key-1",
+                public_key_base64=base64.b64encode(public_bytes).decode(),
+                status=(
+                    "revoked"
+                    if revoke_reviewer_2 and reviewer_id == "reviewer-2"
+                    else "active"
+                ),
+            )
+        )
+    return ReviewerTrustDeclaration(
+        schema_version=1,
+        benchmark_id="campaign-001",
+        review_policy_sha256=_policy().policy_sha256,
+        keys=tuple(reversed(declarations)),
+    )
+
+
+def _signed_attestations():
+    policy = _policy()
+    trust = build_reviewer_trust(_trust_declaration(), policy)
+    reviews = _completed_reviews(reviewer_trust_sha256=trust.reviewer_trust_sha256)
+    template = build_review_attestation_template(policy, trust, reviews)
+    private_keys = _private_keys()
+    signed = tuple(
+        SignedReviewAttestation(
+            statement=request.statement,
+            key_id=f"{request.statement.reviewer_id}-key-1",
+            signature_base64=base64.b64encode(
+                private_keys[request.statement.reviewer_id].sign(
+                    request.statement.signing_bytes()
+                )
+            ).decode(),
+        )
+        for request in template.requests
+    )
+    return (
+        policy,
+        trust,
+        reviews,
+        ReviewAttestationBundle(
+            schema_version=1,
+            benchmark_id=reviews.benchmark_id,
+            review_policy_sha256=policy.policy_sha256,
+            reviewer_trust_sha256=trust.reviewer_trust_sha256,
+            reviews_sha256=template.reviews_sha256,
+            attestations=signed,
+        ),
+    )
 
 
 def test_preflight_is_deterministic_non_authorizing_and_prompt_free() -> None:
@@ -603,14 +688,21 @@ def test_campaign_status_advances_deterministically_without_authorization() -> N
     manifest = _manifest()
     preflight = _preflight()
     evidence = _evidence()
-    policy = _policy()
+    policy, trust, reviews, attestations = _signed_attestations()
     template = build_review_template(
         preflight,
         evidence,
         review_policy_sha256=policy.policy_sha256,
+        reviewer_trust_sha256=trust.reviewer_trust_sha256,
     )
-    reviews = _completed_reviews()
-    results = finalize_recorded_results(manifest, evidence, reviews)
+    results = finalize_recorded_results(
+        manifest,
+        evidence,
+        reviews,
+        review_policy=policy,
+        reviewer_trust=trust,
+        attestations=attestations,
+    )
 
     statuses = [
         build_campaign_status(manifest),
@@ -622,6 +714,7 @@ def test_campaign_status_advances_deterministically_without_authorization() -> N
             evidence=evidence,
             review_template=template,
             review_policy=policy,
+            reviewer_trust=trust,
         ),
         build_campaign_status(
             manifest,
@@ -629,6 +722,16 @@ def test_campaign_status_advances_deterministically_without_authorization() -> N
             evidence=evidence,
             reviews=reviews,
             review_policy=policy,
+            reviewer_trust=trust,
+        ),
+        build_campaign_status(
+            manifest,
+            preflight=preflight,
+            evidence=evidence,
+            reviews=reviews,
+            review_policy=policy,
+            reviewer_trust=trust,
+            attestations=attestations,
         ),
         build_campaign_status(
             manifest,
@@ -637,11 +740,14 @@ def test_campaign_status_advances_deterministically_without_authorization() -> N
             reviews=reviews,
             results=results,
             review_policy=policy,
+            reviewer_trust=trust,
+            attestations=attestations,
         ),
     ]
 
     assert [status.stage for status in statuses] == list(CampaignStage)
     assert all(status.paid_execution_authorized is False for status in statuses)
+    assert statuses[-2].attestations_verified is True
     assert statuses[-1].next_action == "campaign_complete"
     assert statuses[-1].to_json() == build_campaign_status(
         manifest,
@@ -650,6 +756,8 @@ def test_campaign_status_advances_deterministically_without_authorization() -> N
         reviews=reviews,
         results=results,
         review_policy=policy,
+        reviewer_trust=trust,
+        attestations=attestations,
     ).to_json()
 
 
@@ -741,3 +849,304 @@ def test_committed_review_policy_template_validates() -> None:
     declaration = ReviewerPolicyDeclaration.model_validate(payload)
 
     assert build_reviewer_policy(declaration).benchmark_id == "agent-cli-local-rehearsal"
+
+
+def test_reviewer_trust_is_deterministic_and_normalizes_key_order() -> None:
+    first = build_reviewer_trust(_trust_declaration(), _policy())
+    second = build_reviewer_trust(_trust_declaration(), _policy())
+
+    assert first.to_json() == second.to_json()
+    assert [key.reviewer_id for key in first.keys] == ["reviewer-1", "reviewer-2"]
+    assert len(first.reviewer_trust_sha256) == 64
+    assert all(len(key.public_key_sha256) == 64 for key in first.keys)
+
+
+def test_reviewer_trust_rejects_unauthorized_or_missing_active_keys() -> None:
+    payload = _trust_declaration().model_dump(mode="json")
+    payload["keys"][0]["reviewer_id"] = "outsider"
+    with pytest.raises(ValueError, match="allowed reviewer"):
+        build_reviewer_trust(ReviewerTrustDeclaration.model_validate(payload), _policy())
+
+    with pytest.raises(ValueError, match="active key"):
+        build_reviewer_trust(_trust_declaration(revoke_reviewer_2=True), _policy())
+
+
+def test_attestation_template_binds_exact_review_provenance_without_private_keys() -> None:
+    policy, trust, reviews, _bundle = _signed_attestations()
+
+    template = build_review_attestation_template(policy, trust, reviews)
+
+    assert template.reviewer_trust_sha256 == trust.reviewer_trust_sha256
+    assert len(template.requests) == 2
+    assert {request.statement.reviewer_id for request in template.requests} == {
+        "reviewer-1",
+        "reviewer-2",
+    }
+    assert all(
+        request.statement.reviews_sha256 == template.reviews_sha256
+        for request in template.requests
+    )
+    assert "private" not in template.to_json().lower()
+
+
+def test_attestation_verifier_accepts_one_active_signature_per_reviewer() -> None:
+    policy, trust, reviews, bundle = _signed_attestations()
+
+    verify_review_attestations(policy, trust, reviews, bundle)
+
+
+@pytest.mark.parametrize("mutation", ["signature", "missing", "mixed_reviews"])
+def test_attestation_verifier_rejects_tampering_and_incomplete_bundles(
+    mutation: str,
+) -> None:
+    policy, trust, reviews, bundle = _signed_attestations()
+    payload = bundle.model_dump(mode="json")
+    if mutation == "signature":
+        payload["attestations"][0]["signature_base64"] = base64.b64encode(b"x" * 64).decode()
+    elif mutation == "missing":
+        payload["attestations"].pop()
+    else:
+        payload["reviews_sha256"] = "f" * 64
+
+    with pytest.raises(ValueError, match="signature|attestation|reviews fingerprint"):
+        verify_review_attestations(
+            policy,
+            trust,
+            reviews,
+            ReviewAttestationBundle.model_validate(payload),
+        )
+
+
+def test_attestation_verifier_rejects_revoked_signing_key() -> None:
+    policy, _trust, _reviews, _bundle = _signed_attestations()
+    revoked_trust = build_reviewer_trust(
+        ReviewerTrustDeclaration.model_validate(
+            {
+                **_trust_declaration().model_dump(mode="json"),
+                "keys": [
+                    {
+                        **key,
+                        "status": (
+                            "revoked"
+                            if key["reviewer_id"] == "reviewer-2"
+                            else key["status"]
+                        ),
+                    }
+                    for key in _trust_declaration().model_dump(mode="json")["keys"]
+                ],
+            }
+        ),
+        policy,
+        require_active_key_per_reviewer=False,
+    )
+    reviews = _completed_reviews(
+        reviewer_trust_sha256=revoked_trust.reviewer_trust_sha256
+    )
+    template = build_review_attestation_template(policy, revoked_trust, reviews)
+    private_keys = _private_keys()
+    signed = tuple(
+        SignedReviewAttestation(
+            statement=request.statement,
+            key_id=f"{request.statement.reviewer_id}-key-1",
+            signature_base64=base64.b64encode(
+                private_keys[request.statement.reviewer_id].sign(
+                    request.statement.signing_bytes()
+                )
+            ).decode(),
+        )
+        for request in template.requests
+    )
+    bundle = ReviewAttestationBundle(
+        schema_version=1,
+        benchmark_id=reviews.benchmark_id,
+        review_policy_sha256=policy.policy_sha256,
+        reviewer_trust_sha256=revoked_trust.reviewer_trust_sha256,
+        reviews_sha256=template.reviews_sha256,
+        attestations=signed,
+    )
+
+    with pytest.raises(ValueError, match="revoked"):
+        verify_review_attestations(policy, revoked_trust, reviews, bundle)
+
+
+def test_trust_bound_finalization_requires_verified_attestations() -> None:
+    policy, trust, reviews, attestations = _signed_attestations()
+
+    with pytest.raises(ValueError, match="require policy, trust, and attestations"):
+        finalize_recorded_results(
+            _manifest(),
+            _evidence(),
+            reviews,
+            review_policy=policy,
+            reviewer_trust=trust,
+        )
+
+    results = finalize_recorded_results(
+        _manifest(),
+        _evidence(),
+        reviews,
+        review_policy=policy,
+        reviewer_trust=trust,
+        attestations=attestations,
+    )
+
+    assert len(results.observations) == 3
+
+
+def test_trust_bound_finalize_and_status_cli_require_and_verify_bundle(
+    tmp_path: Path,
+) -> None:
+    policy, trust, reviews, attestations = _signed_attestations()
+    paths = {
+        "manifest": tmp_path / "manifest.json",
+        "preflight": tmp_path / "preflight.json",
+        "evidence": tmp_path / "evidence.json",
+        "reviews": tmp_path / "reviews.json",
+        "policy": tmp_path / "policy.json",
+        "trust": tmp_path / "trust.json",
+        "attestations": tmp_path / "attestations.json",
+        "results": tmp_path / "results.json",
+    }
+    paths["manifest"].write_text(_manifest().model_dump_json(), encoding="utf-8")
+    paths["preflight"].write_text(_preflight().to_json(), encoding="utf-8")
+    paths["evidence"].write_text(_evidence().model_dump_json(), encoding="utf-8")
+    paths["reviews"].write_text(reviews.model_dump_json(), encoding="utf-8")
+    paths["policy"].write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "benchmark_id": policy.benchmark_id,
+                "operator_id": policy.operator_id,
+                "reviewer_ids": list(policy.reviewer_ids),
+                "minimum_distinct_reviewers": policy.minimum_distinct_reviewers,
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    paths["trust"].write_text(_trust_declaration().model_dump_json(), encoding="utf-8")
+    paths["attestations"].write_text(attestations.to_json(), encoding="utf-8")
+    base = [
+        "benchmark",
+        "agent-cli-finalize",
+        "--manifest",
+        str(paths["manifest"]),
+        "--preflight",
+        str(paths["preflight"]),
+        "--evidence",
+        str(paths["evidence"]),
+        "--reviews",
+        str(paths["reviews"]),
+        "--review-policy",
+        str(paths["policy"]),
+        "--output",
+        str(paths["results"]),
+    ]
+
+    refused = runner.invoke(app, base)
+    accepted = runner.invoke(
+        app,
+        [
+            *base,
+            "--reviewer-trust",
+            str(paths["trust"]),
+            "--attestations",
+            str(paths["attestations"]),
+        ],
+    )
+
+    assert refused.exit_code == 1
+    assert "--reviewer-trust is required" in refused.output
+    assert accepted.exit_code == 0
+    before = {path: path.read_bytes() for path in paths.values()}
+    status = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "agent-cli-status",
+            "--manifest",
+            str(paths["manifest"]),
+            "--preflight",
+            str(paths["preflight"]),
+            "--evidence",
+            str(paths["evidence"]),
+            "--reviews",
+            str(paths["reviews"]),
+            "--results",
+            str(paths["results"]),
+            "--review-policy",
+            str(paths["policy"]),
+            "--reviewer-trust",
+            str(paths["trust"]),
+            "--attestations",
+            str(paths["attestations"]),
+            "--json",
+        ],
+    )
+
+    assert status.exit_code == 0
+    assert json.loads(status.output)["stage"] == "finalized"
+    assert json.loads(status.output)["attestations_verified"] is True
+    assert before == {path: path.read_bytes() for path in paths.values()}
+
+
+def test_attestation_template_cli_is_read_only(tmp_path: Path) -> None:
+    policy, trust, reviews, _bundle = _signed_attestations()
+    reviews_path = tmp_path / "reviews.json"
+    policy_path = tmp_path / "policy.json"
+    trust_path = tmp_path / "trust.json"
+    output_path = tmp_path / "attestation-template.json"
+    reviews_path.write_text(reviews.model_dump_json(), encoding="utf-8")
+    policy_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "benchmark_id": policy.benchmark_id,
+                "operator_id": policy.operator_id,
+                "reviewer_ids": list(policy.reviewer_ids),
+                "minimum_distinct_reviewers": policy.minimum_distinct_reviewers,
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    trust_path.write_text(_trust_declaration().model_dump_json(), encoding="utf-8")
+    before = {path: path.read_bytes() for path in tmp_path.iterdir()}
+
+    result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "agent-cli-attestation-template",
+            "--reviews",
+            str(reviews_path),
+            "--review-policy",
+            str(policy_path),
+            "--reviewer-trust",
+            str(trust_path),
+            "--output",
+            str(output_path),
+            "--json",
+        ],
+    )
+
+    after_inputs = {path: path.read_bytes() for path in before}
+    assert result.exit_code == 0
+    assert json.loads(result.output)["attestations_completed"] is False
+    assert before == after_inputs
+    assert output_path.exists()
+
+
+def test_committed_reviewer_trust_template_validates() -> None:
+    root = Path(__file__).parents[3]
+    payload = json.loads(
+        (root / "benchmarks/templates/agent_cli_reviewer_trust.example.json").read_text()
+    )
+    policy_payload = json.loads(
+        (root / "benchmarks/templates/agent_cli_review_policy.example.json").read_text()
+    )
+    policy = build_reviewer_policy(ReviewerPolicyDeclaration.model_validate(policy_payload))
+
+    trust = build_reviewer_trust(ReviewerTrustDeclaration.model_validate(payload), policy)
+
+    assert trust.benchmark_id == "agent-cli-local-rehearsal"

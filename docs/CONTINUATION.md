@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
-> Last updated: 2026-07-20
-> Latest work: Morphic Chat CLI Phase 45 campaign governance status
+> Last updated: 2026-07-21
+> Latest work: Morphic Chat CLI Phase 46 signed reviewer provenance
 
 ## Latest Session Notes (2026-06-26)
 
@@ -349,6 +349,21 @@ Phase 45 implemented:
 - No external agent, version probe, or paid API was started.
 - Verification: 3,621 unit tests passed; repository-wide Ruff clean; wheel contains the campaign status, reviewer policy, and policy template artifacts.
 
+Phase 46 implemented:
+- Added self-fingerprinted reviewer trust declarations bound to one benchmark and exact review policy.
+- Trust roots contain reviewer ID, globally unique key ID, Ed25519 public key, public-key SHA-256, and active/revoked status.
+- Every allowed reviewer needs an active key for new trust authoring; revoked historical keys remain representable for rotation and verification refusal.
+- Trust-bound completed reviews retain the exact reviewer trust SHA-256 in addition to preflight, evidence, and review-policy bindings.
+- Added `morphic benchmark agent-cli-attestation-template`, which emits one canonical signing payload per distinct reviewer without reading a private key.
+- Each statement binds benchmark/task/revision, preflight, evidence, policy, trust, the complete reviews artifact, and that reviewer's decision subset.
+- Finalization requires one valid detached Ed25519 signature per distinct reviewer when a review is trust-bound.
+- Unknown keys, revoked keys, invalid signatures, missing reviewers, and mixed review/policy/trust artifacts fail closed.
+- Campaign status adds `review_attestation_pending`; only a fully verified bundle advances to `review_complete` and `finalized`.
+- Legacy unsigned reviews and six-stage unsigned campaigns retain their previous behavior.
+- Verification: 3,633 unit tests passed; repository-wide Ruff clean; wheel contains the attestation module and reviewer trust template and declares `cryptography>=46.0.5` directly.
+- No external agent, private-key file, version probe, or paid API was started.
+- Security boundary: signatures prove possession of a trust-enrolled key, not real-world identity or independently anchored key enrollment.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -358,7 +373,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add authenticated reviewer attestations or signed artifact support while preserving the existing offline, backward-compatible path.
+- Add externally anchored reviewer key enrollment (organization CA or OIDC/Sigstore) and a signed immutable campaign/result envelope while preserving the offline verification path.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

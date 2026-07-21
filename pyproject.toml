@@ -44,6 +44,7 @@ dependencies = [
     "orjson>=3.10",
     "structlog>=24.4",
     "ddgs>=9.11.4",
+    "cryptography>=46.0.5",
 ]
 
 [project.optional-dependencies]

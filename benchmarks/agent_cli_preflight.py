@@ -206,8 +206,15 @@ class ReviewTemplate(_FrozenModel):
     preflight_sha256: str = Field(pattern=_SHA256_PATTERN)
     evidence_sha256: str = Field(pattern=_SHA256_PATTERN)
     review_policy_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    reviewer_trust_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     decisions: tuple[ReviewDecisionTemplate, ...] = Field(min_length=1)
     review_completed: Literal[False] = False
+
+    @model_validator(mode="after")
+    def validate_trust_binding(self) -> ReviewTemplate:
+        if self.reviewer_trust_sha256 is not None and self.review_policy_sha256 is None:
+            raise ValueError("reviewer trust binding requires a review policy binding")
+        return self
 
     def to_json(self) -> str:
         return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
@@ -226,6 +233,7 @@ def build_review_template(
     evidence: RecordedEvidence,
     *,
     review_policy_sha256: str | None = None,
+    reviewer_trust_sha256: str | None = None,
 ) -> ReviewTemplate:
     """Create null review decisions bound to exact preflight and evidence artifacts."""
     expected_identity = (
@@ -265,6 +273,7 @@ def build_review_template(
         preflight_sha256=preflight.preflight_sha256,
         evidence_sha256=recorded_evidence_sha256(evidence),
         review_policy_sha256=review_policy_sha256,
+        reviewer_trust_sha256=reviewer_trust_sha256,
         decisions=decisions,
     )
 
