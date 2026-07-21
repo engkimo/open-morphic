@@ -377,6 +377,33 @@ versions and commands, and generate an evidence-bound independent review templat
 Campaign execution must remain a separate action requiring explicit paid acknowledgement
 and a cost cap; preflight success alone never authorizes agent launch.
 
+## Phase 44 update
+
+Real campaigns now have a deterministic preflight artifact before execution. It requires
+the manifest to contain the full resolved 40-character Git commit, validates exact
+manifest/config coverage, normalizes operator-declared runtime versions, fingerprints
+each version and every arm/check/handoff command, binds the complete manifest/config via
+canonical SHA-256 without exposing the raw goal, and fixes
+`execution_authorized=false`. Preflight resolves Git only; it never invokes a version
+command, agent runtime, or paid API.
+
+After recording, Morphic can generate a complete review template with null human
+decisions for every expected arm/trial. The template binds the exact preflight and
+normalized evidence SHA-256 plus each expanded agent argv SHA-256. A reviewer must fill
+every decision, attach a review artifact fingerprint, and change
+`review_completed` to true. Finalization validates the evidence binding automatically
+and, when `--preflight` is supplied, validates the preflight binding too. Legacy Phase 42
+reviews without these optional binding fields remain valid.
+
+A real zero-cost rehearsal on commit `88326ae` generated a three-arm non-authorizing
+preflight and a three-decision null review template. No external agent, version probe, or
+paid API was started. Phase 44 closes campaign-authoring ambiguity; it does not authorize
+the first paid comparison. The next slice should validate reviewer separation and add a
+read-only campaign status command before any paid run is considered.
+
+Phase 44 passed all 3,605 unit tests with repository-wide Ruff clean. The built
+wheel contains the preflight module and runtime-version JSON template.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

@@ -558,6 +558,7 @@ morphic-agent/
 │   ├── __init__.py
 │   ├── agent_cli_adjudication.py   # Evidence/review join into final observations
 │   ├── agent_cli_comparison.py     # Recorded same-task 3-arm validation and metrics
+│   ├── agent_cli_preflight.py      # Non-authorizing campaign and review bindings
 │   ├── agent_cli_receipts.py       # Codex/Claude/Morphic normalized cost receipts
 │   ├── agent_cli_recorder.py       # Opt-in detached-worktree trial evidence recorder
 │   ├── agent_cli_rehearsal.py      # Internal zero-cost end-to-end recorder rehearsal

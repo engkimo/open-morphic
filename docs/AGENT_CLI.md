@@ -400,6 +400,59 @@ planの編集開始点として`benchmarks/templates/agent_cli_manifest.example.
 `agent_cli_recorder.example.json`も同梱する。実キャンペーンは従来どおり別の
 `agent-cli-record --execute --acknowledge-paid --cost-cap-usd ...`による明示承認が必要。
 
+### Campaign preflight and bound reviews
+
+Phase 44では実キャンペーン前にimmutable revision、runtime declarations、全commandを
+1つのnon-authorizing artifactへ固定する。runtime versionは利用者が収集してJSONへ記入し、
+Morphic自身は`--version`を含むagent commandを実行しない。
+
+```bash
+morphic benchmark agent-cli-preflight \
+  --manifest benchmark-manifest.json \
+  --config recorder-config.json \
+  --runtime-versions runtime-versions.json \
+  --source-root . \
+  --output benchmark-preflight.json \
+  --json
+```
+
+manifestの`workspace_revision`はsymbolic `HEAD`ではなく、Gitで解決できるfull lowercase
+40-character commit hashでなければならない。runtime declarationは3 armをexactly once持ち、
+各`executable`がrecorder configのarm command先頭と一致する必要がある。version stringは
+whitespace-normalize後にSHA-256化される。arm/check/handoff commandもPhase 41と同じ方法で
+fingerprintされる。raw goalを公開せずにgoal/timeout/model hintを含む完全な契約変更を
+検出するため、manifest全体とconfig全体のcanonical SHA-256も保持する。artifact自身の
+SHA-256と`execution_authorized=false`を含み、preflight成功だけでagent実行は許可されない。
+
+recording後はindependent reviewer用の未記入templateを生成する。
+
+```bash
+morphic benchmark agent-cli-review-template \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --output benchmark-reviews.json \
+  --json
+```
+
+templateは全arm/trialを持ち、human judgment fieldsはすべて`null`、
+`review_completed=false`である。reviewerはaccepted patch、interventions、recovery、reviewer id、
+review artifact SHA-256を埋め、最後に`review_completed=true`へ変更する。preflight/evidence
+SHA-256とagent argv SHA-256は変更しない。
+
+```bash
+morphic benchmark agent-cli-finalize \
+  --manifest benchmark-manifest.json \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --reviews benchmark-reviews.json \
+  --output benchmark-results.json
+```
+
+bound reviewを`--preflight`なしでfinalizeすること、別evidenceへ流用すること、fingerprintを
+変更することは拒否される。Phase 42形式のbinding fieldを持たないlegacy reviewは後方互換で
+利用できる。`benchmarks/templates/agent_cli_runtime_versions.example.json`を編集開始点として
+同梱する。
+
 ---
 
 ## Agent CLI Router

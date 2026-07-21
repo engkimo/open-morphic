@@ -77,6 +77,34 @@ _FINALIZE_REVIEWS_OPTION = typer.Option(
 _FINALIZE_OUTPUT_OPTION = typer.Option(None, "--output", help="Final Phase 40 results path.")
 _REHEARSAL_OUTPUT_OPTION = typer.Option(..., "--output-dir", help="New rehearsal bundle directory.")
 _REHEARSAL_REVISION_OPTION = typer.Option("HEAD", "--revision", help="Git revision to pin.")
+_PREFLIGHT_VERSIONS_OPTION = typer.Option(
+    ...,
+    "--runtime-versions",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Declared agent CLI versions JSON; no version command is executed.",
+)
+_PREFLIGHT_OUTPUT_OPTION = typer.Option(..., "--output", help="New preflight JSON path.")
+_PREFLIGHT_INPUT_OPTION = typer.Option(
+    ...,
+    "--preflight",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Campaign preflight JSON.",
+)
+_OPTIONAL_PREFLIGHT_INPUT = typer.Option(
+    None,
+    "--preflight",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Optional campaign preflight binding.",
+)
 
 
 def _write_new_evidence(path: Path, payload: str) -> None:
@@ -366,6 +394,7 @@ def finalize_agent_cli_trials(
     manifest_path: Path = _AGENT_CLI_MANIFEST_OPTION,
     evidence_path: Path = _FINALIZE_EVIDENCE_OPTION,
     reviews_path: Path = _FINALIZE_REVIEWS_OPTION,
+    preflight_path: Path | None = _OPTIONAL_PREFLIGHT_INPUT,
     output_path: Path | None = _FINALIZE_OUTPUT_OPTION,
     as_json: bool = _AGENT_CLI_JSON_OPTION,
 ) -> None:
@@ -382,6 +411,18 @@ def finalize_agent_cli_trials(
         manifest = AgentCliManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
         evidence = RecordedEvidence.model_validate_json(evidence_path.read_text(encoding="utf-8"))
         reviews = AdjudicationReviews.model_validate_json(reviews_path.read_text(encoding="utf-8"))
+        if reviews.preflight_sha256 is not None and preflight_path is None:
+            raise ValueError("--preflight is required for a preflight-bound review")
+        if preflight_path is not None:
+            from benchmarks.agent_cli_preflight import (
+                CampaignPreflight,
+                validate_review_bindings,
+            )
+
+            preflight = CampaignPreflight.model_validate_json(
+                preflight_path.read_text(encoding="utf-8")
+            )
+            validate_review_bindings(preflight, evidence, reviews)
         results = finalize_recorded_results(manifest, evidence, reviews)
         payload = finalized_results_json(results)
         if output_path is not None:
@@ -398,6 +439,95 @@ def finalize_agent_cli_trials(
         typer.echo(payload)
     else:
         console.print(f"Finalized {len(results.observations)} benchmark observations")
+
+
+@benchmark_app.command("agent-cli-preflight")
+def preflight_agent_cli_campaign(
+    manifest_path: Path = _AGENT_CLI_MANIFEST_OPTION,
+    config_path: Path = _RECORDER_CONFIG_OPTION,
+    runtime_versions_path: Path = _PREFLIGHT_VERSIONS_OPTION,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    source_root: Path | None = _RECORDER_SOURCE_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Validate one pinned campaign without launching an agent or authorizing execution."""
+    from benchmarks.agent_cli_comparison import AgentCliManifest
+    from benchmarks.agent_cli_preflight import (
+        RuntimeVersionBundle,
+        build_campaign_preflight,
+        resolve_git_revision,
+    )
+    from benchmarks.agent_cli_recorder import AgentCliRecorderConfig
+
+    try:
+        manifest = AgentCliManifest.model_validate_json(
+            manifest_path.read_text(encoding="utf-8")
+        )
+        config = AgentCliRecorderConfig.model_validate_json(
+            config_path.read_text(encoding="utf-8")
+        )
+        versions = RuntimeVersionBundle.model_validate_json(
+            runtime_versions_path.read_text(encoding="utf-8")
+        )
+        if not output_path.parent.exists():
+            raise ValueError("preflight output parent must already exist")
+        if output_path.exists():
+            raise ValueError("preflight output already exists")
+        source = (source_root or Path.cwd()).resolve()
+        resolved = _run(resolve_git_revision(source, manifest.task.workspace_revision))
+        report = build_campaign_preflight(
+            manifest,
+            config,
+            versions,
+            resolved_revision=resolved,
+        )
+        _write_new_evidence(output_path, report.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI preflight failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(report.to_json())
+    else:
+        console.print(
+            f"Preflight ready trials={report.trial_count} "
+            f"estimated_max=${report.estimated_max_cost_usd:.6f} "
+            "execution_authorized=false"
+        )
+
+
+@benchmark_app.command("agent-cli-review-template")
+def create_agent_cli_review_template(
+    preflight_path: Path = _PREFLIGHT_INPUT_OPTION,
+    evidence_path: Path = _FINALIZE_EVIDENCE_OPTION,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Generate null independent review decisions bound to exact campaign evidence."""
+    from benchmarks.agent_cli_adjudication import RecordedEvidence
+    from benchmarks.agent_cli_preflight import CampaignPreflight, build_review_template
+
+    try:
+        preflight = CampaignPreflight.model_validate_json(
+            preflight_path.read_text(encoding="utf-8")
+        )
+        evidence = RecordedEvidence.model_validate_json(
+            evidence_path.read_text(encoding="utf-8")
+        )
+        if not output_path.parent.exists():
+            raise ValueError("review template output parent must already exist")
+        if output_path.exists():
+            raise ValueError("review template output already exists")
+        template = build_review_template(preflight, evidence)
+        _write_new_evidence(output_path, template.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI review template failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(template.to_json())
+    else:
+        console.print(f"Created {len(template.decisions)} bound review decisions")
 
 
 @benchmark_app.command("agent-cli-rehearse")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Literal
 
@@ -109,6 +110,9 @@ class AdjudicationReviews(_FrozenModel):
     benchmark_id: str = Field(min_length=1)
     task_id: str = Field(min_length=1)
     workspace_revision: str = Field(min_length=1)
+    preflight_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    evidence_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    review_completed: Literal[True] | None = None
     decisions: tuple[ReviewDecision, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -116,6 +120,17 @@ class AdjudicationReviews(_FrozenModel):
         if self.schema_version != SCHEMA_VERSION:
             raise ValueError(f"schema_version must be {SCHEMA_VERSION}")
         return self
+
+
+def recorded_evidence_sha256(evidence: RecordedEvidence) -> str:
+    """Fingerprint the complete normalized evidence artifact deterministically."""
+    payload = json.dumps(
+        evidence.model_dump(mode="json"),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def _validate_identity(
@@ -160,6 +175,11 @@ def finalize_recorded_results(
 ) -> RecordedResults:
     """Create Phase 40 observations only after every evidence join validates."""
     _validate_identity(manifest, evidence, reviews)
+    if (
+        reviews.evidence_sha256 is not None
+        and reviews.evidence_sha256 != recorded_evidence_sha256(evidence)
+    ):
+        raise ValueError("review evidence fingerprint does not match evidence")
     if evidence.cost_collection != "normalized_receipts":
         raise ValueError("evidence cost_collection is not normalized_receipts")
     expected = {

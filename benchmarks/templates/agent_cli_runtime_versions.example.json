@@ -1,0 +1,18 @@
+{
+  "benchmark_id": "agent-cli-local-rehearsal",
+  "runtimes": {
+    "claude_code": {
+      "executable": "python3",
+      "version": "REPLACE_WITH_PYTHON_VERSION"
+    },
+    "codex_cli": {
+      "executable": "python3",
+      "version": "REPLACE_WITH_PYTHON_VERSION"
+    },
+    "morphic_control": {
+      "executable": "python3",
+      "version": "REPLACE_WITH_PYTHON_VERSION"
+    }
+  },
+  "schema_version": 1
+}

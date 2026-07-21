@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-07-20
-> Latest work: Morphic Chat CLI Phase 43 first-party receipt rehearsal
+> Latest work: Morphic Chat CLI Phase 44 campaign preflight
 
 ## Latest Session Notes (2026-06-26)
 
@@ -323,6 +323,20 @@ Phase 43 implemented:
 - Real workspace verification completed all three cells with no raw output in evidence and no remaining detached worktree. No paid campaign was executed.
 - Verification: 3,591 unit tests passed; repository-wide Ruff clean; wheel contains the rehearsal module and both JSON templates.
 
+Phase 44 implemented:
+- Added `morphic benchmark agent-cli-preflight` for a deterministic, non-authorizing campaign artifact.
+- Manifest revision must equal the full Git-resolved 40-character commit; symbolic or mismatched revisions fail closed.
+- Operator-declared runtime versions must cover exactly three arms and match each configured command executable.
+- Runtime versions and every arm/check/handoff command receive deterministic SHA-256 fingerprints.
+- Complete manifest/config hashes bind goal, timeout, and model hints without exposing the raw goal.
+- Preflight runs only read-only Git revision resolution; no version command, agent, or paid API is started.
+- Added `agent-cli-review-template` with every expected arm/trial and null human judgment fields.
+- Templates bind exact preflight, normalized evidence, and expanded agent argv SHA-256 values and remain `review_completed=false` until filled.
+- Completed bound reviews use `review_completed=true`; finalization checks evidence binding and optional `--preflight` binding.
+- Binding fields remain optional for backward compatibility with Phase 42 review artifacts.
+- Real zero-cost verification generated a three-arm preflight and three-decision review template on commit `88326ae`; no paid campaign was executed.
+- Verification: 3,605 unit tests passed; repository-wide Ruff clean; wheel contains the preflight module and runtime-version template.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -332,7 +346,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add campaign preflight and an independent review-template generator for a user-selected task and pinned revision. Keep paid recording behind the separate acknowledgement and cost-cap gate.
+- Add reviewer-separation validation and a read-only campaign status command. Keep paid recording behind the separate acknowledgement and cost-cap gate.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

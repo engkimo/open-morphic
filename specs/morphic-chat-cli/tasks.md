@@ -418,6 +418,20 @@
 - [x] T4309 Publish a complete rehearsal bundle without replacing existing output.
 - [x] T4310 Verify a real pinned-worktree rehearsal leaves no raw output or worktree.
 
+## Phase 44 - Campaign Preflight and Bound Reviews
+
+- [x] T4401 Add RED tests for preflight, review templates, bindings, and CLI output.
+- [x] T4402 Require the manifest revision to equal a full resolved Git commit.
+- [x] T4403 Require exact runtime version declarations matching all three executables.
+- [x] T4404 Normalize and fingerprint runtime versions without executing version commands.
+- [x] T4405 Reuse deterministic arm/check/handoff command fingerprints.
+- [x] T4405a Bind complete manifest/config contracts without exposing the raw goal.
+- [x] T4406 Emit a self-fingerprinted preflight with `execution_authorized=false`.
+- [x] T4407 Generate null review decisions for the complete expected trial matrix.
+- [x] T4408 Bind reviews to preflight, evidence, and expanded agent argv fingerprints.
+- [x] T4409 Validate bindings during finalization while accepting legacy unbound reviews.
+- [x] T4410 Verify the complete preflight/template path with a zero-cost local campaign.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.
