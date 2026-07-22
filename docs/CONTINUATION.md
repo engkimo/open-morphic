@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-07-22
-> Latest work: Morphic Chat CLI Phase 53 authenticated loopback checkpoint gossip
+> Latest work: Morphic Chat CLI Phase 54 durable bounded gossip catch-up loop
 
 ## Latest Session Notes (2026-06-26)
 
@@ -446,6 +446,17 @@ Phase 53 implemented:
 - Verification: 3,697 unit tests passed; repository-wide Ruff and focused mypy clean; no external peer, agent, paid API, or non-loopback socket ran.
 - Security boundary: the descriptor token authenticates local transport only; full witness/root verification occurs during registry import. Remote TLS, discovery, automatic signing, and a durable catch-up loop remain out-of-scope.
 
+Phase 54 implemented:
+- Added a bounded resumable pull loop that selects a signed range containing the exact next local registry sequence and atomically imports only the missing suffix.
+- A mode 0600 JSONL sync audit holds one non-blocking exclusive lock for the whole loop and fsyncs a self-fingerprinted hash chain.
+- Deterministic audit events bind the exact loop-policy fingerprint and cover imported ranges, safe retry metadata, registry-ahead crash recovery, trust advancement, and explicit stop reasons; no token, timestamp, or raw exception text is persisted.
+- The verified checkpoint registry remains import truth. If it is ahead of audit after a crash, the pinned historical registry head must match before a recovered event resumes from the current head.
+- Every audit record pins peer-trust generation/trust/ledger fingerprints. Older ledgers and forks at a pinned generation are rejected before contacting the gossip endpoint; contiguous extensions advance the pin.
+- Loop policy bounds rounds, newly imported records, request attempts, and deterministic backoff. Stops report up-to-date, range-gap, record-budget, round-budget, or retry-exhausted.
+- Added a private-key-free gossip-sync CLI using the existing range signature, root/witness/Merkle, registry, and trust-ledger verification paths.
+- Verification: 3,698 unit tests passed; repository-wide Ruff and focused mypy clean; loopback/in-memory test keys only, with no external peer, agent, paid API, or non-loopback listener.
+- Security boundary: the local pin is tamper-evident, not resistant to an attacker who can rewrite the complete audit and registry. Automatic acknowledgement signing, peer discovery, and remote mTLS remain out-of-scope.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -455,7 +466,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add a bounded resumable pull/catch-up loop with trust-ledger rollback pinning and durable audit state over the loopback transport before introducing remote mTLS.
+- Add explicit remote mTLS peer enrollment and certificate/SPKI pinning, with peer-id binding, TLS 1.3-only policy, address allowlists, and no plaintext fallback.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

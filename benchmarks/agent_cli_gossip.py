@@ -131,7 +131,8 @@ class CheckpointGossipService:
             (
                 candidate
                 for candidate in self._range_bundles
-                if candidate.statement.first_sequence == request.start_sequence
+                if candidate.statement.first_sequence <= request.start_sequence
+                <= candidate.statement.last_sequence
                 and len(candidate.records) <= request.max_records
             ),
             None,

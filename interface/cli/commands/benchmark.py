@@ -453,6 +453,14 @@ _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT = typer.Option(
     dir_okay=False,
     readable=True,
 )
+_CHECKPOINT_PEER_TRUST_LEDGER_INPUT = typer.Option(
+    ...,
+    "--peer-trust-ledger",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
 _CHECKPOINT_GOSSIP_DESCRIPTOR_INPUT = typer.Option(
     ...,
     "--descriptor",
@@ -489,6 +497,24 @@ _CHECKPOINT_GOSSIP_LIFETIME_OPTION = typer.Option(
     min=1.0,
     max=3600.0,
     help="Maximum listener lifetime without deterministic shutdown.",
+)
+_CHECKPOINT_GOSSIP_SYNC_AUDIT_OPTION = typer.Option(
+    ...,
+    "--sync-audit",
+    help="Durable checkpoint gossip sync audit JSONL path.",
+)
+_CHECKPOINT_GOSSIP_SYNC_ROUNDS_OPTION = typer.Option(
+    16,
+    "--max-rounds",
+    min=1,
+    max=100,
+)
+_CHECKPOINT_GOSSIP_SYNC_ATTEMPTS_OPTION = typer.Option(
+    3,
+    "--max-attempts",
+    min=1,
+    max=10,
+    help="Attempts per status or range request.",
 )
 
 
@@ -2267,6 +2293,81 @@ def submit_agent_cli_checkpoint_gossip_acknowledgement(
         console.print(
             "Submitted authenticated checkpoint acknowledgement "
             f"sequence={record.acknowledgement.statement.acknowledged_record_sequence}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-gossip-sync")
+def sync_agent_cli_checkpoint_gossip(
+    descriptor_path: Path = _CHECKPOINT_GOSSIP_DESCRIPTOR_INPUT,
+    registry_path: Path = _CHECKPOINT_REGISTRY_OPTION,
+    sync_audit_path: Path = _CHECKPOINT_GOSSIP_SYNC_AUDIT_OPTION,
+    registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
+    source_peer_id: str = _CHECKPOINT_SOURCE_PEER_OPTION,
+    peer_trust_ledger_path: Path = _CHECKPOINT_PEER_TRUST_LEDGER_INPUT,
+    witness_trust_path: Path = _WITNESS_TRUST_INPUT,
+    authority_root_ledger_path: Path = _AUTHORITY_ROOT_LEDGER_INPUT,
+    max_rounds: int = _CHECKPOINT_GOSSIP_SYNC_ROUNDS_OPTION,
+    max_records: int = _CHECKPOINT_MAX_RECORDS_OPTION,
+    max_attempts: int = _CHECKPOINT_GOSSIP_SYNC_ATTEMPTS_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Run one bounded resumable pull loop without reading private keys."""
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointRegistryStore
+    from benchmarks.agent_cli_gossip_sync import (
+        CheckpointGossipSyncAuditStore,
+        CheckpointGossipSyncPolicy,
+        run_checkpoint_gossip_sync,
+    )
+    from benchmarks.agent_cli_peer_trust_ledger import CheckpointPeerTrustLedger
+
+    try:
+        if not registry_path.parent.exists():
+            raise ValueError("checkpoint gossip registry parent must already exist")
+        if not sync_audit_path.parent.exists():
+            raise ValueError("checkpoint gossip sync audit parent must already exist")
+        witness_trust, authority_ledger = _load_checkpoint_registry_dependencies(
+            witness_trust_path,
+            authority_root_ledger_path,
+        )
+        peer_trust_ledger = CheckpointPeerTrustLedger.model_validate_json(
+            peer_trust_ledger_path.read_text(encoding="utf-8")
+        )
+        retry_delays = tuple(
+            min(0.05 * (2**index), 1.0) for index in range(max_attempts - 1)
+        )
+        result = _run(
+            run_checkpoint_gossip_sync(
+                descriptor_path=descriptor_path,
+                registry_store=CheckpointRegistryStore(
+                    registry_path,
+                    registry_id=registry_id,
+                ),
+                audit_store=CheckpointGossipSyncAuditStore(
+                    sync_audit_path,
+                    registry_id=registry_id,
+                    source_peer_id=source_peer_id,
+                ),
+                peer_trust_ledger=peer_trust_ledger,
+                witness_trust=witness_trust,
+                authority_root_ledger=authority_ledger,
+                policy=CheckpointGossipSyncPolicy(
+                    max_rounds=max_rounds,
+                    max_records=max_records,
+                    max_attempts_per_request=max_attempts,
+                    retry_delays_seconds=retry_delays,
+                ),
+            )
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint gossip sync failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+    if as_json:
+        typer.echo(result.to_json())
+    else:
+        console.print(
+            "Checkpoint gossip sync stopped "
+            f"reason={result.stop_reason} records={result.local_record_count} "
+            f"imported={result.records_imported} retries={result.retries}"
         )
 
 

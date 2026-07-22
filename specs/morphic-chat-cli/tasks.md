@@ -549,6 +549,19 @@
 - [x] T5309 Close the listener and all active clients deterministically and remove only the owned descriptor.
 - [x] T5310 Add explicit opt-in serve/status/fetch/ack CLI paths while deferring remote TLS and automatic signing.
 
+## Phase 54 - Durable Bounded Gossip Catch-Up Loop
+
+- [x] T5401 Add RED tests for multi-range catch-up, resume, retry, crash recovery, budgets, rollback, tampering, and CLI.
+- [x] T5402 Add a mode 0600 append-only sync audit with one non-blocking whole-loop process lock.
+- [x] T5403 Self-fingerprint and hash-chain imported, retry, recovered, trust-advanced, and stopped audit records.
+- [x] T5404 Pin the highest verified peer-trust generation and reject older or pinned-generation fork ledgers before network access.
+- [x] T5405 Reconcile a verified registry ahead of its audit after a crash without re-importing existing records.
+- [x] T5406 Pull a signed range containing the exact next local sequence and atomically import only its missing suffix.
+- [x] T5407 Bound rounds, newly imported records, attempts, and deterministic retry delays.
+- [x] T5408 Return explicit up-to-date, gap, record-budget, round-budget, and retry-exhausted stop reasons.
+- [x] T5409 Keep secrets and raw exception text out of deterministic audit records.
+- [x] T5410 Add a private-key-free gossip-sync CLI while deferring acknowledgement signing and remote mTLS.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

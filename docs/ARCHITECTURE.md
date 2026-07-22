@@ -565,6 +565,7 @@ morphic-agent/
 │   ├── agent_cli_peer_trust_ledger.py # Majority-signed peer key rollover continuity
 │   ├── agent_cli_gossip_transport.py # Bounded challenge-authenticated loopback protocol
 │   ├── agent_cli_gossip.py        # Signed range fetch + acknowledgement gossip service
+│   ├── agent_cli_gossip_sync.py   # Trust-pinned resumable pull loop + durable audit
 │   ├── agent_cli_campaign.py       # Read-only lifecycle status across artifacts
 │   ├── agent_cli_comparison.py     # Recorded same-task 3-arm validation and metrics
 │   ├── agent_cli_preflight.py      # Non-authorizing campaign and review bindings

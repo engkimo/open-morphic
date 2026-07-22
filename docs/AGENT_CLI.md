@@ -997,6 +997,62 @@ automatic private-key signing、常駐daemon、複数rangeを自動追跡するp
 trust-ledger rollback pinningを伴うbounded/resumable catch-up loopとdurable audit stateを追加してから、
 remote mTLSへ進む。
 
+### Durable bounded gossip catch-up loop
+
+Phase 54では、Phase 53のstatus/fetchをbounded loopとして実行し、verified local registryの次sequenceから
+再開できる。peer-trust snapshotではなくgeneration ledgerを必須にし、最新確認済みgenerationをdurable
+sync auditへpinする。
+
+```bash
+morphic benchmark agent-cli-checkpoint-gossip-sync \
+  --descriptor .morphic/gossip/peer-1.json \
+  --registry checkpoint-registry.jsonl \
+  --sync-audit checkpoint-sync-peer-1.jsonl \
+  --registry-id example-org-checkpoints \
+  --source-peer-id peer-1 \
+  --peer-trust-ledger checkpoint-peer-trust-ledger.json \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger authority-root-ledger.json \
+  --max-rounds 16 \
+  --max-records 1000 \
+  --max-attempts 3 \
+  --json
+```
+
+loopはauthenticated statusのavailable rangeから、`first_sequence <= next local sequence <= last_sequence`を
+満たす最も新しいstartを選ぶ。fetch後にstatusのbundle fingerprintと一致することを確認し、peer trust
+generationからEd25519 keyを解決する。その後、既存import pathでauthority root、witness quorum、Merkle
+consistency、overlap、hash chainを再検証し、missing suffixだけをatomic appendする。既存local prefixの再取得は
+許容するが、exact overlapでなければ0 byte mutationで失敗する。
+
+sync auditはmode 0600 JSONLで、1回のloop全体に`flock(LOCK_EX | LOCK_NB)`を保持する。同じauditに対する
+多重loopは待たずに拒否する。各recordはsequence、previous hash、registry/source、verified local head、
+peer-trust generation/trust/ledger fingerprint、exact loop-policy fingerprintをbindし、次のeventだけを記録する。
+
+- `imported`: range fingerprint、first/last sequence、新規import件数
+- `retry`: `status`または`fetch_range`とattempt番号のみ
+- `recovered`: registry append後・audit append前に停止した状態の回復
+- `trust_advanced`: contiguous trust ledger extensionのpin前進
+- `stopped`: machine-readableな停止理由
+
+停止理由は`up_to_date`、`range_gap`、`record_budget_exhausted`、
+`round_budget_exhausted`、`retry_exhausted`である。CLIのretry delayは50msから決定的に倍増し1秒でcapする。
+raw exception、descriptor token、timestampはauditへ書かない。
+
+registryはimport truthであり、auditはloop/recovery記録である。crashでregistryだけが先に進んだ場合、auditが
+最後にpinしたcount位置のregistry record fingerprintをverified registry内でexact照合する。一致する場合だけ
+current verified headを`recovered`として記録し、次sequenceから続行する。auditがregistryより先、またはpinした
+historical headが異なる場合はfail closedになる。
+
+各audit recordのtrust pinは、提示ledgerがそのgenerationを同じtrust fingerprintで含むことを要求する。
+active generationがpinより古ければrollback、同じactive generationでledger fingerprintが違えばforkとして
+network接続前に拒否する。contiguous signed extensionだけが`trust_advanced`として受理される。
+
+このpinはmode 0600 fileとhash chainによるlocal tamper evidenceであり、registry/audit全体を書き換えられるlocal
+attackerへのsecure monotonic counterではない。またloopはprivate keyを読まず、acknowledgementの自動署名・送信は
+行わない。次はremote bindを許可する前に、peer Ed25519 identityへbindしたmTLS certificate/SPKI enrollment、
+TLS 1.3-only、address allowlist、plaintext fallback禁止を追加する。
+
 ---
 
 ## Agent CLI Router

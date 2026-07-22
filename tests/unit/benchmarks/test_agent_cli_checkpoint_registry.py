@@ -45,6 +45,11 @@ from benchmarks.agent_cli_gossip import (
     fetch_signed_checkpoint_range,
     submit_signed_checkpoint_acknowledgement,
 )
+from benchmarks.agent_cli_gossip_sync import (
+    CheckpointGossipSyncAuditStore,
+    CheckpointGossipSyncPolicy,
+    run_checkpoint_gossip_sync,
+)
 from benchmarks.agent_cli_gossip_transport import (
     CheckpointGossipServer,
     send_checkpoint_gossip_request,
@@ -1524,3 +1529,300 @@ async def test_authenticated_gossip_fetches_range_and_submits_acknowledgement(
     assert served_status["source_peer_id"] == "peer-1"
     assert serve_result.exit_code == 0, serve_result.output
     assert serve_descriptor.exists() is False
+
+
+@pytest.mark.asyncio
+async def test_gossip_sync_resumes_retries_pins_trust_and_rejects_tampering(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _context()
+    _, authority_ledger, _, witness_trust, _ = context
+    _, records = _three_record_registry(tmp_path, context)
+    peer_keys, peer_trust = _peer_trust()
+    first_bundle = _signed_range(records[:2], peer_keys, peer_trust)
+    second_bundle = _signed_range(records[2:], peer_keys, peer_trust)
+    trust_ledger_v1 = build_checkpoint_peer_trust_ledger(
+        (
+            CheckpointPeerTrustGeneration(
+                schema_version=SCHEMA_VERSION,
+                generation=1,
+                trust=peer_trust,
+            ),
+        )
+    )
+    source_cursors = CheckpointPeerCursorStore(
+        tmp_path / "sync-source-cursors.jsonl",
+        registry_id="production-registry",
+    )
+    service = CheckpointGossipService(
+        registry_id="production-registry",
+        source_peer_id="peer-1",
+        range_bundles=(first_bundle, second_bundle),
+        cursor_store=source_cursors,
+        peer_trust=trust_ledger_v1,
+    )
+    descriptor_path = tmp_path / "sync-gossip.json"
+    target = CheckpointRegistryStore(
+        tmp_path / "sync-target.jsonl",
+        registry_id="production-registry",
+    )
+    audit = CheckpointGossipSyncAuditStore(
+        tmp_path / "sync-audit.jsonl",
+        registry_id="production-registry",
+        source_peer_id="peer-1",
+    )
+    policy = CheckpointGossipSyncPolicy(
+        max_rounds=4,
+        max_records=10,
+        max_attempts_per_request=2,
+        retry_delays_seconds=(0.0,),
+    )
+
+    async with CheckpointGossipServer(
+        descriptor_path=descriptor_path,
+        registry_id="production-registry",
+        source_peer_id="peer-1",
+        handler=service,
+        max_requests=15,
+    ):
+        first = await run_checkpoint_gossip_sync(
+            descriptor_path=descriptor_path,
+            registry_store=target,
+            audit_store=audit,
+            peer_trust_ledger=trust_ledger_v1,
+            witness_trust=witness_trust,
+            authority_root_ledger=authority_ledger,
+            policy=policy,
+        )
+
+        assert first.stop_reason == "up_to_date"
+        assert first.ranges_imported == 2
+        assert first.records_imported == 3
+        assert first.retries == 0
+        assert first.sync_policy_sha256 == policy.policy_sha256
+        assert audit.replay(trust_ledger_v1).records[0].sync_policy_sha256 == (
+            policy.policy_sha256
+        )
+        assert target.replay(witness_trust, authority_ledger).records == records
+
+        from benchmarks import agent_cli_gossip_sync as sync_module
+
+        original_status = sync_module.fetch_checkpoint_gossip_status
+        status_calls = 0
+
+        async def flaky_status(*, descriptor_path: Path):
+            nonlocal status_calls
+            status_calls += 1
+            if status_calls == 1:
+                raise RuntimeError("synthetic transient transport failure")
+            return await original_status(descriptor_path=descriptor_path)
+
+        monkeypatch.setattr(sync_module, "fetch_checkpoint_gossip_status", flaky_status)
+        resumed = await run_checkpoint_gossip_sync(
+            descriptor_path=descriptor_path,
+            registry_store=target,
+            audit_store=audit,
+            peer_trust_ledger=trust_ledger_v1,
+            witness_trust=witness_trust,
+            authority_root_ledger=authority_ledger,
+            policy=policy,
+        )
+        monkeypatch.setattr(
+            sync_module,
+            "fetch_checkpoint_gossip_status",
+            original_status,
+        )
+
+        assert resumed.stop_reason == "up_to_date"
+        assert resumed.ranges_imported == 0
+        assert resumed.retries == 1
+        assert target.replay(witness_trust, authority_ledger).record_count == 3
+
+        _, successor_trust = _peer_trust(revoke_peer_2=True)
+        template = build_checkpoint_peer_trust_rotation_template(
+            peer_trust,
+            successor_trust,
+            generation=2,
+        )
+        requests = {request.peer_id: request for request in template.requests}
+        rotation = build_checkpoint_peer_trust_rotation_certificate(
+            template,
+            peer_trust,
+            successor_trust,
+            tuple(
+                CheckpointPeerRotationSignature(
+                    peer_id=peer_id,
+                    key_id=f"{peer_id}-key-1",
+                    signature_base64=base64.b64encode(
+                        peer_keys[peer_id].sign(
+                            requests[peer_id].statement.signing_bytes()
+                        )
+                    ).decode(),
+                )
+                for peer_id in ("peer-1", "peer-2")
+            ),
+        )
+        trust_ledger_v2 = build_checkpoint_peer_trust_ledger(
+            (
+                trust_ledger_v1.generations[0],
+                CheckpointPeerTrustGeneration(
+                    schema_version=SCHEMA_VERSION,
+                    generation=2,
+                    trust=successor_trust,
+                    rotation=rotation,
+                ),
+            )
+        )
+        advanced = await run_checkpoint_gossip_sync(
+            descriptor_path=descriptor_path,
+            registry_store=target,
+            audit_store=audit,
+            peer_trust_ledger=trust_ledger_v2,
+            witness_trust=witness_trust,
+            authority_root_ledger=authority_ledger,
+            policy=policy,
+        )
+
+        assert advanced.stop_reason == "up_to_date"
+        assert advanced.peer_trust_generation == 2
+
+        recovery_target = CheckpointRegistryStore(
+            tmp_path / "sync-recovery-target.jsonl",
+            registry_id="production-registry",
+        )
+        recovery_target.import_range_bundle(
+            first_bundle,
+            peer_trust,
+            witness_trust,
+            authority_ledger,
+        )
+        recovery_audit = CheckpointGossipSyncAuditStore(
+            tmp_path / "sync-recovery-audit.jsonl",
+            registry_id="production-registry",
+            source_peer_id="peer-1",
+        )
+        recovered = await run_checkpoint_gossip_sync(
+            descriptor_path=descriptor_path,
+            registry_store=recovery_target,
+            audit_store=recovery_audit,
+            peer_trust_ledger=trust_ledger_v2,
+            witness_trust=witness_trust,
+            authority_root_ledger=authority_ledger,
+            policy=policy,
+        )
+
+        assert recovered.stop_reason == "up_to_date"
+        assert recovered.records_imported == 1
+        assert recovery_audit.replay(trust_ledger_v2).records[0].event == "recovered"
+
+        budget_target = CheckpointRegistryStore(
+            tmp_path / "sync-budget-target.jsonl",
+            registry_id="production-registry",
+        )
+        budget_audit = CheckpointGossipSyncAuditStore(
+            tmp_path / "sync-budget-audit.jsonl",
+            registry_id="production-registry",
+            source_peer_id="peer-1",
+        )
+        budgeted = await run_checkpoint_gossip_sync(
+            descriptor_path=descriptor_path,
+            registry_store=budget_target,
+            audit_store=budget_audit,
+            peer_trust_ledger=trust_ledger_v2,
+            witness_trust=witness_trust,
+            authority_root_ledger=authority_ledger,
+            policy=CheckpointGossipSyncPolicy(
+                max_rounds=4,
+                max_records=1,
+                max_attempts_per_request=1,
+                retry_delays_seconds=(),
+            ),
+        )
+
+        assert budgeted.stop_reason == "record_budget_exhausted"
+        assert budget_target.replay(witness_trust, authority_ledger).record_count == 0
+
+    audit_snapshot = audit.replay(trust_ledger_v2)
+    assert audit_snapshot.peer_trust_generation == 2
+    assert {record.event for record in audit_snapshot.records} >= {
+        "imported",
+        "retry",
+        "stopped",
+        "trust_advanced",
+    }
+    with pytest.raises(ValueError, match="rollback"):
+        audit.replay(trust_ledger_v1)
+
+    trust_ledger_path = tmp_path / "sync-trust-ledger.json"
+    witness_trust_path = tmp_path / "sync-witness-trust.json"
+    authority_ledger_path = tmp_path / "sync-authority-ledger.json"
+    trust_ledger_path.write_text(trust_ledger_v2.to_json(), encoding="utf-8")
+    witness_trust_path.write_text(witness_trust.to_json(), encoding="utf-8")
+    authority_ledger_path.write_text(authority_ledger.to_json(), encoding="utf-8")
+    cli_target = tmp_path / "sync-cli-target.jsonl"
+    cli_audit = tmp_path / "sync-cli-audit.jsonl"
+    cli_descriptor = tmp_path / "sync-cli-gossip.json"
+    cli_service = CheckpointGossipService(
+        registry_id="production-registry",
+        source_peer_id="peer-1",
+        range_bundles=(first_bundle, second_bundle),
+        cursor_store=CheckpointPeerCursorStore(
+            tmp_path / "sync-cli-source-cursors.jsonl",
+            registry_id="production-registry",
+        ),
+        peer_trust=trust_ledger_v2,
+    )
+    async with CheckpointGossipServer(
+        descriptor_path=cli_descriptor,
+        registry_id="production-registry",
+        source_peer_id="peer-1",
+        handler=cli_service,
+        max_requests=8,
+    ):
+        cli_result = await asyncio.to_thread(
+            runner.invoke,
+            app,
+            [
+                "benchmark",
+                "agent-cli-checkpoint-gossip-sync",
+                "--descriptor",
+                str(cli_descriptor),
+                "--registry",
+                str(cli_target),
+                "--sync-audit",
+                str(cli_audit),
+                "--registry-id",
+                "production-registry",
+                "--source-peer-id",
+                "peer-1",
+                "--peer-trust-ledger",
+                str(trust_ledger_path),
+                "--witness-trust",
+                str(witness_trust_path),
+                "--authority-root-ledger",
+                str(authority_ledger_path),
+                "--max-rounds",
+                "4",
+                "--max-records",
+                "10",
+                "--max-attempts",
+                "2",
+                "--json",
+            ],
+        )
+
+    assert cli_result.exit_code == 0, cli_result.output
+    assert json.loads(cli_result.output)["stop_reason"] == "up_to_date"
+    assert CheckpointRegistryStore(
+        cli_target,
+        registry_id="production-registry",
+    ).replay(witness_trust, authority_ledger).record_count == 3
+
+    lines = audit.path.read_text(encoding="utf-8").splitlines()
+    tampered = json.loads(lines[-1])
+    tampered["record_sha256"] = "f" * 64
+    lines[-1] = json.dumps(tampered, sort_keys=True)
+    audit.path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="fingerprint"):
+        audit.replay(trust_ledger_v2)

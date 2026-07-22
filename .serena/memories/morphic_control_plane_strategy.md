@@ -662,6 +662,42 @@ boundary is a bounded resumable catch-up loop, durable transport audit, newest t
 rollback pinning, peer discovery, and remote mTLS. Phase 54 should build the pull/catch-up
 loop and rollback pin before any remote bind.
 
+## Phase 54 update
+
+Checkpoint gossip now has a bounded resumable pull loop instead of requiring an operator to
+manually repeat status, fetch, and import. It starts from the fully verified local registry
+count, selects a pre-signed range containing that exact next sequence, independently checks
+the range signature and status fingerprint, and then uses the existing authority, witness,
+Merkle consistency, overlap, and atomic registry import path. A bundle may include an
+already-present exact prefix; only its missing suffix counts against the record budget.
+
+A separate mode 0600 JSONL sync audit holds a non-blocking exclusive process lock for the
+entire loop. Records are deterministic, self-fingerprinted, hash-chained, fsynced, and bind
+the exact loop-policy fingerprint. They capture imported range fingerprints, safe retry operation/attempt metadata, verified
+registry-ahead recovery, trust advancement, and explicit stop reasons. Tokens, timestamps,
+and raw exception text are never recorded. The registry remains the import source of truth:
+if a crash occurs after registry fsync but before audit fsync, the last audited historical
+head must still match the verified registry before a recovered record advances to its
+current head.
+
+Every audit record pins the accepted peer-trust generation, trust fingerprint, and ledger
+fingerprint. A later run rejects a ledger older than any pin and rejects a fork at a pinned
+generation before opening the descriptor. A correctly signed contiguous ledger extension
+advances the pin. This is rollback protection against stale or forked remote input under the
+preserved local files, not protection from a local attacker capable of rewriting the entire
+registry and audit history.
+
+Loop policy bounds rounds, newly imported records, attempts per request, and deterministic
+backoff. Results stop with `up_to_date`, `range_gap`, `record_budget_exhausted`,
+`round_budget_exhausted`, or `retry_exhausted`. The new gossip-sync CLI remains
+private-key-free and passed 3,698 unit tests with repository-wide Ruff and focused mypy
+clean. Only loopback sockets and in-memory test keys ran; no external peer, agent, paid API,
+or non-loopback listener was used.
+
+Phase 55 should add an explicit remote mTLS boundary: peer-id-bound certificate/SPKI
+enrollment anchored to the existing Ed25519 peer trust, TLS 1.3 only, address allowlists,
+hostname/IP verification, certificate rotation continuity, and no plaintext fallback.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:
