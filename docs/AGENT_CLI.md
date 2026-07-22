@@ -882,6 +882,55 @@ signature/fingerprint/hash-chain tamperingは拒否する。
 exact peer-trust fingerprintへbindされるため、trust更新後にhistorical cursorをreplayするには旧trust
 artifactが必要である。次のtrust sliceではpeer-trust generation ledgerとsigned rollover continuityを追加する。
 
+### Peer-trust generation and rollover continuity
+
+Phase 52では、旧trust artifactをoperatorが手動選択する代わりに、out-of-band genesisから署名で連結した
+peer-trust generation ledgerを使用できる。successor trustを用意し、直前trustのactive peer向けsigning
+requestを生成する。
+
+```bash
+morphic benchmark agent-cli-checkpoint-peer-trust-rotation-template \
+  --predecessor-peer-trust checkpoint-peer-trust-v1.json \
+  --successor-peer-trust checkpoint-peer-trust-v2.json \
+  --generation 2 \
+  --output checkpoint-peer-trust-rotation-request.json
+```
+
+required quorumはpredecessorのdistinct active peer数から`floor(n / 2) + 1`として自動計算する。
+各peerは同一statementをeligible active keyで外部署名する。statementはregistry、generation、
+predecessor/successor trust fingerprint、required quorumをbindする。署名を
+`CheckpointPeerTrustRotationCertificate`へ格納後、generation列からledgerを構築する。
+
+```bash
+morphic benchmark agent-cli-checkpoint-peer-trust-ledger \
+  --generations checkpoint-peer-trust-generations.json \
+  --output checkpoint-peer-trust-ledger.json
+```
+
+`--generations`は`generations`配列を持つJSON objectである。generation 1はrotationなしのgenesis、
+generation 2以降はtrustと直前世代が承認したrotation certificateを持つ。検証はcontiguous order、
+registry不変、trust非再利用、exact predecessor/successor、strict-majority distinct peers、active predecessor
+key、全Ed25519署名、certificate/ledger fingerprintを毎回確認する。
+
+cursor ledgerは単一snapshotの代わりにgeneration ledgerを使用できる。
+
+```bash
+morphic benchmark agent-cli-checkpoint-cursor-status \
+  --cursor-ledger checkpoint-peer-cursors.jsonl \
+  --registry-id example-org-checkpoints \
+  --peer-trust-ledger checkpoint-peer-trust-ledger.json \
+  --json
+```
+
+`cursor-store`も同じ`--peer-trust-ledger`を受け付ける。`--peer-trust`と`--peer-trust-ledger`はexactly oneを
+指定する。ackがbindするtrust fingerprintをledgerから解決するため、rotation前後のackを同一cursor chainで
+検証できる。revoked keyはsuccessor generationの新artifact署名には使えないが、predecessor generation時点で
+正当に署名されたhistorical ackはその世代のtrustで検証される。
+
+genesis trustの初回配布、最新ledger fingerprintのout-of-band pinning、古いがvalidなledgerへのrollback検出、
+real-world peer identity、network transportは別境界である。次はexplicit opt-in loopback transportでprotocol
+version、challenge nonce、replay防止、size/timeout制限を固定してからremote/TLSへ広げる。
+
 ---
 
 ## Agent CLI Router

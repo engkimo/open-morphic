@@ -523,6 +523,19 @@
 - [x] T5109 Add private-key-free range export/import, acknowledgement-template, and cursor CLI paths.
 - [x] T5110 Preserve single-record exchange and keep all network/paid execution disabled.
 
+## Phase 52 - Peer-Trust Rollover Continuity
+
+- [x] T5201 Add RED tests for rollover quorum, generation replay, resolver, historical cursors, and CLI.
+- [x] T5202 Bind registry, generation, predecessor/successor trust, and computed quorum in one statement.
+- [x] T5203 Emit one private-key-free signing request per active predecessor peer.
+- [x] T5204 Require a strict majority of distinct predecessor peers with active trusted Ed25519 keys.
+- [x] T5205 Reject minority, duplicate peers, successor-only/revoked keys, invalid signatures, and trust reuse.
+- [x] T5206 Build a contiguous self-fingerprinted generation ledger from out-of-band genesis.
+- [x] T5207 Resolve historical trust fingerprints so old and new acknowledgements replay together.
+- [x] T5208 Extend cursor store/status to accept exactly one trust snapshot or trust ledger.
+- [x] T5209 Add peer-trust rotation-template and generation-ledger CLI paths.
+- [x] T5210 Preserve offline/private-key-free behavior and defer network transport.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

@@ -9,7 +9,7 @@ import json
 import os
 import stat
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Protocol
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -232,6 +232,25 @@ class CheckpointPeerTrust(_FrozenModel):
         return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
 
 
+class CheckpointPeerTrustResolver(Protocol):
+    def resolve_peer_trust(self, peer_trust_sha256: str) -> CheckpointPeerTrust: ...
+
+
+type CheckpointPeerTrustSource = CheckpointPeerTrust | CheckpointPeerTrustResolver
+
+
+def _resolve_peer_trust(
+    source: CheckpointPeerTrustSource,
+    peer_trust_sha256: str,
+) -> CheckpointPeerTrust:
+    if isinstance(source, CheckpointPeerTrust):
+        if source.peer_trust_sha256 != peer_trust_sha256:
+            raise ValueError("checkpoint artifact does not match peer trust")
+        return source
+    resolved = source.resolve_peer_trust(peer_trust_sha256)
+    return CheckpointPeerTrust.model_validate(resolved.model_dump(mode="json"))
+
+
 def build_checkpoint_peer_trust(
     declaration: CheckpointPeerTrustDeclaration,
 ) -> CheckpointPeerTrust:
@@ -263,9 +282,8 @@ def build_checkpoint_peer_trust(
         "registry_id": declaration.registry_id,
         "keys": [key.model_dump(mode="json") for key in keys],
     }
-    return CheckpointPeerTrust(
-        **payload,
-        peer_trust_sha256=_canonical_sha256(payload),
+    return CheckpointPeerTrust.model_validate(
+        {**payload, "peer_trust_sha256": _canonical_sha256(payload)}
     )
 
 
@@ -378,9 +396,8 @@ def _exchange_statement(
         "current_tree_size": current.current_tree_size,
         "current_root_sha256": current.current_root_sha256,
     }
-    return CheckpointExchangeStatement(
-        **payload,
-        exchange_sha256=_canonical_sha256(payload),
+    return CheckpointExchangeStatement.model_validate(
+        {**payload, "exchange_sha256": _canonical_sha256(payload)}
     )
 
 
@@ -432,9 +449,8 @@ def build_signed_checkpoint_exchange_packet(
         "key_id": key_id,
         "signature_base64": signature_base64,
     }
-    packet = SignedCheckpointExchangePacket(
-        **payload,
-        packet_sha256=_canonical_sha256(payload),
+    packet = SignedCheckpointExchangePacket.model_validate(
+        {**payload, "packet_sha256": _canonical_sha256(payload)}
     )
     verify_checkpoint_exchange_packet(packet, peer_trust)
     return packet
@@ -625,9 +641,8 @@ def _checkpoint_range_statement(
             [record.record_sha256 for record in records]
         ),
     }
-    return CheckpointRangeStatement(
-        **payload,
-        range_sha256=_canonical_sha256(payload),
+    return CheckpointRangeStatement.model_validate(
+        {**payload, "range_sha256": _canonical_sha256(payload)}
     )
 
 
@@ -683,9 +698,8 @@ def build_signed_checkpoint_range_bundle(
         "key_id": key_id,
         "signature_base64": signature_base64,
     }
-    bundle = SignedCheckpointRangeBundle(
-        **payload,
-        range_bundle_sha256=_canonical_sha256(payload),
+    bundle = SignedCheckpointRangeBundle.model_validate(
+        {**payload, "range_bundle_sha256": _canonical_sha256(payload)}
     )
     verify_checkpoint_range_bundle(bundle, peer_trust)
     return bundle
@@ -879,9 +893,8 @@ def build_checkpoint_acknowledgement_request(
         "acknowledged_tree_size": last.checkpoint.statement.current_tree_size,
         "acknowledged_root_sha256": last.checkpoint.statement.current_root_sha256,
     }
-    statement = CheckpointAcknowledgementStatement(
-        **payload,
-        acknowledgement_sha256=_canonical_sha256(payload),
+    statement = CheckpointAcknowledgementStatement.model_validate(
+        {**payload, "acknowledgement_sha256": _canonical_sha256(payload)}
     )
     return CheckpointAcknowledgementSigningRequest(
         acknowledging_peer_id=acknowledging_peer_id,
@@ -922,9 +935,11 @@ def build_signed_checkpoint_acknowledgement(
         "key_id": key_id,
         "signature_base64": signature_base64,
     }
-    acknowledgement = SignedCheckpointAcknowledgement(
-        **payload,
-        signed_acknowledgement_sha256=_canonical_sha256(payload),
+    acknowledgement = SignedCheckpointAcknowledgement.model_validate(
+        {
+            **payload,
+            "signed_acknowledgement_sha256": _canonical_sha256(payload),
+        }
     )
     verify_checkpoint_acknowledgement(acknowledgement, peer_trust)
     return acknowledgement
@@ -994,9 +1009,8 @@ def _build_registry_record(
         "consistency_proof": proof.model_dump(mode="json"),
         "checkpoint": checkpoint.model_dump(mode="json"),
     }
-    return CheckpointRegistryRecord(
-        **payload,
-        record_sha256=_canonical_sha256(payload),
+    return CheckpointRegistryRecord.model_validate(
+        {**payload, "record_sha256": _canonical_sha256(payload)}
     )
 
 
@@ -1427,7 +1441,7 @@ class CheckpointPeerCursorStore:
     def _read_records(
         self,
         descriptor: int,
-        trust: CheckpointPeerTrust,
+        trust: CheckpointPeerTrustSource,
     ) -> tuple[CheckpointPeerCursorRecord, ...]:
         size = os.fstat(descriptor).st_size
         raw = os.pread(descriptor, size, 0)
@@ -1455,9 +1469,13 @@ class CheckpointPeerCursorStore:
             expected_previous = records[-1].cursor_record_sha256 if records else None
             if record.previous_cursor_record_sha256 != expected_previous:
                 raise ValueError("peer cursor hash chain is invalid")
+            resolved_trust = _resolve_peer_trust(
+                trust,
+                record.acknowledgement.statement.peer_trust_sha256,
+            )
             statement = verify_checkpoint_acknowledgement(
                 record.acknowledgement,
-                trust,
+                resolved_trust,
             )
             pair = _cursor_pair(statement)
             _validate_cursor_advance(positions.get(pair), record.acknowledgement)
@@ -1487,7 +1505,7 @@ class CheckpointPeerCursorStore:
 
     def replay(
         self,
-        trust: CheckpointPeerTrust,
+        trust: CheckpointPeerTrustSource,
     ) -> CheckpointPeerCursorSnapshot:
         """Replay every acknowledgement signature and monotonic cursor transition."""
         descriptor = self._open_for_replay()
@@ -1502,10 +1520,17 @@ class CheckpointPeerCursorStore:
     def append(
         self,
         acknowledgement: SignedCheckpointAcknowledgement,
-        trust: CheckpointPeerTrust,
+        trust: CheckpointPeerTrustSource,
     ) -> CheckpointPeerCursorRecord:
         """Verify and append one monotonic peer acknowledgement."""
-        statement = verify_checkpoint_acknowledgement(acknowledgement, trust)
+        resolved_trust = _resolve_peer_trust(
+            trust,
+            acknowledgement.statement.peer_trust_sha256,
+        )
+        statement = verify_checkpoint_acknowledgement(
+            acknowledgement,
+            resolved_trust,
+        )
         if statement.registry_id != self.registry_id:
             raise ValueError("checkpoint acknowledgement registry_id does not match store")
         descriptor = self._open_for_append()
@@ -1537,9 +1562,8 @@ class CheckpointPeerCursorStore:
                 ),
                 "acknowledgement": acknowledgement.model_dump(mode="json"),
             }
-            record = CheckpointPeerCursorRecord(
-                **payload,
-                cursor_record_sha256=_canonical_sha256(payload),
+            record = CheckpointPeerCursorRecord.model_validate(
+                {**payload, "cursor_record_sha256": _canonical_sha256(payload)}
             )
             encoded = (record.to_json() + "\n").encode()
             CheckpointRegistryStore._append_bytes(

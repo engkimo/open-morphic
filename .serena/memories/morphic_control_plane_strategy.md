@@ -605,6 +605,32 @@ artifacts bind one peer-trust snapshot, so historical cursor replay after trust 
 requires retaining that old artifact. The next slice should add a signed peer-trust
 generation ledger and rollover continuity before any online gossip listener.
 
+## Phase 52 update
+
+Peer identity continuity is now versioned instead of depending on one current trust file.
+Generation one remains an out-of-band genesis. Every successor trust carries an exact
+rotation statement approved by a strict majority of distinct active peers from the
+immediately preceding trust. The statement binds registry, generation, predecessor and
+successor fingerprints, and the automatically computed majority threshold.
+
+Ledger replay verifies contiguous generations, stable registry identity, trust non-reuse,
+certificate fingerprints, active predecessor keys, distinct peer identities, quorum, and
+every Ed25519 signature. Minority approval, successor-only or revoked keys, invalid
+signatures, gaps, reordering, reuse, and tampering fail closed.
+
+The ledger resolves an acknowledgement's historical peer-trust fingerprint. Cursor
+storage and replay can therefore verify pre-rotation acknowledgements under the old trust
+and append post-rotation acknowledgements under the successor trust without splitting the
+durable cursor chain. CLI paths remain private-key-free and accept exactly one trust
+snapshot or generation ledger.
+
+Phase 52 passed 3,691 unit tests with repository-wide Ruff clean. All rollover and
+acknowledgement signatures used in-memory keys; no external peer, agent, listener, or paid
+API ran. Remaining boundaries are genesis delivery, out-of-band pinning of the newest
+ledger fingerprint, stale-ledger rollback detection, and transport. The next slice should
+add an explicit opt-in loopback gossip transport with protocol versioning, nonce-based
+challenge/replay defense, request limits, and deterministic shutdown before remote TLS.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

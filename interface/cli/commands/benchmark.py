@@ -413,6 +413,46 @@ _CHECKPOINT_CURSOR_LEDGER_OPTION = typer.Option(
     "--cursor-ledger",
     help="Peer acknowledgement cursor JSONL path.",
 )
+_CHECKPOINT_PREDECESSOR_PEER_TRUST_INPUT = typer.Option(
+    ...,
+    "--predecessor-peer-trust",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_CHECKPOINT_SUCCESSOR_PEER_TRUST_INPUT = typer.Option(
+    ...,
+    "--successor-peer-trust",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_CHECKPOINT_PEER_TRUST_GENERATIONS_INPUT = typer.Option(
+    ...,
+    "--generations",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_OPTIONAL_CHECKPOINT_PEER_TRUST_INPUT = typer.Option(
+    None,
+    "--peer-trust",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT = typer.Option(
+    None,
+    "--peer-trust-ledger",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
 
 
 def _write_new_evidence(path: Path, payload: str) -> None:
@@ -1460,6 +1500,94 @@ def create_agent_cli_checkpoint_peer_trust(
         console.print(f"Created checkpoint peer trust with {len(trust.keys)} keys")
 
 
+@benchmark_app.command("agent-cli-checkpoint-peer-trust-rotation-template")
+def create_agent_cli_checkpoint_peer_trust_rotation_template(
+    predecessor_path: Path = _CHECKPOINT_PREDECESSOR_PEER_TRUST_INPUT,
+    successor_path: Path = _CHECKPOINT_SUCCESSOR_PEER_TRUST_INPUT,
+    generation: int = _AUTHORITY_ROTATION_GENERATION_OPTION,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Create strict-majority predecessor-peer rollover signing requests."""
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointPeerTrust
+    from benchmarks.agent_cli_peer_trust_ledger import (
+        build_checkpoint_peer_trust_rotation_template,
+    )
+
+    try:
+        predecessor = CheckpointPeerTrust.model_validate_json(
+            predecessor_path.read_text(encoding="utf-8")
+        )
+        successor = CheckpointPeerTrust.model_validate_json(
+            successor_path.read_text(encoding="utf-8")
+        )
+        template = build_checkpoint_peer_trust_rotation_template(
+            predecessor,
+            successor,
+            generation=generation,
+        )
+        if not output_path.parent.exists():
+            raise ValueError("peer trust rotation output parent must already exist")
+        if output_path.exists():
+            raise ValueError("peer trust rotation output already exists")
+        _write_new_evidence(output_path, template.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI peer trust rotation failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(template.to_json())
+    else:
+        console.print(
+            "Created peer trust rotation requests "
+            f"generation={generation} quorum="
+            f"{template.minimum_distinct_peer_signatures}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-peer-trust-ledger")
+def create_agent_cli_checkpoint_peer_trust_ledger(
+    generations_path: Path = _CHECKPOINT_PEER_TRUST_GENERATIONS_INPUT,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Verify and publish a complete peer-trust generation ledger."""
+    from benchmarks.agent_cli_peer_trust_ledger import (
+        CheckpointPeerTrustGeneration,
+        build_checkpoint_peer_trust_ledger,
+    )
+
+    try:
+        payload = json.loads(generations_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("peer trust generations JSON must be an object")
+        generations_payload = payload.get("generations")
+        if not isinstance(generations_payload, list):
+            raise ValueError("peer trust generations must be a JSON array")
+        ledger = build_checkpoint_peer_trust_ledger(
+            tuple(
+                CheckpointPeerTrustGeneration.model_validate(item)
+                for item in generations_payload
+            )
+        )
+        if not output_path.parent.exists():
+            raise ValueError("peer trust ledger output parent must already exist")
+        if output_path.exists():
+            raise ValueError("peer trust ledger output already exists")
+        _write_new_evidence(output_path, ledger.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI peer trust ledger failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(ledger.to_json())
+    else:
+        console.print(
+            "Created peer trust ledger "
+            f"active_generation={ledger.active_generation}"
+        )
+
+
 def _load_checkpoint_registry_dependencies(
     witness_trust_path: Path,
     authority_root_ledger_path: Path,
@@ -1829,26 +1957,50 @@ def create_agent_cli_checkpoint_acknowledgement_template(
         )
 
 
+def _load_checkpoint_peer_trust_source(
+    peer_trust_path: Path | None,
+    peer_trust_ledger_path: Path | None,
+) -> Any:
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointPeerTrust
+    from benchmarks.agent_cli_peer_trust_ledger import CheckpointPeerTrustLedger
+
+    if (peer_trust_path is None) == (peer_trust_ledger_path is None):
+        raise ValueError(
+            "exactly one of --peer-trust or --peer-trust-ledger is required"
+        )
+    if peer_trust_path is not None:
+        return CheckpointPeerTrust.model_validate_json(
+            peer_trust_path.read_text(encoding="utf-8")
+        )
+    assert peer_trust_ledger_path is not None
+    return CheckpointPeerTrustLedger.model_validate_json(
+        peer_trust_ledger_path.read_text(encoding="utf-8")
+    )
+
+
 @benchmark_app.command("agent-cli-checkpoint-cursor-store")
 def store_agent_cli_checkpoint_cursor(
     cursor_ledger_path: Path = _CHECKPOINT_CURSOR_LEDGER_OPTION,
     registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
     acknowledgement_path: Path = _CHECKPOINT_ACKNOWLEDGEMENT_INPUT,
-    peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
+    peer_trust_path: Path | None = _OPTIONAL_CHECKPOINT_PEER_TRUST_INPUT,
+    peer_trust_ledger_path: Path | None = (
+        _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT
+    ),
     as_json: bool = _AGENT_CLI_JSON_OPTION,
 ) -> None:
     """Verify and durably store one monotonic peer acknowledgement."""
     from benchmarks.agent_cli_checkpoint_registry import (
         CheckpointPeerCursorStore,
-        CheckpointPeerTrust,
         SignedCheckpointAcknowledgement,
     )
 
     try:
         if not cursor_ledger_path.parent.exists():
             raise ValueError("checkpoint cursor ledger parent must already exist")
-        peer_trust = CheckpointPeerTrust.model_validate_json(
-            peer_trust_path.read_text(encoding="utf-8")
+        peer_trust = _load_checkpoint_peer_trust_source(
+            peer_trust_path,
+            peer_trust_ledger_path,
         )
         acknowledgement = SignedCheckpointAcknowledgement.model_validate_json(
             acknowledgement_path.read_text(encoding="utf-8")
@@ -1874,18 +2026,19 @@ def store_agent_cli_checkpoint_cursor(
 def show_agent_cli_checkpoint_cursor_status(
     cursor_ledger_path: Path = _CHECKPOINT_CURSOR_LEDGER_OPTION,
     registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
-    peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
+    peer_trust_path: Path | None = _OPTIONAL_CHECKPOINT_PEER_TRUST_INPUT,
+    peer_trust_ledger_path: Path | None = (
+        _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT
+    ),
     as_json: bool = _AGENT_CLI_JSON_OPTION,
 ) -> None:
     """Replay peer acknowledgements without changing the cursor ledger."""
-    from benchmarks.agent_cli_checkpoint_registry import (
-        CheckpointPeerCursorStore,
-        CheckpointPeerTrust,
-    )
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointPeerCursorStore
 
     try:
-        peer_trust = CheckpointPeerTrust.model_validate_json(
-            peer_trust_path.read_text(encoding="utf-8")
+        peer_trust = _load_checkpoint_peer_trust_source(
+            peer_trust_path,
+            peer_trust_ledger_path,
         )
         snapshot = CheckpointPeerCursorStore(
             cursor_ledger_path,

@@ -37,6 +37,13 @@ from benchmarks.agent_cli_checkpoint_registry import (
     verify_checkpoint_exchange_packet,
 )
 from benchmarks.agent_cli_comparison import SCHEMA_VERSION
+from benchmarks.agent_cli_peer_trust_ledger import (
+    CheckpointPeerRotationSignature,
+    CheckpointPeerTrustGeneration,
+    build_checkpoint_peer_trust_ledger,
+    build_checkpoint_peer_trust_rotation_certificate,
+    build_checkpoint_peer_trust_rotation_template,
+)
 from benchmarks.agent_cli_transparency import (
     AuthorityRootGeneration,
     SignedAuthorityRootLedger,
@@ -1142,3 +1149,141 @@ def test_checkpoint_range_and_cursor_cli_workflow(tmp_path: Path) -> None:
     status_payload = json.loads(cursor_status.output)
     assert status_payload["cursor_count"] == 1
     assert status_payload["positions"][0]["acknowledged_record_sequence"] == 2
+
+
+def test_peer_trust_ledger_replays_and_advances_historical_cursors(
+    tmp_path: Path,
+) -> None:
+    context = _context()
+    _, authority_ledger, _, witness_trust, _ = context
+    _, records = _three_record_registry(tmp_path, context)
+    predecessor_keys, predecessor_trust = _peer_trust()
+    _, successor_trust = _peer_trust(revoke_peer_2=True)
+    template = build_checkpoint_peer_trust_rotation_template(
+        predecessor_trust,
+        successor_trust,
+        generation=2,
+    )
+    requests = {request.peer_id: request for request in template.requests}
+    rotation = build_checkpoint_peer_trust_rotation_certificate(
+        template,
+        predecessor_trust,
+        successor_trust,
+        tuple(
+            CheckpointPeerRotationSignature(
+                peer_id=peer_id,
+                key_id=f"{peer_id}-key-1",
+                signature_base64=base64.b64encode(
+                    predecessor_keys[peer_id].sign(
+                        requests[peer_id].statement.signing_bytes()
+                    )
+                ).decode(),
+            )
+            for peer_id in ("peer-1", "peer-2")
+        ),
+    )
+    trust_ledger = build_checkpoint_peer_trust_ledger(
+        (
+            CheckpointPeerTrustGeneration(
+                schema_version=SCHEMA_VERSION,
+                generation=1,
+                trust=predecessor_trust,
+            ),
+            CheckpointPeerTrustGeneration(
+                schema_version=SCHEMA_VERSION,
+                generation=2,
+                trust=successor_trust,
+                rotation=rotation,
+            ),
+        )
+    )
+    target = CheckpointRegistryStore(
+        tmp_path / "rotation-target.jsonl",
+        registry_id="production-registry",
+    )
+
+    def signed_acknowledgement(bundle, snapshot, trust, key_id, private_key):
+        request = build_checkpoint_acknowledgement_request(
+            bundle,
+            snapshot,
+            trust,
+            acknowledging_peer_id="peer-2",
+        )
+        return build_signed_checkpoint_acknowledgement(
+            request,
+            key_id=key_id,
+            signature_base64=base64.b64encode(
+                private_key.sign(request.statement.signing_bytes())
+            ).decode(),
+            peer_trust=trust,
+        )
+
+    first_bundle = _signed_range(
+        records[:2],
+        predecessor_keys,
+        predecessor_trust,
+    )
+    first_snapshot = target.import_range_bundle(
+        first_bundle,
+        predecessor_trust,
+        witness_trust,
+        authority_ledger,
+    )
+    first_acknowledgement = signed_acknowledgement(
+        first_bundle,
+        first_snapshot,
+        predecessor_trust,
+        "peer-2-key-1",
+        predecessor_keys["peer-2"],
+    )
+    cursors = CheckpointPeerCursorStore(
+        tmp_path / "rotation-cursors.jsonl",
+        registry_id="production-registry",
+    )
+    cursors.append(first_acknowledgement, predecessor_trust)
+    successor_keys = dict(predecessor_keys)
+    successor_keys["peer-2"] = _private(59)
+    second_bundle = _signed_range(
+        records[2:],
+        successor_keys,
+        successor_trust,
+    )
+    second_snapshot = target.import_range_bundle(
+        second_bundle,
+        successor_trust,
+        witness_trust,
+        authority_ledger,
+    )
+    second_acknowledgement = signed_acknowledgement(
+        second_bundle,
+        second_snapshot,
+        successor_trust,
+        "peer-2-key-2",
+        successor_keys["peer-2"],
+    )
+
+    with pytest.raises(ValueError, match="does not match peer trust"):
+        cursors.replay(successor_trust)
+    cursors.append(second_acknowledgement, trust_ledger)
+    cursor_snapshot = cursors.replay(trust_ledger)
+
+    assert cursor_snapshot.cursor_count == 2
+    assert cursor_snapshot.positions[0].acknowledged_record_sequence == 2
+    trust_ledger_path = tmp_path / "rotation-trust-ledger.json"
+    trust_ledger_path.write_text(trust_ledger.to_json(), encoding="utf-8")
+    cursor_status = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "agent-cli-checkpoint-cursor-status",
+            "--cursor-ledger",
+            str(cursors.path),
+            "--registry-id",
+            "production-registry",
+            "--peer-trust-ledger",
+            str(trust_ledger_path),
+            "--json",
+        ],
+    )
+    assert cursor_status.exit_code == 0, cursor_status.output
+    assert json.loads(cursor_status.output)["cursor_count"] == 2

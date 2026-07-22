@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-07-22
-> Latest work: Morphic Chat CLI Phase 51 authenticated range sync and peer cursors
+> Latest work: Morphic Chat CLI Phase 52 peer-trust rollover continuity
 
 ## Latest Session Notes (2026-06-26)
 
@@ -423,6 +423,17 @@ Phase 51 implemented:
 - Verification: 3,686 unit tests passed; repository-wide Ruff clean; no external agent, peer listener, or paid API ran.
 - Security boundary: peer trust remains a single snapshot; old trust artifacts are required to replay historical acknowledgements after rotation.
 
+Phase 52 implemented:
+- Added generation-two-and-later peer-trust rollover statements approved by a strict majority of distinct active predecessor peers.
+- Rotation statements bind registry, generation, predecessor/successor trust fingerprints, and the automatically computed quorum.
+- Private-key-free templates emit one signing request per predecessor peer and allow any active key registered for that peer.
+- Minority, duplicate peer, successor-only/revoked key, invalid signature, generation gap/reorder, registry change, trust reuse, and tampering fail closed.
+- Added a contiguous self-fingerprinted peer-trust generation ledger rooted in out-of-band genesis.
+- Historical trust resolution lets one cursor chain verify acknowledgements from before and after key rotation.
+- Cursor store/status accepts exactly one `--peer-trust` or `--peer-trust-ledger`; rotation-template and ledger CLI paths were added.
+- Verification: 3,691 unit tests passed; repository-wide Ruff clean; in-memory signatures only, with no external peer, listener, agent, or paid API.
+- Security boundary: genesis delivery, latest-ledger pinning, stale-ledger rollback detection, real-world identity, and transport remain out-of-band.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -432,7 +443,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add a signed peer-trust generation ledger and rollover continuity before introducing an online gossip transport.
+- Add an explicit opt-in authenticated loopback gossip transport with protocol versioning, nonce replay defense, bounded requests, and deterministic shutdown before remote TLS.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`
