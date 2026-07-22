@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -26,6 +27,7 @@ from benchmarks.agent_cli_checkpoint_registry import (
     CheckpointRangeSigningRequest,
     CheckpointRegistryStore,
     SignedCheckpointExchangePacket,
+    SignedCheckpointRangeBundle,
     build_checkpoint_acknowledgement_request,
     build_checkpoint_exchange_request,
     build_checkpoint_peer_trust,
@@ -37,6 +39,16 @@ from benchmarks.agent_cli_checkpoint_registry import (
     verify_checkpoint_exchange_packet,
 )
 from benchmarks.agent_cli_comparison import SCHEMA_VERSION
+from benchmarks.agent_cli_gossip import (
+    CheckpointGossipService,
+    fetch_checkpoint_gossip_status,
+    fetch_signed_checkpoint_range,
+    submit_signed_checkpoint_acknowledgement,
+)
+from benchmarks.agent_cli_gossip_transport import (
+    CheckpointGossipServer,
+    send_checkpoint_gossip_request,
+)
 from benchmarks.agent_cli_peer_trust_ledger import (
     CheckpointPeerRotationSignature,
     CheckpointPeerTrustGeneration,
@@ -1287,3 +1299,228 @@ def test_peer_trust_ledger_replays_and_advances_historical_cursors(
     )
     assert cursor_status.exit_code == 0, cursor_status.output
     assert json.loads(cursor_status.output)["cursor_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_authenticated_gossip_fetches_range_and_submits_acknowledgement(
+    tmp_path: Path,
+) -> None:
+    context = _context()
+    _, ledger, _, witness_trust, _ = context
+    _, records = _three_record_registry(tmp_path, context)
+    peer_keys, peer_trust = _peer_trust()
+    bundle = _signed_range(records, peer_keys, peer_trust)
+    cursor_store = CheckpointPeerCursorStore(
+        tmp_path / "gossip-cursors.jsonl",
+        registry_id="production-registry",
+    )
+    service = CheckpointGossipService(
+        registry_id="production-registry",
+        source_peer_id="peer-1",
+        range_bundles=(bundle,),
+        cursor_store=cursor_store,
+        peer_trust=peer_trust,
+    )
+    descriptor_path = tmp_path / "gossip" / "peer-1.json"
+
+    async with CheckpointGossipServer(
+        descriptor_path=descriptor_path,
+        registry_id="production-registry",
+        source_peer_id="peer-1",
+        handler=service,
+        max_requests=8,
+    ):
+        fetched = await fetch_signed_checkpoint_range(
+            descriptor_path=descriptor_path,
+            start_sequence=0,
+            max_records=3,
+            peer_trust=peer_trust,
+        )
+        assert fetched == bundle
+
+        with pytest.raises(ValueError, match="does not match peer trust"):
+            _, wrong_trust = _peer_trust(revoke_peer_2=True)
+            await fetch_signed_checkpoint_range(
+                descriptor_path=descriptor_path,
+                start_sequence=0,
+                max_records=3,
+                peer_trust=wrong_trust,
+            )
+
+        target = CheckpointRegistryStore(
+            tmp_path / "gossip-target.jsonl",
+            registry_id="production-registry",
+        )
+        snapshot = target.import_range_bundle(
+            fetched,
+            peer_trust,
+            witness_trust,
+            ledger,
+        )
+        request = build_checkpoint_acknowledgement_request(
+            fetched,
+            snapshot,
+            peer_trust,
+            acknowledging_peer_id="peer-2",
+        )
+        acknowledgement = build_signed_checkpoint_acknowledgement(
+            request,
+            key_id="peer-2-key-1",
+            signature_base64=base64.b64encode(
+                peer_keys["peer-2"].sign(request.statement.signing_bytes())
+            ).decode(),
+            peer_trust=peer_trust,
+        )
+        cursor_record = await submit_signed_checkpoint_acknowledgement(
+            descriptor_path=descriptor_path,
+            acknowledgement=acknowledgement,
+        )
+
+        assert cursor_record.acknowledgement == acknowledgement
+        assert cursor_store.replay(peer_trust).cursor_count == 1
+
+        fetched_path = tmp_path / "gossip-range.json"
+        cli_fetch = await asyncio.to_thread(
+            runner.invoke,
+            app,
+            [
+                "benchmark",
+                "agent-cli-checkpoint-gossip-fetch",
+                "--descriptor",
+                str(descriptor_path),
+                "--peer-trust",
+                str(tmp_path / "peer-trust.json"),
+                "--start-sequence",
+                "0",
+                "--max-records",
+                "3",
+                "--output",
+                str(fetched_path),
+                "--json",
+            ],
+        )
+        assert cli_fetch.exit_code == 2
+
+        peer_trust_path = tmp_path / "peer-trust.json"
+        peer_trust_path.write_text(peer_trust.to_json(), encoding="utf-8")
+        cli_fetch = await asyncio.to_thread(
+            runner.invoke,
+            app,
+            [
+                "benchmark",
+                "agent-cli-checkpoint-gossip-fetch",
+                "--descriptor",
+                str(descriptor_path),
+                "--peer-trust",
+                str(peer_trust_path),
+                "--start-sequence",
+                "0",
+                "--max-records",
+                "3",
+                "--output",
+                str(fetched_path),
+                "--json",
+            ],
+        )
+        assert cli_fetch.exit_code == 0, cli_fetch.output
+        assert SignedCheckpointRangeBundle.model_validate_json(
+            fetched_path.read_text(encoding="utf-8")
+        ) == bundle
+        cli_status = await asyncio.to_thread(
+            runner.invoke,
+            app,
+            [
+                "benchmark",
+                "agent-cli-checkpoint-gossip-status",
+                "--descriptor",
+                str(descriptor_path),
+                "--json",
+            ],
+        )
+        assert cli_status.exit_code == 0, cli_status.output
+        assert json.loads(cli_status.output)["available_ranges"][0][
+            "range_bundle_sha256"
+        ] == bundle.range_bundle_sha256
+        acknowledgement_path = tmp_path / "gossip-acknowledgement.json"
+        acknowledgement_path.write_text(acknowledgement.to_json(), encoding="utf-8")
+        cli_ack = await asyncio.to_thread(
+            runner.invoke,
+            app,
+            [
+                "benchmark",
+                "agent-cli-checkpoint-gossip-ack",
+                "--descriptor",
+                str(descriptor_path),
+                "--acknowledgement",
+                str(acknowledgement_path),
+                "--json",
+            ],
+        )
+        assert cli_ack.exit_code == 0, cli_ack.output
+        assert json.loads(cli_ack.output)["acknowledgement"] == (
+            acknowledgement.model_dump(mode="json")
+        )
+        assert cursor_store.replay(peer_trust).cursor_count == 1
+        invalid_acknowledgement = acknowledgement.model_copy(
+            update={"signature_base64": base64.b64encode(bytes(64)).decode()}
+        )
+        with pytest.raises(ValueError, match="fingerprint"):
+            await submit_signed_checkpoint_acknowledgement(
+                descriptor_path=descriptor_path,
+                acknowledgement=invalid_acknowledgement,
+            )
+        with pytest.raises(RuntimeError, match="invalid_acknowledgement"):
+            await send_checkpoint_gossip_request(
+                descriptor_path=descriptor_path,
+                operation="submit_acknowledgement",
+                payload={
+                    "acknowledgement": invalid_acknowledgement.model_dump(mode="json")
+                },
+            )
+        assert cursor_store.replay(peer_trust).cursor_count == 1
+
+    bundles_path = tmp_path / "gossip-bundles.json"
+    bundles_path.write_text(
+        json.dumps({"bundles": [bundle.model_dump(mode="json")]}, sort_keys=True),
+        encoding="utf-8",
+    )
+    serve_descriptor = tmp_path / "served-gossip.json"
+    serve_task = asyncio.create_task(
+        asyncio.to_thread(
+            runner.invoke,
+            app,
+            [
+                "benchmark",
+                "agent-cli-checkpoint-gossip-serve",
+                "--descriptor",
+                str(serve_descriptor),
+                "--range-bundles",
+                str(bundles_path),
+                "--cursor-ledger",
+                str(tmp_path / "served-cursors.jsonl"),
+                "--registry-id",
+                "production-registry",
+                "--source-peer-id",
+                "peer-1",
+                "--peer-trust",
+                str(peer_trust_path),
+                "--max-requests",
+                "1",
+                "--lifetime-seconds",
+                "5",
+            ],
+        )
+    )
+    for _ in range(200):
+        if serve_descriptor.exists() or serve_task.done():
+            break
+        await asyncio.sleep(0.01)
+    assert serve_descriptor.exists(), (await serve_task).output
+    served_status = await fetch_checkpoint_gossip_status(
+        descriptor_path=serve_descriptor
+    )
+    serve_result = await asyncio.wait_for(serve_task, timeout=2)
+
+    assert served_status["source_peer_id"] == "peer-1"
+    assert serve_result.exit_code == 0, serve_result.output
+    assert serve_descriptor.exists() is False

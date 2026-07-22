@@ -631,6 +631,37 @@ ledger fingerprint, stale-ledger rollback detection, and transport. The next sli
 add an explicit opt-in loopback gossip transport with protocol versioning, nonce-based
 challenge/replay defense, request limits, and deterministic shutdown before remote TLS.
 
+## Phase 53 update
+
+Checkpoint gossip now has a real but deliberately local network boundary. An operator must
+explicitly start a short-lived server, which binds only to `127.0.0.1` on a random port. A
+mode 0600 descriptor under an operator-selected path carries protocol version, registry,
+source peer, a random instance id, and a 32-byte bearer token; its parent is mode 0700 and an
+existing descriptor is never replaced.
+
+Every connection begins with a one-use 32-byte client nonce and a fresh server nonce. Both
+the challenge response and the request/response pair use HMAC-SHA256, binding protocol,
+instance, registry, source peer, operation, and payload. Reused nonces, wrong tokens,
+endpoint/version mismatch, over-limit messages, exhausted capacity, and timeouts fail
+closed. Limits are fixed at 64 KiB requests, 2 MiB responses, eight concurrent clients,
+1,024 retained nonces/requests, and two seconds per read or dispatch. Max requests, bounded
+listener lifetime, cancellation, or context exit close the listener plus active client
+writers/tasks and remove only the owned descriptor.
+
+Transport authentication does not replace artifact trust. The server verifies every
+pre-signed exact range before listening and never reads a private key. Fetch clients verify
+the peer Ed25519 signature again using either a trust snapshot or the generation ledger;
+full authority/witness/Merkle/registry verification still occurs in the existing atomic
+range importer. Submitted acknowledgements are revalidated and pass through the durable
+monotonic hash-chained cursor store. Invalid acknowledgement traffic cannot mutate it.
+
+Phase 53 added explicit serve/status/fetch/ack CLI paths and passed 3,697 unit tests with
+repository-wide Ruff and focused mypy clean. Tests used loopback sockets and in-memory test
+keys only; no external peer, agent, paid API, or non-loopback listener ran. The remaining
+boundary is a bounded resumable catch-up loop, durable transport audit, newest trust-ledger
+rollback pinning, peer discovery, and remote mTLS. Phase 54 should build the pull/catch-up
+loop and rollback pin before any remote bind.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

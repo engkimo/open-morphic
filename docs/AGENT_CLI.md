@@ -931,6 +931,72 @@ genesis trustの初回配布、最新ledger fingerprintのout-of-band pinning、
 real-world peer identity、network transportは別境界である。次はexplicit opt-in loopback transportでprotocol
 version、challenge nonce、replay防止、size/timeout制限を固定してからremote/TLSへ広げる。
 
+### Authenticated loopback checkpoint gossip
+
+Phase 53では、事前署名済みcheckpoint rangeとsigned acknowledgementを明示的opt-inのloopback transportで
+交換できる。server用JSONは`bundles`配列に`SignedCheckpointRangeBundle`を格納する。各bundleは起動前に
+peer trustで検証されるため、listenerがprivate keyを読むことはない。
+
+```bash
+morphic benchmark agent-cli-checkpoint-gossip-serve \
+  --descriptor .morphic/gossip/peer-1.json \
+  --range-bundles signed-checkpoint-ranges.json \
+  --cursor-ledger checkpoint-peer-cursors.jsonl \
+  --registry-id example-org-checkpoints \
+  --source-peer-id peer-1 \
+  --peer-trust-ledger checkpoint-peer-trust-ledger.json \
+  --max-requests 64 \
+  --lifetime-seconds 300
+```
+
+listenerは`127.0.0.1`のrandom portだけへbindする。descriptor parentは0700、descriptorは0600で、protocol
+version、registry、source peer、random instance id、32-byte bearer tokenを保持する。既存descriptorは上書き
+しない。各接続はone-use 32-byte client nonceとserver nonceを交換し、protocol、instance、registry、source
+peer、operation、payloadをHMAC-SHA256へbindする。challenge responseと最終responseも同じtokenで認証する。
+
+clientはstatusで配布可能なexact rangeを確認し、開始sequenceが一致する事前署名済みbundleを取得する。
+
+```bash
+morphic benchmark agent-cli-checkpoint-gossip-status \
+  --descriptor .morphic/gossip/peer-1.json \
+  --json
+
+morphic benchmark agent-cli-checkpoint-gossip-fetch \
+  --descriptor .morphic/gossip/peer-1.json \
+  --start-sequence 0 \
+  --max-records 100 \
+  --peer-trust-ledger checkpoint-peer-trust-ledger.json \
+  --output received-range.json \
+  --json
+```
+
+fetch clientはtransport HMACだけを信用せず、受信bundleのpeer Ed25519署名とexact trust fingerprintを再検証
+する。その後、既存`agent-cli-checkpoint-range-import`へ渡すことでauthority root、witness quorum、Merkle
+consistency、registry overlap/hash chainまで検証してatomic importする。fetchだけではregistryへ書き込まない。
+
+receiverが既存acknowledgement-templateを外部署名した後、source peerへ返せる。
+
+```bash
+morphic benchmark agent-cli-checkpoint-gossip-ack \
+  --descriptor .morphic/gossip/peer-1.json \
+  --acknowledgement signed-acknowledgement.json \
+  --json
+```
+
+serverはackのpeer署名、registry/source binding、trust generationを検証し、既存mode 0600・locked・
+hash-chained cursor storeのmonotonicity規則を通した場合だけ保存する。同一ack retryは冪等で、不正署名や
+regression/conflictは書き込み前に拒否する。
+
+protocol limitは64 KiB request、2 MiB response、8 concurrent clients、最大1,024 retained noncesと
+authenticated requests、各read/dispatch 2秒である。`--max-requests`到達、`--lifetime-seconds`、cancel、
+context終了時はlistenerを閉じ、active writer/taskを終了し、instance/tokenが一致するowned descriptorだけを
+削除する。
+
+descriptor tokenは同一host上の短命transportだけを認証する。remote bind、TLS/mTLS、peer discovery、
+automatic private-key signing、常駐daemon、複数rangeを自動追跡するpull loopは実装していない。次は
+trust-ledger rollback pinningを伴うbounded/resumable catch-up loopとdurable audit stateを追加してから、
+remote mTLSへ進む。
+
 ---
 
 ## Agent CLI Router

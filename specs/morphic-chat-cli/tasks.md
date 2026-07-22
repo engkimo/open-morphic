@@ -536,6 +536,19 @@
 - [x] T5209 Add peer-trust rotation-template and generation-ledger CLI paths.
 - [x] T5210 Preserve offline/private-key-free behavior and defer network transport.
 
+## Phase 53 - Authenticated Loopback Checkpoint Gossip
+
+- [x] T5301 Add RED tests for challenge authentication, replay, bounds, timeout, shutdown, artifacts, and CLI.
+- [x] T5302 Bind an explicit listener only to `127.0.0.1` and publish a protocol-versioned mode 0600 descriptor.
+- [x] T5303 Authenticate each request and response with one-use client/server nonces and HMAC-SHA256.
+- [x] T5304 Bind protocol, instance, registry, source peer, operation, and payload into transport authentication.
+- [x] T5305 Bound request/response bytes, concurrency, retained nonces, request count, timeout, and listener lifetime.
+- [x] T5306 Serve only pre-signed exact checkpoint ranges and verify peer signatures before listening.
+- [x] T5307 Reverify fetched range signatures under a trust snapshot or generation ledger on the client.
+- [x] T5308 Verify submitted acknowledgements and append them through the durable monotonic cursor store.
+- [x] T5309 Close the listener and all active clients deterministically and remove only the owned descriptor.
+- [x] T5310 Add explicit opt-in serve/status/fetch/ack CLI paths while deferring remote TLS and automatic signing.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-07-22
-> Latest work: Morphic Chat CLI Phase 52 peer-trust rollover continuity
+> Latest work: Morphic Chat CLI Phase 53 authenticated loopback checkpoint gossip
 
 ## Latest Session Notes (2026-06-26)
 
@@ -434,6 +434,18 @@ Phase 52 implemented:
 - Verification: 3,691 unit tests passed; repository-wide Ruff clean; in-memory signatures only, with no external peer, listener, agent, or paid API.
 - Security boundary: genesis delivery, latest-ledger pinning, stale-ledger rollback detection, real-world identity, and transport remain out-of-band.
 
+Phase 53 implemented:
+- Added an explicit opt-in checkpoint gossip listener bound only to `127.0.0.1` on a random port.
+- A protocol-versioned mode 0600 descriptor binds registry, source peer, random instance, and a 32-byte bearer token.
+- Every connection uses one-use 32-byte client/server nonces and HMAC-SHA256 over protocol, endpoint identity, operation, and payload; responses are authenticated too.
+- Reused nonces, wrong tokens, endpoint/version mismatch, oversized requests, exhausted bounds, timeout, and invalid artifacts fail closed.
+- Fixed limits cover 64 KiB requests, 2 MiB responses, eight concurrent clients, 1,024 retained nonces/requests, two-second request handling, and an operator-bounded listener lifetime.
+- The server verifies pre-signed exact range bundles before listening; fetch clients independently verify them against a trust snapshot or generation ledger.
+- Submitted signed acknowledgements pass through the existing signature, monotonicity, locking, and hash-chained cursor-store path.
+- Added explicit serve/status/fetch/ack CLI paths; max request count, lifetime, cancellation, and context exit close listeners, active writers/tasks, and the owned descriptor.
+- Verification: 3,697 unit tests passed; repository-wide Ruff and focused mypy clean; no external peer, agent, paid API, or non-loopback socket ran.
+- Security boundary: the descriptor token authenticates local transport only; full witness/root verification occurs during registry import. Remote TLS, discovery, automatic signing, and a durable catch-up loop remain out-of-scope.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -443,7 +455,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add an explicit opt-in authenticated loopback gossip transport with protocol versioning, nonce replay defense, bounded requests, and deterministic shutdown before remote TLS.
+- Add a bounded resumable pull/catch-up loop with trust-ledger rollback pinning and durable audit state over the loopback transport before introducing remote mTLS.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

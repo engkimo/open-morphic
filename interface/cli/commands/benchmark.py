@@ -453,6 +453,43 @@ _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT = typer.Option(
     dir_okay=False,
     readable=True,
 )
+_CHECKPOINT_GOSSIP_DESCRIPTOR_INPUT = typer.Option(
+    ...,
+    "--descriptor",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Mode 0600 loopback gossip descriptor.",
+)
+_CHECKPOINT_GOSSIP_DESCRIPTOR_OUTPUT = typer.Option(
+    ...,
+    "--descriptor",
+    help="New mode 0600 loopback gossip descriptor path.",
+)
+_CHECKPOINT_GOSSIP_BUNDLES_INPUT = typer.Option(
+    ...,
+    "--range-bundles",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="JSON object containing pre-signed range bundles.",
+)
+_CHECKPOINT_GOSSIP_MAX_REQUESTS_OPTION = typer.Option(
+    64,
+    "--max-requests",
+    min=1,
+    max=1024,
+    help="Authenticated requests accepted before deterministic shutdown.",
+)
+_CHECKPOINT_GOSSIP_LIFETIME_OPTION = typer.Option(
+    300.0,
+    "--lifetime-seconds",
+    min=1.0,
+    max=3600.0,
+    help="Maximum listener lifetime without deterministic shutdown.",
+)
 
 
 def _write_new_evidence(path: Path, payload: str) -> None:
@@ -2054,6 +2091,182 @@ def show_agent_cli_checkpoint_cursor_status(
         console.print(
             "Verified checkpoint peer cursors "
             f"records={snapshot.cursor_count} peers={len(snapshot.positions)}"
+        )
+
+
+def _load_checkpoint_gossip_bundles(path: Path) -> tuple[Any, ...]:
+    from benchmarks.agent_cli_checkpoint_registry import SignedCheckpointRangeBundle
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or not isinstance(payload.get("bundles"), list):
+        raise ValueError("checkpoint gossip bundles must contain a JSON bundles array")
+    return tuple(
+        SignedCheckpointRangeBundle.model_validate(item)
+        for item in payload["bundles"]
+    )
+
+
+@benchmark_app.command("agent-cli-checkpoint-gossip-serve")
+def serve_agent_cli_checkpoint_gossip(
+    descriptor_path: Path = _CHECKPOINT_GOSSIP_DESCRIPTOR_OUTPUT,
+    range_bundles_path: Path = _CHECKPOINT_GOSSIP_BUNDLES_INPUT,
+    cursor_ledger_path: Path = _CHECKPOINT_CURSOR_LEDGER_OPTION,
+    registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
+    source_peer_id: str = _CHECKPOINT_SOURCE_PEER_OPTION,
+    peer_trust_path: Path | None = _OPTIONAL_CHECKPOINT_PEER_TRUST_INPUT,
+    peer_trust_ledger_path: Path | None = (
+        _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT
+    ),
+    max_requests: int = _CHECKPOINT_GOSSIP_MAX_REQUESTS_OPTION,
+    lifetime_seconds: float = _CHECKPOINT_GOSSIP_LIFETIME_OPTION,
+) -> None:
+    """Explicitly serve pre-signed checkpoint artifacts on loopback only."""
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointPeerCursorStore
+    from benchmarks.agent_cli_gossip import CheckpointGossipService
+    from benchmarks.agent_cli_gossip_transport import CheckpointGossipServer
+
+    try:
+        if not descriptor_path.parent.exists():
+            raise ValueError("checkpoint gossip descriptor parent must already exist")
+        if not cursor_ledger_path.parent.exists():
+            raise ValueError("checkpoint gossip cursor parent must already exist")
+        peer_trust = _load_checkpoint_peer_trust_source(
+            peer_trust_path,
+            peer_trust_ledger_path,
+        )
+        service = CheckpointGossipService(
+            registry_id=registry_id,
+            source_peer_id=source_peer_id,
+            range_bundles=_load_checkpoint_gossip_bundles(range_bundles_path),
+            cursor_store=CheckpointPeerCursorStore(
+                cursor_ledger_path,
+                registry_id=registry_id,
+            ),
+            peer_trust=peer_trust,
+        )
+
+        async def run_server() -> None:
+            server = CheckpointGossipServer(
+                descriptor_path=descriptor_path,
+                registry_id=registry_id,
+                source_peer_id=source_peer_id,
+                handler=service,
+                max_requests=max_requests,
+            )
+            async with server:
+                console.print(
+                    "Checkpoint gossip listening on loopback "
+                    f"descriptor={descriptor_path} max_requests={max_requests}"
+                )
+                await server.serve_until_stopped(
+                    lifetime_timeout_seconds=lifetime_seconds,
+                )
+
+        _run(run_server())
+    except (OSError, RuntimeError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint gossip server failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+
+@benchmark_app.command("agent-cli-checkpoint-gossip-status")
+def show_agent_cli_checkpoint_gossip_status(
+    descriptor_path: Path = _CHECKPOINT_GOSSIP_DESCRIPTOR_INPUT,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Query authenticated range availability without changing either peer."""
+    from benchmarks.agent_cli_gossip import fetch_checkpoint_gossip_status
+
+    try:
+        status = _run(
+            fetch_checkpoint_gossip_status(descriptor_path=descriptor_path)
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint gossip status failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+    if as_json:
+        typer.echo(json.dumps(status, ensure_ascii=False, sort_keys=True))
+    else:
+        console.print(
+            "Authenticated checkpoint gossip "
+            f"source={status['source_peer_id']} "
+            f"ranges={len(status['available_ranges'])}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-gossip-fetch")
+def fetch_agent_cli_checkpoint_gossip_range(
+    descriptor_path: Path = _CHECKPOINT_GOSSIP_DESCRIPTOR_INPUT,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    start_sequence: int = _CHECKPOINT_START_SEQUENCE_OPTION,
+    max_records: int = _CHECKPOINT_MAX_RECORDS_OPTION,
+    peer_trust_path: Path | None = _OPTIONAL_CHECKPOINT_PEER_TRUST_INPUT,
+    peer_trust_ledger_path: Path | None = (
+        _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT
+    ),
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Fetch and independently verify one already signed checkpoint range."""
+    from benchmarks.agent_cli_gossip import fetch_signed_checkpoint_range
+
+    try:
+        if not output_path.parent.exists():
+            raise ValueError("checkpoint gossip output parent must already exist")
+        if output_path.exists():
+            raise ValueError("checkpoint gossip output already exists")
+        peer_trust = _load_checkpoint_peer_trust_source(
+            peer_trust_path,
+            peer_trust_ledger_path,
+        )
+        bundle = _run(
+            fetch_signed_checkpoint_range(
+                descriptor_path=descriptor_path,
+                start_sequence=start_sequence,
+                max_records=max_records,
+                peer_trust=peer_trust,
+            )
+        )
+        _write_new_evidence(output_path, bundle.to_json())
+    except (OSError, RuntimeError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint gossip fetch failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+    if as_json:
+        typer.echo(bundle.to_json())
+    else:
+        console.print(
+            "Fetched authenticated checkpoint range "
+            f"{bundle.statement.first_sequence}->{bundle.statement.last_sequence}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-gossip-ack")
+def submit_agent_cli_checkpoint_gossip_acknowledgement(
+    descriptor_path: Path = _CHECKPOINT_GOSSIP_DESCRIPTOR_INPUT,
+    acknowledgement_path: Path = _CHECKPOINT_ACKNOWLEDGEMENT_INPUT,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Submit a signed range acknowledgement to its source peer."""
+    from benchmarks.agent_cli_checkpoint_registry import SignedCheckpointAcknowledgement
+    from benchmarks.agent_cli_gossip import submit_signed_checkpoint_acknowledgement
+
+    try:
+        acknowledgement = SignedCheckpointAcknowledgement.model_validate_json(
+            acknowledgement_path.read_text(encoding="utf-8")
+        )
+        record = _run(
+            submit_signed_checkpoint_acknowledgement(
+                descriptor_path=descriptor_path,
+                acknowledgement=acknowledgement,
+            )
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint gossip ack failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+    if as_json:
+        typer.echo(record.to_json())
+    else:
+        console.print(
+            "Submitted authenticated checkpoint acknowledgement "
+            f"sequence={record.acknowledgement.statement.acknowledged_record_sequence}"
         )
 
 
