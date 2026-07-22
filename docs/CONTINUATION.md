@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-07-22
-> Latest work: Morphic Chat CLI Phase 50 durable checkpoint registry and peer exchange
+> Latest work: Morphic Chat CLI Phase 51 authenticated range sync and peer cursors
 
 ## Latest Session Notes (2026-06-26)
 
@@ -412,6 +412,17 @@ Phase 50 implemented:
 - Verification: 3,679 unit tests passed; repository-wide Ruff clean; in-memory keys and temporary local files only.
 - Security boundary: no online listener, peer discovery, real-world identity attestation, global consensus, or atomic multi-record range sync is provided.
 
+Phase 51 implemented:
+- Added bounded signed ranges that bind base/head hashes, contiguous sequences, every record fingerprint, registry, source peer, and peer trust.
+- Range import authenticates and validates the complete range before locking, exact-matches existing overlap, and appends only a missing contiguous suffix.
+- Gap, fork, conflicting overlap, invalid signature, or invalid checkpoint chain causes zero mutation; process-level write failure truncates to the original registry size.
+- Added receiver-signed acknowledgements bound to the exact range bundle and applied record/tree head.
+- Added a mode-0600, locked, hash-chained peer cursor ledger with exact retry idempotency and monotonic positions per source/receiver pair.
+- Cursor regression, same-sequence conflicts, invalid acknowledgement signatures, fingerprint tampering, and chain tampering fail closed.
+- Added private-key-free range export/import, acknowledgement-template, cursor store, and cursor status CLI paths.
+- Verification: 3,686 unit tests passed; repository-wide Ruff clean; no external agent, peer listener, or paid API ran.
+- Security boundary: peer trust remains a single snapshot; old trust artifacts are required to replay historical acknowledgements after rotation.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -421,7 +432,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add signed contiguous range bundles, atomic multi-record import, durable peer cursors, and acknowledgements before introducing an online gossip transport.
+- Add a signed peer-trust generation ledger and rollover continuity before introducing an online gossip transport.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

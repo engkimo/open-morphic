@@ -579,6 +579,32 @@ real-world peer identity attestation, global consensus, or atomic multi-record r
 The next slice should add signed range bundles, atomic contiguous import, durable peer
 cursors, and acknowledgements before exposing an online gossip transport.
 
+## Phase 51 update
+
+Offline peer catch-up now scales beyond one-record packets. A bounded contiguous range
+statement binds the base hash, first/last sequence and record hashes, every record
+fingerprint, registry, source peer, and peer trust to one Ed25519 signature. The receiver
+authenticates that signature and validates every authority, witness, Merkle, record, and
+range-chain binding before entering its write lock.
+
+Inside the lock, existing overlap must match exactly and only the missing contiguous
+suffix is appended. Gaps and forks cause no mutation. The suffix is encoded as one batch,
+and process-level write errors truncate back to the original size before the lock is
+released; crash-created partial tails remain detectable and fail closed on replay.
+
+The receiver can sign an acknowledgement of the exact range and applied registry head.
+The source persists verified acknowledgements in a separate mode-0600, locked,
+hash-chained cursor ledger. Per source/receiver pair, cursor positions only advance;
+exact retries are idempotent, while regression, same-sequence conflicts, invalid
+signatures, and ledger tampering fail closed.
+
+Phase 51 passed 3,686 unit tests with repository-wide Ruff clean. All signatures used
+in-memory keys and all persistence used temporary local files; no agent, network peer,
+listener, or paid API ran. The remaining trust boundary precedes transport: range and ack
+artifacts bind one peer-trust snapshot, so historical cursor replay after trust rotation
+requires retaining that old artifact. The next slice should add a signed peer-trust
+generation ledger and rollover continuity before any online gossip listener.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

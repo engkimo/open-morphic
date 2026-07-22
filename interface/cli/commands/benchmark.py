@@ -377,6 +377,42 @@ _CHECKPOINT_PACKET_INPUT = typer.Option(
     dir_okay=False,
     readable=True,
 )
+_CHECKPOINT_RANGE_BUNDLE_INPUT = typer.Option(
+    ...,
+    "--range-bundle",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_CHECKPOINT_START_SEQUENCE_OPTION = typer.Option(
+    0,
+    "--start-sequence",
+    min=0,
+)
+_CHECKPOINT_MAX_RECORDS_OPTION = typer.Option(
+    100,
+    "--max-records",
+    min=1,
+    max=1000,
+)
+_CHECKPOINT_ACKNOWLEDGING_PEER_OPTION = typer.Option(
+    ...,
+    "--acknowledging-peer-id",
+)
+_CHECKPOINT_ACKNOWLEDGEMENT_INPUT = typer.Option(
+    ...,
+    "--acknowledgement",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_CHECKPOINT_CURSOR_LEDGER_OPTION = typer.Option(
+    ...,
+    "--cursor-ledger",
+    help="Peer acknowledgement cursor JSONL path.",
+)
 
 
 def _write_new_evidence(path: Path, payload: str) -> None:
@@ -1621,6 +1657,250 @@ def import_agent_cli_checkpoint_registry_packet(
         console.print(
             f"Imported checkpoint registry sequence={record.sequence} "
             f"tree_size={record.checkpoint.statement.current_tree_size}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-range-export-template")
+def export_agent_cli_checkpoint_range_template(
+    registry_path: Path = _CHECKPOINT_REGISTRY_OPTION,
+    registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
+    witness_trust_path: Path = _WITNESS_TRUST_INPUT,
+    authority_root_ledger_path: Path = _AUTHORITY_ROOT_LEDGER_INPUT,
+    peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
+    source_peer_id: str = _CHECKPOINT_SOURCE_PEER_OPTION,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    start_sequence: int = _CHECKPOINT_START_SEQUENCE_OPTION,
+    max_records: int = _CHECKPOINT_MAX_RECORDS_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Create one signing request for a bounded contiguous registry range."""
+    from benchmarks.agent_cli_checkpoint_registry import (
+        CheckpointPeerTrust,
+        CheckpointRegistryStore,
+        build_checkpoint_range_request,
+    )
+
+    try:
+        witness_trust, ledger = _load_checkpoint_registry_dependencies(
+            witness_trust_path,
+            authority_root_ledger_path,
+        )
+        peer_trust = CheckpointPeerTrust.model_validate_json(
+            peer_trust_path.read_text(encoding="utf-8")
+        )
+        snapshot = CheckpointRegistryStore(
+            registry_path,
+            registry_id=registry_id,
+        ).replay(witness_trust, ledger)
+        if start_sequence >= snapshot.record_count:
+            raise ValueError("checkpoint range start sequence does not exist")
+        records = snapshot.records[
+            start_sequence : start_sequence + max_records
+        ]
+        request = build_checkpoint_range_request(
+            records,
+            peer_trust,
+            source_peer_id=source_peer_id,
+        )
+        if not output_path.parent.exists():
+            raise ValueError("checkpoint range output parent must already exist")
+        if output_path.exists():
+            raise ValueError("checkpoint range output already exists")
+        _write_new_evidence(output_path, request.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint range export failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(request.to_json())
+    else:
+        console.print(
+            "Created checkpoint range signing request "
+            f"{request.statement.first_sequence}->"
+            f"{request.statement.last_sequence}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-range-import")
+def import_agent_cli_checkpoint_range(
+    registry_path: Path = _CHECKPOINT_REGISTRY_OPTION,
+    registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
+    range_bundle_path: Path = _CHECKPOINT_RANGE_BUNDLE_INPUT,
+    peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
+    witness_trust_path: Path = _WITNESS_TRUST_INPUT,
+    authority_root_ledger_path: Path = _AUTHORITY_ROOT_LEDGER_INPUT,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Authenticate a range and atomically append its missing suffix."""
+    from benchmarks.agent_cli_checkpoint_registry import (
+        CheckpointPeerTrust,
+        CheckpointRegistryStore,
+        SignedCheckpointRangeBundle,
+    )
+
+    try:
+        if not registry_path.parent.exists():
+            raise ValueError("checkpoint registry parent must already exist")
+        witness_trust, ledger = _load_checkpoint_registry_dependencies(
+            witness_trust_path,
+            authority_root_ledger_path,
+        )
+        peer_trust = CheckpointPeerTrust.model_validate_json(
+            peer_trust_path.read_text(encoding="utf-8")
+        )
+        bundle = SignedCheckpointRangeBundle.model_validate_json(
+            range_bundle_path.read_text(encoding="utf-8")
+        )
+        snapshot = CheckpointRegistryStore(
+            registry_path,
+            registry_id=registry_id,
+        ).import_range_bundle(bundle, peer_trust, witness_trust, ledger)
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint range import failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(snapshot.to_json())
+    else:
+        console.print(
+            "Imported checkpoint range "
+            f"records={snapshot.record_count} tree_size={snapshot.current_tree_size}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-acknowledgement-template")
+def create_agent_cli_checkpoint_acknowledgement_template(
+    registry_path: Path = _CHECKPOINT_REGISTRY_OPTION,
+    registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
+    range_bundle_path: Path = _CHECKPOINT_RANGE_BUNDLE_INPUT,
+    peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
+    witness_trust_path: Path = _WITNESS_TRUST_INPUT,
+    authority_root_ledger_path: Path = _AUTHORITY_ROOT_LEDGER_INPUT,
+    acknowledging_peer_id: str = _CHECKPOINT_ACKNOWLEDGING_PEER_OPTION,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Create a receiver signing request for an exactly applied range head."""
+    from benchmarks.agent_cli_checkpoint_registry import (
+        CheckpointPeerTrust,
+        CheckpointRegistryStore,
+        SignedCheckpointRangeBundle,
+        build_checkpoint_acknowledgement_request,
+    )
+
+    try:
+        witness_trust, ledger = _load_checkpoint_registry_dependencies(
+            witness_trust_path,
+            authority_root_ledger_path,
+        )
+        peer_trust = CheckpointPeerTrust.model_validate_json(
+            peer_trust_path.read_text(encoding="utf-8")
+        )
+        bundle = SignedCheckpointRangeBundle.model_validate_json(
+            range_bundle_path.read_text(encoding="utf-8")
+        )
+        snapshot = CheckpointRegistryStore(
+            registry_path,
+            registry_id=registry_id,
+        ).replay(witness_trust, ledger)
+        request = build_checkpoint_acknowledgement_request(
+            bundle,
+            snapshot,
+            peer_trust,
+            acknowledging_peer_id=acknowledging_peer_id,
+        )
+        if not output_path.parent.exists():
+            raise ValueError("checkpoint acknowledgement output parent must already exist")
+        if output_path.exists():
+            raise ValueError("checkpoint acknowledgement output already exists")
+        _write_new_evidence(output_path, request.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(
+            f"[red]Agent CLI checkpoint acknowledgement failed: {exc}[/red]"
+        )
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(request.to_json())
+    else:
+        console.print(
+            "Created checkpoint acknowledgement signing request "
+            f"sequence={request.statement.acknowledged_record_sequence}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-cursor-store")
+def store_agent_cli_checkpoint_cursor(
+    cursor_ledger_path: Path = _CHECKPOINT_CURSOR_LEDGER_OPTION,
+    registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
+    acknowledgement_path: Path = _CHECKPOINT_ACKNOWLEDGEMENT_INPUT,
+    peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Verify and durably store one monotonic peer acknowledgement."""
+    from benchmarks.agent_cli_checkpoint_registry import (
+        CheckpointPeerCursorStore,
+        CheckpointPeerTrust,
+        SignedCheckpointAcknowledgement,
+    )
+
+    try:
+        if not cursor_ledger_path.parent.exists():
+            raise ValueError("checkpoint cursor ledger parent must already exist")
+        peer_trust = CheckpointPeerTrust.model_validate_json(
+            peer_trust_path.read_text(encoding="utf-8")
+        )
+        acknowledgement = SignedCheckpointAcknowledgement.model_validate_json(
+            acknowledgement_path.read_text(encoding="utf-8")
+        )
+        record = CheckpointPeerCursorStore(
+            cursor_ledger_path,
+            registry_id=registry_id,
+        ).append(acknowledgement, peer_trust)
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint cursor store failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(record.to_json())
+    else:
+        console.print(
+            "Stored checkpoint peer cursor "
+            f"sequence={record.acknowledgement.statement.acknowledged_record_sequence}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-cursor-status")
+def show_agent_cli_checkpoint_cursor_status(
+    cursor_ledger_path: Path = _CHECKPOINT_CURSOR_LEDGER_OPTION,
+    registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
+    peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Replay peer acknowledgements without changing the cursor ledger."""
+    from benchmarks.agent_cli_checkpoint_registry import (
+        CheckpointPeerCursorStore,
+        CheckpointPeerTrust,
+    )
+
+    try:
+        peer_trust = CheckpointPeerTrust.model_validate_json(
+            peer_trust_path.read_text(encoding="utf-8")
+        )
+        snapshot = CheckpointPeerCursorStore(
+            cursor_ledger_path,
+            registry_id=registry_id,
+        ).replay(peer_trust)
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint cursor status failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(snapshot.to_json())
+    else:
+        console.print(
+            "Verified checkpoint peer cursors "
+            f"records={snapshot.cursor_count} peers={len(snapshot.positions)}"
         )
 
 

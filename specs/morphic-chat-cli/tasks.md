@@ -510,6 +510,19 @@
 - [x] T5009 Add offline peer-trust, registry status/store/export/import CLI paths.
 - [x] T5010 Preserve private-key-free operation and avoid external agents, services, or APIs.
 
+## Phase 51 - Authenticated Range Sync and Peer Cursors
+
+- [x] T5101 Add RED tests for signed ranges, overlap/gap handling, acknowledgements, cursors, and CLI.
+- [x] T5102 Bind a bounded contiguous record range and its base/head hashes to one peer signature.
+- [x] T5103 Authenticate and validate every range record before acquiring the destination write lock.
+- [x] T5104 Compare existing overlaps exactly and append only a contiguous missing suffix.
+- [x] T5105 Roll back process-level write failures to the original registry size before releasing the lock.
+- [x] T5106 Bind receiver acknowledgements to the exact signed range and applied registry head.
+- [x] T5107 Store verified acknowledgements in a mode 0600 hash-chained peer cursor ledger.
+- [x] T5108 Enforce monotonic per-peer cursors and reject regression, conflict, tampering, and invalid signatures.
+- [x] T5109 Add private-key-free range export/import, acknowledgement-template, and cursor CLI paths.
+- [x] T5110 Preserve single-record exchange and keep all network/paid execution disabled.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

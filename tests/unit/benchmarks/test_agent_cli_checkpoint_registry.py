@@ -18,14 +18,22 @@ from benchmarks.agent_cli_authority import (
     build_benchmark_authority,
 )
 from benchmarks.agent_cli_checkpoint_registry import (
+    CheckpointAcknowledgementSigningRequest,
     CheckpointExchangeSigningRequest,
+    CheckpointPeerCursorStore,
     CheckpointPeerKeyDeclaration,
     CheckpointPeerTrustDeclaration,
+    CheckpointRangeSigningRequest,
     CheckpointRegistryStore,
     SignedCheckpointExchangePacket,
+    build_checkpoint_acknowledgement_request,
     build_checkpoint_exchange_request,
     build_checkpoint_peer_trust,
+    build_checkpoint_range_request,
+    build_signed_checkpoint_acknowledgement,
     build_signed_checkpoint_exchange_packet,
+    build_signed_checkpoint_range_bundle,
+    verify_checkpoint_acknowledgement,
     verify_checkpoint_exchange_packet,
 )
 from benchmarks.agent_cli_comparison import SCHEMA_VERSION
@@ -638,3 +646,499 @@ def test_committed_peer_trust_template_and_cli(tmp_path: Path) -> None:
         "registry-peer-a",
         "registry-peer-b",
     }
+
+
+def _three_record_registry(tmp_path: Path, context):
+    _, ledger, _, witness_trust, _ = context
+    store = CheckpointRegistryStore(
+        tmp_path / "source-range.jsonl",
+        registry_id="production-registry",
+    )
+    records = tuple(
+        store.append(*_checkpoint(context, previous, current), witness_trust, ledger)
+        for previous, current in ((1, 2), (2, 4), (4, 6))
+    )
+    return store, records
+
+
+def _signed_range(records, peer_keys, peer_trust):
+    request = build_checkpoint_range_request(
+        records,
+        peer_trust,
+        source_peer_id="peer-1",
+    )
+    return build_signed_checkpoint_range_bundle(
+        request,
+        records,
+        key_id="peer-1-key-1",
+        signature_base64=base64.b64encode(
+            peer_keys["peer-1"].sign(request.statement.signing_bytes())
+        ).decode(),
+        peer_trust=peer_trust,
+    )
+
+
+def test_signed_range_imports_missing_suffix_and_retries_idempotently(
+    tmp_path: Path,
+) -> None:
+    context = _context()
+    _, ledger, _, witness_trust, _ = context
+    _, records = _three_record_registry(tmp_path, context)
+    peer_keys, peer_trust = _peer_trust()
+    bundle = _signed_range(records[1:], peer_keys, peer_trust)
+    target = CheckpointRegistryStore(
+        tmp_path / "target-range.jsonl",
+        registry_id="production-registry",
+    )
+    target.append(
+        records[0].consistency_proof,
+        records[0].checkpoint,
+        witness_trust,
+        ledger,
+    )
+
+    imported = target.import_range_bundle(
+        bundle,
+        peer_trust,
+        witness_trust,
+        ledger,
+    )
+    retried = target.import_range_bundle(
+        bundle,
+        peer_trust,
+        witness_trust,
+        ledger,
+    )
+
+    assert imported.record_count == 3
+    assert retried == imported
+    assert imported.records == records
+
+
+def test_range_import_rejects_gap_without_partial_write(tmp_path: Path) -> None:
+    context = _context()
+    _, ledger, _, witness_trust, _ = context
+    _, records = _three_record_registry(tmp_path, context)
+    peer_keys, peer_trust = _peer_trust()
+    gap_bundle = _signed_range(records[2:], peer_keys, peer_trust)
+    target = CheckpointRegistryStore(
+        tmp_path / "target-gap.jsonl",
+        registry_id="production-registry",
+    )
+    target.append(
+        records[0].consistency_proof,
+        records[0].checkpoint,
+        witness_trust,
+        ledger,
+    )
+
+    with pytest.raises(ValueError, match="gap"):
+        target.import_range_bundle(
+            gap_bundle,
+            peer_trust,
+            witness_trust,
+            ledger,
+        )
+
+    assert target.replay(witness_trust, ledger).records == (records[0],)
+
+
+def test_range_import_rejects_conflicting_overlap_without_partial_write(
+    tmp_path: Path,
+) -> None:
+    context = _context()
+    _, ledger, _, witness_trust, entries = context
+    _, records = _three_record_registry(tmp_path, context)
+    target = CheckpointRegistryStore(
+        tmp_path / "target-fork.jsonl",
+        registry_id="production-registry",
+    )
+    target.append(
+        records[0].consistency_proof,
+        records[0].checkpoint,
+        witness_trust,
+        ledger,
+    )
+    alternate_entries = (
+        entries[0],
+        entries[1].model_copy(update={"artifact_sha256": "f" * 64}),
+    ) + entries[2:]
+    alternate_proof, alternate_checkpoint = _checkpoint(
+        context,
+        1,
+        2,
+        entries=alternate_entries,
+    )
+    alternate_store = CheckpointRegistryStore(
+        tmp_path / "alternate-range.jsonl",
+        registry_id="production-registry",
+    )
+    alternate = alternate_store.append(
+        alternate_proof,
+        alternate_checkpoint,
+        witness_trust,
+        ledger,
+    )
+    peer_keys, peer_trust = _peer_trust()
+    fork_bundle = _signed_range((alternate,), peer_keys, peer_trust)
+
+    with pytest.raises(ValueError, match="conflicting range overlap"):
+        target.import_range_bundle(
+            fork_bundle,
+            peer_trust,
+            witness_trust,
+            ledger,
+        )
+
+    assert target.replay(witness_trust, ledger).records == (records[0],)
+
+
+def test_range_bundle_rejects_invalid_signature(tmp_path: Path) -> None:
+    context = _context()
+    _, records = _three_record_registry(tmp_path, context)
+    _, peer_trust = _peer_trust()
+    request = build_checkpoint_range_request(
+        records,
+        peer_trust,
+        source_peer_id="peer-1",
+    )
+
+    with pytest.raises(ValueError, match="range signature is invalid"):
+        build_signed_checkpoint_range_bundle(
+            request,
+            records,
+            key_id="peer-1-key-1",
+            signature_base64=base64.b64encode(bytes(64)).decode(),
+            peer_trust=peer_trust,
+        )
+
+
+def test_signed_acknowledgement_advances_durable_peer_cursor(
+    tmp_path: Path,
+) -> None:
+    context = _context()
+    _, ledger, _, witness_trust, _ = context
+    _, records = _three_record_registry(tmp_path, context)
+    peer_keys, peer_trust = _peer_trust()
+    first_bundle = _signed_range(records[:2], peer_keys, peer_trust)
+    target = CheckpointRegistryStore(
+        tmp_path / "ack-target.jsonl",
+        registry_id="production-registry",
+    )
+    first_snapshot = target.import_range_bundle(
+        first_bundle,
+        peer_trust,
+        witness_trust,
+        ledger,
+    )
+    invalid_snapshot = first_snapshot.model_copy(update={"record_count": 99})
+    with pytest.raises(ValueError, match="record_count"):
+        build_checkpoint_acknowledgement_request(
+            first_bundle,
+            invalid_snapshot,
+            peer_trust,
+            acknowledging_peer_id="peer-2",
+        )
+    request = build_checkpoint_acknowledgement_request(
+        first_bundle,
+        first_snapshot,
+        peer_trust,
+        acknowledging_peer_id="peer-2",
+    )
+    with pytest.raises(ValueError, match="acknowledgement signature is invalid"):
+        build_signed_checkpoint_acknowledgement(
+            request,
+            key_id="peer-2-key-1",
+            signature_base64=base64.b64encode(bytes(64)).decode(),
+            peer_trust=peer_trust,
+        )
+    acknowledgement = build_signed_checkpoint_acknowledgement(
+        request,
+        key_id="peer-2-key-1",
+        signature_base64=base64.b64encode(
+            peer_keys["peer-2"].sign(request.statement.signing_bytes())
+        ).decode(),
+        peer_trust=peer_trust,
+    )
+    cursors = CheckpointPeerCursorStore(
+        tmp_path / "peer-cursors.jsonl",
+        registry_id="production-registry",
+    )
+
+    first_cursor = cursors.append(acknowledgement, peer_trust)
+    retried = cursors.append(acknowledgement, peer_trust)
+    snapshot = cursors.replay(peer_trust)
+
+    assert verify_checkpoint_acknowledgement(
+        acknowledgement,
+        peer_trust,
+    ) == acknowledgement.statement
+    assert retried == first_cursor
+    assert snapshot.cursor_count == 1
+    assert snapshot.positions[0].source_peer_id == "peer-1"
+    assert snapshot.positions[0].acknowledging_peer_id == "peer-2"
+    assert snapshot.positions[0].acknowledged_record_sequence == 1
+    assert stat.S_IMODE(cursors.path.stat().st_mode) == 0o600
+
+    payload = json.loads(cursors.path.read_text(encoding="utf-8"))
+    payload["cursor_record_sha256"] = "f" * 64
+    cursors.path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="cursor record.*fingerprint"):
+        cursors.replay(peer_trust)
+
+
+def test_peer_cursor_rejects_acknowledgement_regression(tmp_path: Path) -> None:
+    context = _context()
+    _, ledger, _, witness_trust, entries = context
+    _, records = _three_record_registry(tmp_path, context)
+    peer_keys, peer_trust = _peer_trust()
+    target = CheckpointRegistryStore(
+        tmp_path / "regression-target.jsonl",
+        registry_id="production-registry",
+    )
+    full_bundle = _signed_range(records, peer_keys, peer_trust)
+    snapshot = target.import_range_bundle(
+        full_bundle,
+        peer_trust,
+        witness_trust,
+        ledger,
+    )
+
+    def acknowledgement_for(bundle, applied_snapshot):
+        request = build_checkpoint_acknowledgement_request(
+            bundle,
+            applied_snapshot,
+            peer_trust,
+            acknowledging_peer_id="peer-2",
+        )
+        return build_signed_checkpoint_acknowledgement(
+            request,
+            key_id="peer-2-key-1",
+            signature_base64=base64.b64encode(
+                peer_keys["peer-2"].sign(request.statement.signing_bytes())
+            ).decode(),
+            peer_trust=peer_trust,
+        )
+
+    cursor_store = CheckpointPeerCursorStore(
+        tmp_path / "regression-cursors.jsonl",
+        registry_id="production-registry",
+    )
+    cursor_store.append(acknowledgement_for(full_bundle, snapshot), peer_trust)
+    older_bundle = _signed_range(records[:2], peer_keys, peer_trust)
+    older_target = CheckpointRegistryStore(
+        tmp_path / "older-regression-target.jsonl",
+        registry_id="production-registry",
+    )
+    older_snapshot = older_target.import_range_bundle(
+        older_bundle,
+        peer_trust,
+        witness_trust,
+        ledger,
+    )
+
+    with pytest.raises(ValueError, match="cursor regression"):
+        cursor_store.append(
+            acknowledgement_for(older_bundle, older_snapshot),
+            peer_trust,
+        )
+
+    alternate_entries = (
+        entries[0],
+        entries[1].model_copy(update={"artifact_sha256": "e" * 64}),
+    ) + entries[2:]
+    alternate_store = CheckpointRegistryStore(
+        tmp_path / "conflicting-cursor-source.jsonl",
+        registry_id="production-registry",
+    )
+    alternate_records = tuple(
+        alternate_store.append(
+            *_checkpoint(
+                context,
+                previous,
+                current,
+                entries=alternate_entries,
+            ),
+            witness_trust,
+            ledger,
+        )
+        for previous, current in ((1, 2), (2, 4), (4, 6))
+    )
+    alternate_bundle = _signed_range(alternate_records, peer_keys, peer_trust)
+    alternate_target = CheckpointRegistryStore(
+        tmp_path / "conflicting-cursor-target.jsonl",
+        registry_id="production-registry",
+    )
+    alternate_snapshot = alternate_target.import_range_bundle(
+        alternate_bundle,
+        peer_trust,
+        witness_trust,
+        ledger,
+    )
+
+    with pytest.raises(ValueError, match="conflicting peer cursor"):
+        cursor_store.append(
+            acknowledgement_for(alternate_bundle, alternate_snapshot),
+            peer_trust,
+        )
+
+
+def test_checkpoint_range_and_cursor_cli_workflow(tmp_path: Path) -> None:
+    context = _context()
+    _, ledger, _, witness_trust, _ = context
+    source, records = _three_record_registry(tmp_path, context)
+    peer_keys, peer_trust = _peer_trust()
+    witness_trust_path = tmp_path / "range-witness-trust.json"
+    ledger_path = tmp_path / "range-ledger.json"
+    peer_trust_path = tmp_path / "range-peer-trust.json"
+    witness_trust_path.write_text(witness_trust.to_json(), encoding="utf-8")
+    ledger_path.write_text(ledger.to_json(), encoding="utf-8")
+    peer_trust_path.write_text(peer_trust.to_json(), encoding="utf-8")
+    range_request_path = tmp_path / "range-request.json"
+
+    exported = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "agent-cli-checkpoint-range-export-template",
+            "--registry",
+            str(source.path),
+            "--registry-id",
+            "production-registry",
+            "--witness-trust",
+            str(witness_trust_path),
+            "--authority-root-ledger",
+            str(ledger_path),
+            "--peer-trust",
+            str(peer_trust_path),
+            "--source-peer-id",
+            "peer-1",
+            "--start-sequence",
+            "0",
+            "--max-records",
+            "3",
+            "--output",
+            str(range_request_path),
+            "--json",
+        ],
+    )
+    assert exported.exit_code == 0, exported.output
+    range_request = CheckpointRangeSigningRequest.model_validate_json(
+        range_request_path.read_text(encoding="utf-8")
+    )
+    bundle = build_signed_checkpoint_range_bundle(
+        range_request,
+        records,
+        key_id="peer-1-key-1",
+        signature_base64=base64.b64encode(
+            peer_keys["peer-1"].sign(range_request.statement.signing_bytes())
+        ).decode(),
+        peer_trust=peer_trust,
+    )
+    bundle_path = tmp_path / "signed-range.json"
+    bundle_path.write_text(bundle.to_json(), encoding="utf-8")
+    target_path = tmp_path / "cli-range-target.jsonl"
+
+    imported = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "agent-cli-checkpoint-range-import",
+            "--registry",
+            str(target_path),
+            "--registry-id",
+            "production-registry",
+            "--range-bundle",
+            str(bundle_path),
+            "--peer-trust",
+            str(peer_trust_path),
+            "--witness-trust",
+            str(witness_trust_path),
+            "--authority-root-ledger",
+            str(ledger_path),
+            "--json",
+        ],
+    )
+    assert imported.exit_code == 0, imported.output
+    assert json.loads(imported.output)["record_count"] == 3
+
+    acknowledgement_request_path = tmp_path / "ack-request.json"
+    acknowledgement_template = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "agent-cli-checkpoint-acknowledgement-template",
+            "--registry",
+            str(target_path),
+            "--registry-id",
+            "production-registry",
+            "--range-bundle",
+            str(bundle_path),
+            "--peer-trust",
+            str(peer_trust_path),
+            "--witness-trust",
+            str(witness_trust_path),
+            "--authority-root-ledger",
+            str(ledger_path),
+            "--acknowledging-peer-id",
+            "peer-2",
+            "--output",
+            str(acknowledgement_request_path),
+            "--json",
+        ],
+    )
+    assert acknowledgement_template.exit_code == 0, acknowledgement_template.output
+    acknowledgement_request = (
+        CheckpointAcknowledgementSigningRequest.model_validate_json(
+            acknowledgement_request_path.read_text(encoding="utf-8")
+        )
+    )
+    acknowledgement = build_signed_checkpoint_acknowledgement(
+        acknowledgement_request,
+        key_id="peer-2-key-1",
+        signature_base64=base64.b64encode(
+            peer_keys["peer-2"].sign(
+                acknowledgement_request.statement.signing_bytes()
+            )
+        ).decode(),
+        peer_trust=peer_trust,
+    )
+    acknowledgement_path = tmp_path / "signed-acknowledgement.json"
+    acknowledgement_path.write_text(acknowledgement.to_json(), encoding="utf-8")
+    cursor_path = tmp_path / "cli-peer-cursors.jsonl"
+
+    stored = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "agent-cli-checkpoint-cursor-store",
+            "--cursor-ledger",
+            str(cursor_path),
+            "--registry-id",
+            "production-registry",
+            "--acknowledgement",
+            str(acknowledgement_path),
+            "--peer-trust",
+            str(peer_trust_path),
+            "--json",
+        ],
+    )
+    assert stored.exit_code == 0, stored.output
+    cursor_status = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "agent-cli-checkpoint-cursor-status",
+            "--cursor-ledger",
+            str(cursor_path),
+            "--registry-id",
+            "production-registry",
+            "--peer-trust",
+            str(peer_trust_path),
+            "--json",
+        ],
+    )
+    assert cursor_status.exit_code == 0, cursor_status.output
+    status_payload = json.loads(cursor_status.output)
+    assert status_payload["cursor_count"] == 1
+    assert status_payload["positions"][0]["acknowledged_record_sequence"] == 2

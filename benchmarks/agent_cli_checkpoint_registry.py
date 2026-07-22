@@ -101,6 +101,36 @@ class CheckpointRegistrySnapshot(_FrozenModel):
     current_tree_size: int | None = Field(default=None, ge=1)
     current_root_sha256: str | None = Field(default=None, pattern=_SHA256_PATTERN)
 
+    @model_validator(mode="after")
+    def validate_snapshot(self) -> CheckpointRegistrySnapshot:
+        if self.schema_version != SCHEMA_VERSION:
+            raise ValueError(f"schema_version must be {SCHEMA_VERSION}")
+        _validate_identifier(self.registry_id, label="registry_id")
+        if self.record_count != len(self.records):
+            raise ValueError("checkpoint snapshot record_count does not match records")
+        for sequence, record in enumerate(self.records):
+            if record.registry_id != self.registry_id or record.sequence != sequence:
+                raise ValueError("checkpoint snapshot record sequence is invalid")
+            expected_previous = (
+                self.records[sequence - 1].record_sha256 if sequence else None
+            )
+            if record.previous_record_sha256 != expected_previous:
+                raise ValueError("checkpoint snapshot hash chain is invalid")
+        last = self.records[-1] if self.records else None
+        expected = (
+            last.record_sha256 if last else None,
+            last.checkpoint.statement.current_tree_size if last else None,
+            last.checkpoint.statement.current_root_sha256 if last else None,
+        )
+        actual = (
+            self.head_record_sha256,
+            self.current_tree_size,
+            self.current_root_sha256,
+        )
+        if actual != expected:
+            raise ValueError("checkpoint snapshot head metadata does not match records")
+        return self
+
     def to_json(self) -> str:
         return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
 
@@ -454,6 +484,496 @@ def verify_checkpoint_exchange_packet(
     return packet.record
 
 
+class CheckpointRangeStatement(_FrozenModel):
+    schema_version: int
+    registry_id: str = Field(min_length=1, max_length=200)
+    source_peer_id: str = Field(min_length=1, max_length=200)
+    peer_trust_sha256: str = Field(pattern=_SHA256_PATTERN)
+    first_sequence: int = Field(ge=0)
+    last_sequence: int = Field(ge=0)
+    base_previous_record_sha256: str | None = Field(
+        default=None,
+        pattern=_SHA256_PATTERN,
+    )
+    first_record_sha256: str = Field(pattern=_SHA256_PATTERN)
+    last_record_sha256: str = Field(pattern=_SHA256_PATTERN)
+    records_sha256: str = Field(pattern=_SHA256_PATTERN)
+    range_sha256: str = Field(pattern=_SHA256_PATTERN)
+
+    @model_validator(mode="after")
+    def validate_statement(self) -> CheckpointRangeStatement:
+        if self.schema_version != SCHEMA_VERSION:
+            raise ValueError(f"schema_version must be {SCHEMA_VERSION}")
+        _validate_identifier(self.registry_id, label="registry_id")
+        _validate_identifier(self.source_peer_id, label="source_peer_id")
+        if self.first_sequence > self.last_sequence:
+            raise ValueError("checkpoint range sequence is inverted")
+        if self.range_sha256 != _canonical_sha256(self._binding_payload()):
+            raise ValueError("checkpoint range fingerprint does not match statement")
+        return self
+
+    def _binding_payload(self) -> dict[str, object]:
+        return self.model_dump(mode="json", exclude={"range_sha256"})
+
+    def signing_bytes(self) -> bytes:
+        return _canonical_json(self.model_dump(mode="json")).encode()
+
+
+class CheckpointRangeSigningRequest(_FrozenModel):
+    source_peer_id: str
+    eligible_key_ids: tuple[str, ...] = Field(min_length=1)
+    statement: CheckpointRangeStatement
+    signing_payload_base64: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_request(self) -> CheckpointRangeSigningRequest:
+        if self.source_peer_id != self.statement.source_peer_id:
+            raise ValueError("checkpoint range request source peer does not match statement")
+        if tuple(sorted(set(self.eligible_key_ids))) != self.eligible_key_ids:
+            raise ValueError("eligible range key IDs must be sorted and unique")
+        expected = self.statement.signing_bytes()
+        decoded = _decode_base64(
+            self.signing_payload_base64,
+            label="checkpoint range signing payload",
+            length=len(expected),
+        )
+        if decoded != expected:
+            raise ValueError("checkpoint range payload does not match statement")
+        return self
+
+    def to_json(self) -> str:
+        return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
+
+
+class SignedCheckpointRangeBundle(_FrozenModel):
+    schema_version: int
+    statement: CheckpointRangeStatement
+    records: tuple[CheckpointRegistryRecord, ...] = Field(min_length=1)
+    key_id: str = Field(min_length=1, max_length=200)
+    signature_base64: str = Field(min_length=1)
+    range_bundle_sha256: str = Field(pattern=_SHA256_PATTERN)
+
+    @model_validator(mode="after")
+    def validate_bundle(self) -> SignedCheckpointRangeBundle:
+        if self.schema_version != SCHEMA_VERSION:
+            raise ValueError(f"schema_version must be {SCHEMA_VERSION}")
+        _validate_identifier(self.key_id, label="key_id")
+        _decode_base64(
+            self.signature_base64,
+            label="checkpoint range signature",
+            length=64,
+        )
+        if self.range_bundle_sha256 != _canonical_sha256(self._binding_payload()):
+            raise ValueError("checkpoint range bundle fingerprint does not match")
+        return self
+
+    def _binding_payload(self) -> dict[str, object]:
+        return self.model_dump(mode="json", exclude={"range_bundle_sha256"})
+
+    def to_json(self) -> str:
+        return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
+
+
+def _validate_range_records(
+    records: tuple[CheckpointRegistryRecord, ...],
+) -> tuple[CheckpointRegistryRecord, ...]:
+    if not records:
+        raise ValueError("checkpoint range requires at least one record")
+    normalized = tuple(
+        CheckpointRegistryRecord.model_validate(record.model_dump(mode="json"))
+        for record in records
+    )
+    registry_id = normalized[0].registry_id
+    for index, record in enumerate(normalized):
+        if record.registry_id != registry_id:
+            raise ValueError("checkpoint range records use different registries")
+        if record.sequence != normalized[0].sequence + index:
+            raise ValueError("checkpoint range sequence is not contiguous")
+        if index and record.previous_record_sha256 != normalized[index - 1].record_sha256:
+            raise ValueError("checkpoint range hash chain is invalid")
+    return normalized
+
+
+def _checkpoint_range_statement(
+    records: tuple[CheckpointRegistryRecord, ...],
+    trust: CheckpointPeerTrust,
+    *,
+    source_peer_id: str,
+) -> CheckpointRangeStatement:
+    records = _validate_range_records(records)
+    trust = CheckpointPeerTrust.model_validate(trust.model_dump(mode="json"))
+    if records[0].registry_id != trust.registry_id:
+        raise ValueError("checkpoint range does not match peer trust registry")
+    active = tuple(
+        key
+        for key in trust.keys
+        if key.peer_id == source_peer_id and key.status == "active"
+    )
+    if not active:
+        raise ValueError("source peer has no active trusted key")
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "registry_id": records[0].registry_id,
+        "source_peer_id": source_peer_id,
+        "peer_trust_sha256": trust.peer_trust_sha256,
+        "first_sequence": records[0].sequence,
+        "last_sequence": records[-1].sequence,
+        "base_previous_record_sha256": records[0].previous_record_sha256,
+        "first_record_sha256": records[0].record_sha256,
+        "last_record_sha256": records[-1].record_sha256,
+        "records_sha256": _canonical_sha256(
+            [record.record_sha256 for record in records]
+        ),
+    }
+    return CheckpointRangeStatement(
+        **payload,
+        range_sha256=_canonical_sha256(payload),
+    )
+
+
+def build_checkpoint_range_request(
+    records: tuple[CheckpointRegistryRecord, ...],
+    trust: CheckpointPeerTrust,
+    *,
+    source_peer_id: str,
+) -> CheckpointRangeSigningRequest:
+    """Create one detached signing request for a contiguous record range."""
+    statement = _checkpoint_range_statement(
+        records,
+        trust,
+        source_peer_id=source_peer_id,
+    )
+    eligible = tuple(
+        sorted(
+            key.key_id
+            for key in trust.keys
+            if key.peer_id == source_peer_id and key.status == "active"
+        )
+    )
+    return CheckpointRangeSigningRequest(
+        source_peer_id=source_peer_id,
+        eligible_key_ids=eligible,
+        statement=statement,
+        signing_payload_base64=base64.b64encode(statement.signing_bytes()).decode(),
+    )
+
+
+def build_signed_checkpoint_range_bundle(
+    request: CheckpointRangeSigningRequest,
+    records: tuple[CheckpointRegistryRecord, ...],
+    *,
+    key_id: str,
+    signature_base64: str,
+    peer_trust: CheckpointPeerTrust,
+) -> SignedCheckpointRangeBundle:
+    """Bind one peer signature to an exact contiguous record range."""
+    expected = build_checkpoint_range_request(
+        records,
+        peer_trust,
+        source_peer_id=request.source_peer_id,
+    )
+    if request != expected:
+        raise ValueError("checkpoint range request does not match records")
+    if key_id not in request.eligible_key_ids:
+        raise ValueError("checkpoint range signature does not use an active trusted key")
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "statement": request.statement.model_dump(mode="json"),
+        "records": [record.model_dump(mode="json") for record in records],
+        "key_id": key_id,
+        "signature_base64": signature_base64,
+    }
+    bundle = SignedCheckpointRangeBundle(
+        **payload,
+        range_bundle_sha256=_canonical_sha256(payload),
+    )
+    verify_checkpoint_range_bundle(bundle, peer_trust)
+    return bundle
+
+
+def verify_checkpoint_range_bundle(
+    bundle: SignedCheckpointRangeBundle,
+    trust: CheckpointPeerTrust,
+) -> tuple[CheckpointRegistryRecord, ...]:
+    """Authenticate a peer and every exact record in one contiguous range."""
+    bundle = SignedCheckpointRangeBundle.model_validate(bundle.model_dump(mode="json"))
+    trust = CheckpointPeerTrust.model_validate(trust.model_dump(mode="json"))
+    key = next(
+        (
+            candidate
+            for candidate in trust.keys
+            if candidate.peer_id == bundle.statement.source_peer_id
+            and candidate.key_id == bundle.key_id
+            and candidate.status == "active"
+        ),
+        None,
+    )
+    if key is None:
+        raise ValueError("checkpoint range signature does not use an active trusted key")
+    if bundle.statement.peer_trust_sha256 != trust.peer_trust_sha256:
+        raise ValueError("checkpoint range does not match peer trust")
+    expected = _checkpoint_range_statement(
+        bundle.records,
+        trust,
+        source_peer_id=bundle.statement.source_peer_id,
+    )
+    if bundle.statement != expected:
+        raise ValueError("checkpoint range statement does not match records")
+    try:
+        Ed25519PublicKey.from_public_bytes(
+            _decode_base64(key.public_key_base64, label="peer public key", length=32)
+        ).verify(
+            _decode_base64(
+                bundle.signature_base64,
+                label="checkpoint range signature",
+                length=64,
+            ),
+            bundle.statement.signing_bytes(),
+        )
+    except (InvalidSignature, ValueError) as exc:
+        raise ValueError("checkpoint range signature is invalid") from exc
+    return bundle.records
+
+
+class CheckpointAcknowledgementStatement(_FrozenModel):
+    schema_version: int
+    registry_id: str = Field(min_length=1, max_length=200)
+    source_peer_id: str = Field(min_length=1, max_length=200)
+    acknowledging_peer_id: str = Field(min_length=1, max_length=200)
+    peer_trust_sha256: str = Field(pattern=_SHA256_PATTERN)
+    range_bundle_sha256: str = Field(pattern=_SHA256_PATTERN)
+    first_sequence: int = Field(ge=0)
+    acknowledged_record_sequence: int = Field(ge=0)
+    acknowledged_record_sha256: str = Field(pattern=_SHA256_PATTERN)
+    acknowledged_tree_size: int = Field(ge=2)
+    acknowledged_root_sha256: str = Field(pattern=_SHA256_PATTERN)
+    acknowledgement_sha256: str = Field(pattern=_SHA256_PATTERN)
+
+    @model_validator(mode="after")
+    def validate_statement(self) -> CheckpointAcknowledgementStatement:
+        if self.schema_version != SCHEMA_VERSION:
+            raise ValueError(f"schema_version must be {SCHEMA_VERSION}")
+        _validate_identifier(self.registry_id, label="registry_id")
+        _validate_identifier(self.source_peer_id, label="source_peer_id")
+        _validate_identifier(
+            self.acknowledging_peer_id,
+            label="acknowledging_peer_id",
+        )
+        if self.source_peer_id == self.acknowledging_peer_id:
+            raise ValueError("checkpoint acknowledgement requires a distinct peer")
+        if self.first_sequence > self.acknowledged_record_sequence:
+            raise ValueError("checkpoint acknowledgement range is inverted")
+        if self.acknowledgement_sha256 != _canonical_sha256(
+            self._binding_payload()
+        ):
+            raise ValueError("checkpoint acknowledgement fingerprint does not match")
+        return self
+
+    def _binding_payload(self) -> dict[str, object]:
+        return self.model_dump(mode="json", exclude={"acknowledgement_sha256"})
+
+    def signing_bytes(self) -> bytes:
+        return _canonical_json(self.model_dump(mode="json")).encode()
+
+
+class CheckpointAcknowledgementSigningRequest(_FrozenModel):
+    acknowledging_peer_id: str
+    eligible_key_ids: tuple[str, ...] = Field(min_length=1)
+    statement: CheckpointAcknowledgementStatement
+    signing_payload_base64: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_request(self) -> CheckpointAcknowledgementSigningRequest:
+        if self.acknowledging_peer_id != self.statement.acknowledging_peer_id:
+            raise ValueError(
+                "checkpoint acknowledgement request peer does not match statement"
+            )
+        if tuple(sorted(set(self.eligible_key_ids))) != self.eligible_key_ids:
+            raise ValueError("eligible acknowledgement key IDs must be sorted and unique")
+        expected = self.statement.signing_bytes()
+        decoded = _decode_base64(
+            self.signing_payload_base64,
+            label="checkpoint acknowledgement signing payload",
+            length=len(expected),
+        )
+        if decoded != expected:
+            raise ValueError("checkpoint acknowledgement payload does not match statement")
+        return self
+
+    def to_json(self) -> str:
+        return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
+
+
+class SignedCheckpointAcknowledgement(_FrozenModel):
+    schema_version: int
+    statement: CheckpointAcknowledgementStatement
+    key_id: str = Field(min_length=1, max_length=200)
+    signature_base64: str = Field(min_length=1)
+    signed_acknowledgement_sha256: str = Field(pattern=_SHA256_PATTERN)
+
+    @model_validator(mode="after")
+    def validate_acknowledgement(self) -> SignedCheckpointAcknowledgement:
+        if self.schema_version != SCHEMA_VERSION:
+            raise ValueError(f"schema_version must be {SCHEMA_VERSION}")
+        _validate_identifier(self.key_id, label="key_id")
+        _decode_base64(
+            self.signature_base64,
+            label="checkpoint acknowledgement signature",
+            length=64,
+        )
+        if self.signed_acknowledgement_sha256 != _canonical_sha256(
+            self._binding_payload()
+        ):
+            raise ValueError("signed checkpoint acknowledgement fingerprint does not match")
+        return self
+
+    def _binding_payload(self) -> dict[str, object]:
+        return self.model_dump(
+            mode="json",
+            exclude={"signed_acknowledgement_sha256"},
+        )
+
+    def to_json(self) -> str:
+        return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
+
+
+def build_checkpoint_acknowledgement_request(
+    bundle: SignedCheckpointRangeBundle,
+    snapshot: CheckpointRegistrySnapshot,
+    trust: CheckpointPeerTrust,
+    *,
+    acknowledging_peer_id: str,
+) -> CheckpointAcknowledgementSigningRequest:
+    """Confirm that an authenticated range is the receiver's exact current head."""
+    records = verify_checkpoint_range_bundle(bundle, trust)
+    snapshot = CheckpointRegistrySnapshot.model_validate(
+        snapshot.model_dump(mode="json")
+    )
+    if snapshot.registry_id != bundle.statement.registry_id:
+        raise ValueError("checkpoint acknowledgement snapshot uses another registry")
+    if snapshot.head_record_sha256 != records[-1].record_sha256:
+        raise ValueError("checkpoint acknowledgement range is not the registry head")
+    for record in records:
+        if record.sequence >= len(snapshot.records) or snapshot.records[record.sequence] != record:
+            raise ValueError("checkpoint acknowledgement range is not applied exactly")
+    eligible = tuple(
+        sorted(
+            key.key_id
+            for key in trust.keys
+            if key.peer_id == acknowledging_peer_id and key.status == "active"
+        )
+    )
+    if not eligible:
+        raise ValueError("acknowledging peer has no active trusted key")
+    last = records[-1]
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "registry_id": bundle.statement.registry_id,
+        "source_peer_id": bundle.statement.source_peer_id,
+        "acknowledging_peer_id": acknowledging_peer_id,
+        "peer_trust_sha256": trust.peer_trust_sha256,
+        "range_bundle_sha256": bundle.range_bundle_sha256,
+        "first_sequence": records[0].sequence,
+        "acknowledged_record_sequence": last.sequence,
+        "acknowledged_record_sha256": last.record_sha256,
+        "acknowledged_tree_size": last.checkpoint.statement.current_tree_size,
+        "acknowledged_root_sha256": last.checkpoint.statement.current_root_sha256,
+    }
+    statement = CheckpointAcknowledgementStatement(
+        **payload,
+        acknowledgement_sha256=_canonical_sha256(payload),
+    )
+    return CheckpointAcknowledgementSigningRequest(
+        acknowledging_peer_id=acknowledging_peer_id,
+        eligible_key_ids=eligible,
+        statement=statement,
+        signing_payload_base64=base64.b64encode(statement.signing_bytes()).decode(),
+    )
+
+
+def build_signed_checkpoint_acknowledgement(
+    request: CheckpointAcknowledgementSigningRequest,
+    *,
+    key_id: str,
+    signature_base64: str,
+    peer_trust: CheckpointPeerTrust,
+) -> SignedCheckpointAcknowledgement:
+    """Attach and verify one receiver signature over an applied range head."""
+    request = CheckpointAcknowledgementSigningRequest.model_validate(
+        request.model_dump(mode="json")
+    )
+    peer_trust = CheckpointPeerTrust.model_validate(
+        peer_trust.model_dump(mode="json")
+    )
+    if request.statement.peer_trust_sha256 != peer_trust.peer_trust_sha256:
+        raise ValueError("checkpoint acknowledgement does not match peer trust")
+    active = {
+        key.key_id
+        for key in peer_trust.keys
+        if key.peer_id == request.acknowledging_peer_id and key.status == "active"
+    }
+    if request.eligible_key_ids != tuple(sorted(active)) or key_id not in active:
+        raise ValueError(
+            "checkpoint acknowledgement signature does not use an active trusted key"
+        )
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "statement": request.statement.model_dump(mode="json"),
+        "key_id": key_id,
+        "signature_base64": signature_base64,
+    }
+    acknowledgement = SignedCheckpointAcknowledgement(
+        **payload,
+        signed_acknowledgement_sha256=_canonical_sha256(payload),
+    )
+    verify_checkpoint_acknowledgement(acknowledgement, peer_trust)
+    return acknowledgement
+
+
+def verify_checkpoint_acknowledgement(
+    acknowledgement: SignedCheckpointAcknowledgement,
+    trust: CheckpointPeerTrust,
+) -> CheckpointAcknowledgementStatement:
+    """Authenticate a receiver's exact range/head acknowledgement."""
+    acknowledgement = SignedCheckpointAcknowledgement.model_validate(
+        acknowledgement.model_dump(mode="json")
+    )
+    trust = CheckpointPeerTrust.model_validate(trust.model_dump(mode="json"))
+    statement = acknowledgement.statement
+    key = next(
+        (
+            candidate
+            for candidate in trust.keys
+            if candidate.peer_id == statement.acknowledging_peer_id
+            and candidate.key_id == acknowledgement.key_id
+            and candidate.status == "active"
+        ),
+        None,
+    )
+    if key is None:
+        raise ValueError(
+            "checkpoint acknowledgement signature does not use an active trusted key"
+        )
+    if statement.peer_trust_sha256 != trust.peer_trust_sha256:
+        raise ValueError("checkpoint acknowledgement does not match peer trust")
+    if statement.registry_id != trust.registry_id:
+        raise ValueError("checkpoint acknowledgement does not match trust registry")
+    try:
+        Ed25519PublicKey.from_public_bytes(
+            _decode_base64(key.public_key_base64, label="peer public key", length=32)
+        ).verify(
+            _decode_base64(
+                acknowledgement.signature_base64,
+                label="checkpoint acknowledgement signature",
+                length=64,
+            ),
+            statement.signing_bytes(),
+        )
+    except (InvalidSignature, ValueError) as exc:
+        raise ValueError("checkpoint acknowledgement signature is invalid") from exc
+    return statement
+
+
 def _build_registry_record(
     *,
     registry_id: str,
@@ -495,6 +1015,25 @@ def _validate_record_bindings(
         ledger,
         record.checkpoint,
     )
+
+
+def _validate_registry_pair(
+    previous: CheckpointRegistryRecord,
+    current: CheckpointRegistryRecord,
+) -> None:
+    detect_witness_checkpoint_conflict(previous.checkpoint, current.checkpoint)
+    old_current = previous.checkpoint.statement
+    new_previous = current.consistency_proof.previous_tree_head.statement
+    if (
+        new_previous.tree_size,
+        new_previous.root_sha256,
+        new_previous.tree_head_sha256,
+    ) != (
+        old_current.current_tree_size,
+        old_current.current_root_sha256,
+        old_current.current_tree_head_sha256,
+    ):
+        raise ValueError("checkpoint registry consistency chain is invalid")
 
 
 class CheckpointRegistryStore:
@@ -567,22 +1106,24 @@ class CheckpointRegistryStore:
                 raise ValueError("checkpoint registry hash chain is invalid")
             _validate_record_bindings(record, witness_trust, ledger)
             if records:
-                previous = records[-1]
-                detect_witness_checkpoint_conflict(previous.checkpoint, record.checkpoint)
-                old_current = previous.checkpoint.statement
-                new_previous = record.consistency_proof.previous_tree_head.statement
-                if (
-                    new_previous.tree_size,
-                    new_previous.root_sha256,
-                    new_previous.tree_head_sha256,
-                ) != (
-                    old_current.current_tree_size,
-                    old_current.current_root_sha256,
-                    old_current.current_tree_head_sha256,
-                ):
-                    raise ValueError("checkpoint registry consistency chain is invalid")
+                _validate_registry_pair(records[-1], record)
             records.append(record)
         return tuple(records)
+
+    @staticmethod
+    def _append_bytes(descriptor: int, encoded: bytes, *, original_size: int) -> None:
+        position = 0
+        try:
+            while position < len(encoded):
+                written = os.write(descriptor, encoded[position:])
+                if written <= 0:
+                    raise OSError("checkpoint registry append made no progress")
+                position += written
+            os.fsync(descriptor)
+        except BaseException:
+            os.ftruncate(descriptor, original_size)
+            os.fsync(descriptor)
+            raise
 
     def _snapshot(
         self,
@@ -676,10 +1217,11 @@ class CheckpointRegistryStore:
                 if expected_record != record:
                     raise ValueError("peer checkpoint record does not match local registry")
             encoded = (record.to_json() + "\n").encode()
-            position = 0
-            while position < len(encoded):
-                position += os.write(descriptor, encoded[position:])
-            os.fsync(descriptor)
+            self._append_bytes(
+                descriptor,
+                encoded,
+                original_size=os.fstat(descriptor).st_size,
+            )
             return record
         finally:
             os.close(descriptor)
@@ -702,3 +1244,309 @@ class CheckpointRegistryStore:
             ledger,
             expected_record=record,
         )
+
+    def import_range_bundle(
+        self,
+        bundle: SignedCheckpointRangeBundle,
+        peer_trust: CheckpointPeerTrust,
+        witness_trust: TransparencyWitnessTrust,
+        ledger: SignedAuthorityRootLedger,
+    ) -> CheckpointRegistrySnapshot:
+        """Atomically append the missing suffix of one authenticated range."""
+        incoming = verify_checkpoint_range_bundle(bundle, peer_trust)
+        if peer_trust.registry_id != self.registry_id:
+            raise ValueError("peer trust registry_id does not match store")
+        for index, record in enumerate(incoming):
+            _validate_record_bindings(record, witness_trust, ledger)
+            if index:
+                _validate_registry_pair(incoming[index - 1], record)
+
+        descriptor = self._open_for_append()
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            existing = self._read_records(descriptor, witness_trust, ledger)
+            first_sequence = incoming[0].sequence
+            if first_sequence > len(existing):
+                raise ValueError("checkpoint range would create a registry gap")
+
+            overlap_end = min(len(existing), incoming[-1].sequence + 1)
+            for sequence in range(first_sequence, overlap_end):
+                received = incoming[sequence - first_sequence]
+                if existing[sequence] != received:
+                    raise ValueError("conflicting range overlap detected")
+
+            suffix_offset = max(0, len(existing) - first_sequence)
+            suffix = incoming[suffix_offset:]
+            if not suffix:
+                return self._snapshot(existing)
+            if suffix[0].sequence != len(existing):
+                raise ValueError("checkpoint range would create a registry gap")
+            expected_previous = existing[-1].record_sha256 if existing else None
+            if suffix[0].previous_record_sha256 != expected_previous:
+                raise ValueError("checkpoint range does not extend the registry head")
+            if existing:
+                _validate_registry_pair(existing[-1], suffix[0])
+
+            encoded = "".join(record.to_json() + "\n" for record in suffix).encode()
+            original_size = os.fstat(descriptor).st_size
+            self._append_bytes(
+                descriptor,
+                encoded,
+                original_size=original_size,
+            )
+            return self._snapshot(existing + suffix)
+        finally:
+            os.close(descriptor)
+
+
+class CheckpointPeerCursorRecord(_FrozenModel):
+    schema_version: int
+    registry_id: str = Field(min_length=1, max_length=200)
+    cursor_sequence: int = Field(ge=0)
+    previous_cursor_record_sha256: str | None = Field(
+        default=None,
+        pattern=_SHA256_PATTERN,
+    )
+    acknowledgement: SignedCheckpointAcknowledgement
+    cursor_record_sha256: str = Field(pattern=_SHA256_PATTERN)
+
+    @model_validator(mode="after")
+    def validate_record(self) -> CheckpointPeerCursorRecord:
+        if self.schema_version != SCHEMA_VERSION:
+            raise ValueError(f"schema_version must be {SCHEMA_VERSION}")
+        _validate_identifier(self.registry_id, label="registry_id")
+        if self.cursor_record_sha256 != _canonical_sha256(self._binding_payload()):
+            raise ValueError("peer cursor record fingerprint does not match")
+        return self
+
+    def _binding_payload(self) -> dict[str, object]:
+        return self.model_dump(mode="json", exclude={"cursor_record_sha256"})
+
+    def to_json(self) -> str:
+        return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
+
+
+class CheckpointPeerCursorPosition(_FrozenModel):
+    source_peer_id: str
+    acknowledging_peer_id: str
+    acknowledged_record_sequence: int = Field(ge=0)
+    acknowledged_record_sha256: str = Field(pattern=_SHA256_PATTERN)
+    range_bundle_sha256: str = Field(pattern=_SHA256_PATTERN)
+    signed_acknowledgement_sha256: str = Field(pattern=_SHA256_PATTERN)
+
+
+class CheckpointPeerCursorSnapshot(_FrozenModel):
+    schema_version: int
+    registry_id: str
+    cursors: tuple[CheckpointPeerCursorRecord, ...]
+    cursor_count: int = Field(ge=0)
+    head_cursor_record_sha256: str | None = Field(
+        default=None,
+        pattern=_SHA256_PATTERN,
+    )
+    positions: tuple[CheckpointPeerCursorPosition, ...]
+
+    def to_json(self) -> str:
+        return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
+
+
+def _cursor_pair(
+    statement: CheckpointAcknowledgementStatement,
+) -> tuple[str, str]:
+    return statement.source_peer_id, statement.acknowledging_peer_id
+
+
+def _cursor_position(
+    acknowledgement: SignedCheckpointAcknowledgement,
+) -> CheckpointPeerCursorPosition:
+    statement = acknowledgement.statement
+    return CheckpointPeerCursorPosition(
+        source_peer_id=statement.source_peer_id,
+        acknowledging_peer_id=statement.acknowledging_peer_id,
+        acknowledged_record_sequence=statement.acknowledged_record_sequence,
+        acknowledged_record_sha256=statement.acknowledged_record_sha256,
+        range_bundle_sha256=statement.range_bundle_sha256,
+        signed_acknowledgement_sha256=(
+            acknowledgement.signed_acknowledgement_sha256
+        ),
+    )
+
+
+def _validate_cursor_advance(
+    current: CheckpointPeerCursorPosition | None,
+    acknowledgement: SignedCheckpointAcknowledgement,
+) -> None:
+    if current is None:
+        return
+    statement = acknowledgement.statement
+    if statement.acknowledged_record_sequence < current.acknowledged_record_sequence:
+        raise ValueError("peer cursor regression is not allowed")
+    if statement.acknowledged_record_sequence == current.acknowledged_record_sequence:
+        if statement.acknowledged_record_sha256 != current.acknowledged_record_sha256:
+            raise ValueError("conflicting peer cursor acknowledgement detected")
+        raise ValueError("duplicate peer cursor acknowledgement record")
+
+
+class CheckpointPeerCursorStore:
+    """Append-only acknowledgement ledger with monotonic per-peer cursors."""
+
+    def __init__(self, path: str | Path, *, registry_id: str) -> None:
+        self.path = Path(path)
+        _validate_identifier(registry_id, label="registry_id")
+        self.registry_id = registry_id
+
+    def _open_for_append(self) -> int:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor = os.open(
+            self.path,
+            os.O_CREAT
+            | os.O_RDWR
+            | os.O_APPEND
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            os.close(descriptor)
+            raise ValueError("peer cursor ledger must be a regular file")
+        os.fchmod(descriptor, 0o600)
+        return descriptor
+
+    def _open_for_replay(self) -> int | None:
+        try:
+            descriptor = os.open(
+                self.path,
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+            )
+        except FileNotFoundError:
+            return None
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            os.close(descriptor)
+            raise ValueError("peer cursor ledger must be a regular file")
+        return descriptor
+
+    def _read_records(
+        self,
+        descriptor: int,
+        trust: CheckpointPeerTrust,
+    ) -> tuple[CheckpointPeerCursorRecord, ...]:
+        size = os.fstat(descriptor).st_size
+        raw = os.pread(descriptor, size, 0)
+        if not raw:
+            return ()
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("peer cursor ledger must be UTF-8 JSONL") from exc
+        if not text.endswith("\n"):
+            raise ValueError("peer cursor ledger has a truncated final record")
+        records: list[CheckpointPeerCursorRecord] = []
+        positions: dict[tuple[str, str], CheckpointPeerCursorPosition] = {}
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            try:
+                record = CheckpointPeerCursorRecord.model_validate_json(line)
+            except ValueError as exc:
+                raise ValueError(
+                    f"invalid peer cursor record at line {line_number}: {exc}"
+                ) from exc
+            if record.registry_id != self.registry_id:
+                raise ValueError("peer cursor registry_id does not match store")
+            if record.cursor_sequence != len(records):
+                raise ValueError("peer cursor sequence is not contiguous")
+            expected_previous = records[-1].cursor_record_sha256 if records else None
+            if record.previous_cursor_record_sha256 != expected_previous:
+                raise ValueError("peer cursor hash chain is invalid")
+            statement = verify_checkpoint_acknowledgement(
+                record.acknowledgement,
+                trust,
+            )
+            pair = _cursor_pair(statement)
+            _validate_cursor_advance(positions.get(pair), record.acknowledgement)
+            positions[pair] = _cursor_position(record.acknowledgement)
+            records.append(record)
+        return tuple(records)
+
+    def _snapshot(
+        self,
+        records: tuple[CheckpointPeerCursorRecord, ...],
+    ) -> CheckpointPeerCursorSnapshot:
+        latest: dict[tuple[str, str], CheckpointPeerCursorPosition] = {}
+        for record in records:
+            latest[_cursor_pair(record.acknowledgement.statement)] = _cursor_position(
+                record.acknowledgement
+            )
+        return CheckpointPeerCursorSnapshot(
+            schema_version=SCHEMA_VERSION,
+            registry_id=self.registry_id,
+            cursors=records,
+            cursor_count=len(records),
+            head_cursor_record_sha256=(
+                records[-1].cursor_record_sha256 if records else None
+            ),
+            positions=tuple(latest[pair] for pair in sorted(latest)),
+        )
+
+    def replay(
+        self,
+        trust: CheckpointPeerTrust,
+    ) -> CheckpointPeerCursorSnapshot:
+        """Replay every acknowledgement signature and monotonic cursor transition."""
+        descriptor = self._open_for_replay()
+        if descriptor is None:
+            return self._snapshot(())
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_SH)
+            return self._snapshot(self._read_records(descriptor, trust))
+        finally:
+            os.close(descriptor)
+
+    def append(
+        self,
+        acknowledgement: SignedCheckpointAcknowledgement,
+        trust: CheckpointPeerTrust,
+    ) -> CheckpointPeerCursorRecord:
+        """Verify and append one monotonic peer acknowledgement."""
+        statement = verify_checkpoint_acknowledgement(acknowledgement, trust)
+        if statement.registry_id != self.registry_id:
+            raise ValueError("checkpoint acknowledgement registry_id does not match store")
+        descriptor = self._open_for_append()
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            records = self._read_records(descriptor, trust)
+            for record in reversed(records):
+                if (
+                    record.acknowledgement.signed_acknowledgement_sha256
+                    == acknowledgement.signed_acknowledgement_sha256
+                ):
+                    return record
+            pair = _cursor_pair(statement)
+            current = next(
+                (
+                    _cursor_position(record.acknowledgement)
+                    for record in reversed(records)
+                    if _cursor_pair(record.acknowledgement.statement) == pair
+                ),
+                None,
+            )
+            _validate_cursor_advance(current, acknowledgement)
+            payload = {
+                "schema_version": SCHEMA_VERSION,
+                "registry_id": self.registry_id,
+                "cursor_sequence": len(records),
+                "previous_cursor_record_sha256": (
+                    records[-1].cursor_record_sha256 if records else None
+                ),
+                "acknowledgement": acknowledgement.model_dump(mode="json"),
+            }
+            record = CheckpointPeerCursorRecord(
+                **payload,
+                cursor_record_sha256=_canonical_sha256(payload),
+            )
+            encoded = (record.to_json() + "\n").encode()
+            CheckpointRegistryStore._append_bytes(
+                descriptor,
+                encoded,
+                original_size=os.fstat(descriptor).st_size,
+            )
+            return record
+        finally:
+            os.close(descriptor)

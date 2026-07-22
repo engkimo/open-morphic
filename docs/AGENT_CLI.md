@@ -805,6 +805,83 @@ morphic benchmark agent-cli-checkpoint-registry-import \
 real-world peer identity、global consensusは提供しない。1 packetは1 exact recordを運ぶため、遅れたpeerの
 multi-record catch-upは現時点ではsequence順にpacketを交換する。private keyは全CLIで読み込まない。
 
+### Authenticated range sync and durable peer cursors
+
+Phase 51では、最大1000 recordまでのbounded contiguous rangeを1つのpeer署名でcatch-upできる。
+`--max-records`のdefaultは100、`--start-sequence`のdefaultは0である。
+
+```bash
+morphic benchmark agent-cli-checkpoint-range-export-template \
+  --registry checkpoint-registry.jsonl \
+  --registry-id example-org-checkpoints \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger signed-authority-root-ledger.json \
+  --peer-trust checkpoint-peer-trust.json \
+  --source-peer-id registry-peer-a \
+  --start-sequence 0 \
+  --max-records 100 \
+  --output checkpoint-range-request.json
+```
+
+range statementはbase previous-record hash、first/last sequenceとrecord hash、全record fingerprint列、
+registry ID、peer trustをbindする。eligible peer keyで外部署名してrecordsとともに
+`SignedCheckpointRangeBundle`へ格納する。受信側は次のcommandでimportする。
+
+```bash
+morphic benchmark agent-cli-checkpoint-range-import \
+  --registry peer-checkpoint-registry.jsonl \
+  --registry-id example-org-checkpoints \
+  --range-bundle signed-checkpoint-range.json \
+  --peer-trust checkpoint-peer-trust.json \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger signed-authority-root-ledger.json
+```
+
+importはpeer signatureとrange内部chain、全recordのauthority/witness/Merkle bindingを先に検証する。
+exclusive lock取得後に既存sequenceとのoverlapをexact record単位で比較し、missing contiguous suffixだけを
+1 batchでappend + `fsync`する。gap、conflicting overlap、stale/forked proofは書込み前に拒否する。
+process中のwrite failureはoriginal file sizeへtruncateする。process crash/power lossによるpartial tailは
+次回replayでfail closedになるが、filesystem-level transactionとは表現しない。
+
+rangeを現在headまで適用した受信peerはack signing requestを生成する。
+
+```bash
+morphic benchmark agent-cli-checkpoint-acknowledgement-template \
+  --registry peer-checkpoint-registry.jsonl \
+  --registry-id example-org-checkpoints \
+  --range-bundle signed-checkpoint-range.json \
+  --peer-trust checkpoint-peer-trust.json \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger signed-authority-root-ledger.json \
+  --acknowledging-peer-id registry-peer-b \
+  --output checkpoint-acknowledgement-request.json
+```
+
+ackはsource/receiver peer、exact range bundle、applied record sequence/hash、tree size/rootをbindする。
+receiverが外部署名した`SignedCheckpointAcknowledgement`をsourceへ返し、sourceはcursor ledgerへ保存する。
+
+```bash
+morphic benchmark agent-cli-checkpoint-cursor-store \
+  --cursor-ledger checkpoint-peer-cursors.jsonl \
+  --registry-id example-org-checkpoints \
+  --acknowledgement signed-checkpoint-acknowledgement.json \
+  --peer-trust checkpoint-peer-trust.json
+
+morphic benchmark agent-cli-checkpoint-cursor-status \
+  --cursor-ledger checkpoint-peer-cursors.jsonl \
+  --registry-id example-org-checkpoints \
+  --peer-trust checkpoint-peer-trust.json \
+  --json
+```
+
+cursor ledgerもmode 0600、file lock、hash chain、`O_APPEND`、`fsync`を使用する。source/receiver pairごとに
+acknowledged sequenceは単調増加し、exact retryだけ冪等化する。regression、同一sequenceの別record、
+signature/fingerprint/hash-chain tamperingは拒否する。
+
+現時点ではartifactを運ぶnetwork listener、peer discovery、global consensusを提供しない。またackは
+exact peer-trust fingerprintへbindされるため、trust更新後にhistorical cursorをreplayするには旧trust
+artifactが必要である。次のtrust sliceではpeer-trust generation ledgerとsigned rollover continuityを追加する。
+
 ---
 
 ## Agent CLI Router
