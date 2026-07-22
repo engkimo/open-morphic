@@ -1,0 +1,27 @@
+{
+  "keys": [
+    {
+      "algorithm": "ed25519",
+      "key_id": "registry-peer-a-key-1",
+      "peer_id": "registry-peer-a",
+      "public_key_base64": "QwRr/kCSs+lJlOraFdzCDYqqB7ZY/TlU644O+4vcpd4=",
+      "status": "active"
+    },
+    {
+      "algorithm": "ed25519",
+      "key_id": "registry-peer-b-key-1",
+      "peer_id": "registry-peer-b",
+      "public_key_base64": "TtMvY7818O7vyyXyii4fvchzrig1ZxsMlGD18S5FVqg=",
+      "status": "revoked"
+    },
+    {
+      "algorithm": "ed25519",
+      "key_id": "registry-peer-b-key-2",
+      "peer_id": "registry-peer-b",
+      "public_key_base64": "iEuIV/TqoWE8YVBNs01L6vNGUXoOMd483dTZtCAdnQs=",
+      "status": "active"
+    }
+  ],
+  "registry_id": "example-org-checkpoints",
+  "schema_version": 1
+}

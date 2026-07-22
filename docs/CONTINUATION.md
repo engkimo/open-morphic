@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
-> Last updated: 2026-07-21
-> Latest work: Morphic Chat CLI Phase 49 compact consistency and witness checkpoints
+> Last updated: 2026-07-22
+> Latest work: Morphic Chat CLI Phase 50 durable checkpoint registry and peer exchange
 
 ## Latest Session Notes (2026-06-26)
 
@@ -402,6 +402,16 @@ Phase 49 implemented:
 - Verification: 3,664 unit tests passed; repository-wide Ruff clean; RFC seven-leaf proof shape, all prefix sizes through twelve leaves, and the committed witness template were exercised.
 - Security boundary: witnesses exchange artifacts out-of-band; Morphic does not yet run a gossip network, attest real-world witness identities, or persist a global checkpoint registry.
 
+Phase 50 implemented:
+- Added a deterministic append-only checkpoint registry whose records bind sequence, prior-record hash, root ledger, witness trust, compact proof, and signed checkpoint.
+- Every replay verifies the complete record hash chain plus authority, consistency-proof, and witness signatures; sequence gaps, altered records/links, partial tails, stale extensions, and witnessed split views fail closed.
+- Registry append uses an exclusive file lock, `O_APPEND`, `fsync`, regular-file checks, and mode 0600; concurrent duplicate appends and authenticated retry are idempotent.
+- Added self-fingerprinted Ed25519 peer trust with globally unique key IDs, active/revoked rotation, and at least one active key per peer.
+- Signed exchange packets bind the source peer to one exact registry record/checkpoint/root; import authenticates the peer before using the same locked conflict-safe append path.
+- Added private-key-free peer-trust, registry status/store/export-template/import CLI paths and a parseable peer-rotation example.
+- Verification: 3,679 unit tests passed; repository-wide Ruff clean; in-memory keys and temporary local files only.
+- Security boundary: no online listener, peer discovery, real-world identity attestation, global consensus, or atomic multi-record range sync is provided.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -411,7 +421,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add authority root rotation/revocation and an append-only transparency proof, then optionally project the same identity contract onto OIDC/Sigstore without weakening offline verification.
+- Add signed contiguous range bundles, atomic multi-record import, durable peer cursors, and acknowledgements before introducing an online gossip transport.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

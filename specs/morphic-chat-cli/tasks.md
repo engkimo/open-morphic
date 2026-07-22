@@ -497,6 +497,19 @@
 - [x] T4909 Add offline consistency, witness-trust, and checkpoint-template CLI paths.
 - [x] T4910 Preserve Phase 48 inclusion-only and all earlier campaign lifecycle behavior.
 
+## Phase 50 - Durable Checkpoint Registry and Authenticated Peer Exchange
+
+- [x] T5001 Add RED tests for registry replay, concurrent append, peer packets, and CLI.
+- [x] T5002 Store deterministic self-fingerprinted checkpoint records in hash-chained JSONL.
+- [x] T5003 Replay and verify every sequence, record hash, proof, signature, and trust binding.
+- [x] T5004 Serialize append with file locking, `O_APPEND`, `fsync`, and mode 0600.
+- [x] T5005 Reject stale extensions, sequence gaps, chain tampering, and witnessed split views.
+- [x] T5006 Normalize self-fingerprinted peer Ed25519 trust with active/revoked key rotation.
+- [x] T5007 Sign exact registry records and authenticate the source peer before import.
+- [x] T5008 Make duplicate local append and authenticated packet retry idempotent.
+- [x] T5009 Add offline peer-trust, registry status/store/export/import CLI paths.
+- [x] T5010 Preserve private-key-free operation and avoid external agents, services, or APIs.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

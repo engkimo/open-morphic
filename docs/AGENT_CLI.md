@@ -741,9 +741,69 @@ signaturesを検証後だけ`finalized`になる。witness inputを指定しな�
 inclusion verificationでfinalizeできる。同じlog IDとtree sizeに異なるwitnessed rootが存在した場合は
 split viewとして拒否する。
 
-これはartifact-level witness contractであり、witness間のnetwork gossip、real-world witness identity、
-global checkpoint registry、durable exchange serviceを提供するものではない。運用者はcheckpoint artifactを
-独立経路で交換・保存する必要がある。
+### Durable checkpoint registry and authenticated peer exchange
+
+Phase 50では、検証済みwitness checkpointをlocal append-only registryへ保存する。recordはregistry ID、
+sequence、previous record SHA-256、root ledger、witness trust、consistency proof、checkpointをbindして
+self-fingerprintする。storeはappend前とstatus replay時に全recordを再検証する。
+
+```bash
+morphic benchmark agent-cli-checkpoint-registry-store \
+  --registry checkpoint-registry.jsonl \
+  --registry-id example-org-checkpoints \
+  --consistency-proof consistency-proof.json \
+  --witness-checkpoint signed-witness-checkpoint.json \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger signed-authority-root-ledger.json
+
+morphic benchmark agent-cli-checkpoint-registry-status \
+  --registry checkpoint-registry.jsonl \
+  --registry-id example-org-checkpoints \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger signed-authority-root-ledger.json \
+  --json
+```
+
+appendはprocess間file lock、`O_APPEND`、`fsync`、mode 0600を使用する。同じproof/checkpointのretryは
+同じrecordを返す。sequence gap、previous hash改ざん、record改ざん、truncated tail、現在headへ接続しない
+stale proof、同じsizeの異なるwitnessed rootは書き込み前または次回replayで拒否する。statusはregistryが
+存在しない場合もfileを作らない。
+
+peer公開鍵はexampleをdeployment固有の鍵へ置き換え、active rotation keyをpeerごとに最低1つ残す。
+
+```bash
+morphic benchmark agent-cli-checkpoint-peer-trust \
+  --declaration benchmarks/templates/agent_cli_checkpoint_peer_trust.example.json \
+  --output checkpoint-peer-trust.json
+
+morphic benchmark agent-cli-checkpoint-registry-export-template \
+  --registry checkpoint-registry.jsonl \
+  --registry-id example-org-checkpoints \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger signed-authority-root-ledger.json \
+  --peer-trust checkpoint-peer-trust.json \
+  --source-peer-id registry-peer-a \
+  --output checkpoint-exchange-request.json
+```
+
+exportはlatest recordをdefaultとし、`--sequence`で過去recordを選べる。requestのcanonical signing bytesを
+eligible Ed25519 keyで外部署名し、exact recordと署名を`SignedCheckpointExchangePacket`へ格納する。
+受信側はsource peer/keyのactive trust、packet/record fingerprint、署名、registry IDを検証してから、local
+headに対する同じlocked append経路でimportする。
+
+```bash
+morphic benchmark agent-cli-checkpoint-registry-import \
+  --registry peer-checkpoint-registry.jsonl \
+  --registry-id example-org-checkpoints \
+  --packet signed-checkpoint-packet.json \
+  --peer-trust checkpoint-peer-trust.json \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger signed-authority-root-ledger.json
+```
+
+これはtransport-neutralなlocal persistence/exchange contractであり、online listener、peer discovery、
+real-world peer identity、global consensusは提供しない。1 packetは1 exact recordを運ぶため、遅れたpeerの
+multi-record catch-upは現時点ではsequence順にpacketを交換する。private keyは全CLIで読み込まない。
 
 ---
 

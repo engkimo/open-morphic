@@ -340,6 +340,43 @@ _TRANSPARENCY_CONSISTENCY_INPUT = typer.Option(
     dir_okay=False,
     readable=True,
 )
+_CHECKPOINT_REGISTRY_OPTION = typer.Option(
+    ...,
+    "--registry",
+    help="Checkpoint registry JSONL path.",
+)
+_CHECKPOINT_REGISTRY_ID_OPTION = typer.Option(..., "--registry-id")
+_CHECKPOINT_PEER_TRUST_INPUT = typer.Option(
+    ...,
+    "--peer-trust",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_CHECKPOINT_SOURCE_PEER_OPTION = typer.Option(..., "--source-peer-id")
+_CHECKPOINT_SEQUENCE_OPTION = typer.Option(
+    None,
+    "--sequence",
+    min=0,
+    help="Registry sequence to export; defaults to the latest record.",
+)
+_WITNESS_CHECKPOINT_INPUT = typer.Option(
+    ...,
+    "--witness-checkpoint",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
+_CHECKPOINT_PACKET_INPUT = typer.Option(
+    ...,
+    "--packet",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+)
 
 
 def _write_new_evidence(path: Path, payload: str) -> None:
@@ -1352,6 +1389,239 @@ def create_agent_cli_witness_checkpoint_template(
         typer.echo(template.to_json())
     else:
         console.print(f"Created {len(template.requests)} witness signing requests")
+
+
+@benchmark_app.command("agent-cli-checkpoint-peer-trust")
+def create_agent_cli_checkpoint_peer_trust(
+    declaration_path: Path = _WITNESS_TRUST_DECLARATION_INPUT,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Normalize public keys trusted to exchange checkpoint records."""
+    from benchmarks.agent_cli_checkpoint_registry import (
+        CheckpointPeerTrustDeclaration,
+        build_checkpoint_peer_trust,
+    )
+
+    try:
+        trust = build_checkpoint_peer_trust(
+            CheckpointPeerTrustDeclaration.model_validate_json(
+                declaration_path.read_text(encoding="utf-8")
+            )
+        )
+        if not output_path.parent.exists():
+            raise ValueError("checkpoint peer trust output parent must already exist")
+        if output_path.exists():
+            raise ValueError("checkpoint peer trust output already exists")
+        _write_new_evidence(output_path, trust.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint peer trust failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(trust.to_json())
+    else:
+        console.print(f"Created checkpoint peer trust with {len(trust.keys)} keys")
+
+
+def _load_checkpoint_registry_dependencies(
+    witness_trust_path: Path,
+    authority_root_ledger_path: Path,
+) -> tuple[Any, Any]:
+    from benchmarks.agent_cli_transparency import SignedAuthorityRootLedger
+    from benchmarks.agent_cli_witness import TransparencyWitnessTrust
+
+    witness_trust = TransparencyWitnessTrust.model_validate_json(
+        witness_trust_path.read_text(encoding="utf-8")
+    )
+    ledger = SignedAuthorityRootLedger.model_validate_json(
+        authority_root_ledger_path.read_text(encoding="utf-8")
+    )
+    return witness_trust, ledger
+
+
+@benchmark_app.command("agent-cli-checkpoint-registry-status")
+def show_agent_cli_checkpoint_registry_status(
+    registry_path: Path = _CHECKPOINT_REGISTRY_OPTION,
+    registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
+    witness_trust_path: Path = _WITNESS_TRUST_INPUT,
+    authority_root_ledger_path: Path = _AUTHORITY_ROOT_LEDGER_INPUT,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Replay and verify a local registry without changing it."""
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointRegistryStore
+
+    try:
+        witness_trust, ledger = _load_checkpoint_registry_dependencies(
+            witness_trust_path,
+            authority_root_ledger_path,
+        )
+        snapshot = CheckpointRegistryStore(
+            registry_path,
+            registry_id=registry_id,
+        ).replay(witness_trust, ledger)
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint registry status failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(snapshot.to_json())
+    else:
+        console.print(
+            "Verified checkpoint registry "
+            f"records={snapshot.record_count} tree_size={snapshot.current_tree_size}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-registry-store")
+def store_agent_cli_checkpoint_registry_record(
+    registry_path: Path = _CHECKPOINT_REGISTRY_OPTION,
+    registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
+    consistency_proof_path: Path = _TRANSPARENCY_CONSISTENCY_INPUT,
+    witness_checkpoint_path: Path = _WITNESS_CHECKPOINT_INPUT,
+    witness_trust_path: Path = _WITNESS_TRUST_INPUT,
+    authority_root_ledger_path: Path = _AUTHORITY_ROOT_LEDGER_INPUT,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Verify and durably append one witnessed checkpoint."""
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointRegistryStore
+    from benchmarks.agent_cli_transparency import TransparencyConsistencyProof
+    from benchmarks.agent_cli_witness import SignedWitnessCheckpoint
+
+    try:
+        if not registry_path.parent.exists():
+            raise ValueError("checkpoint registry parent must already exist")
+        witness_trust, ledger = _load_checkpoint_registry_dependencies(
+            witness_trust_path,
+            authority_root_ledger_path,
+        )
+        proof = TransparencyConsistencyProof.model_validate_json(
+            consistency_proof_path.read_text(encoding="utf-8")
+        )
+        checkpoint = SignedWitnessCheckpoint.model_validate_json(
+            witness_checkpoint_path.read_text(encoding="utf-8")
+        )
+        record = CheckpointRegistryStore(
+            registry_path,
+            registry_id=registry_id,
+        ).append(proof, checkpoint, witness_trust, ledger)
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint registry store failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(record.to_json())
+    else:
+        console.print(
+            f"Stored checkpoint registry sequence={record.sequence} "
+            f"tree_size={record.checkpoint.statement.current_tree_size}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-registry-export-template")
+def export_agent_cli_checkpoint_registry_template(
+    registry_path: Path = _CHECKPOINT_REGISTRY_OPTION,
+    registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
+    witness_trust_path: Path = _WITNESS_TRUST_INPUT,
+    authority_root_ledger_path: Path = _AUTHORITY_ROOT_LEDGER_INPUT,
+    peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
+    source_peer_id: str = _CHECKPOINT_SOURCE_PEER_OPTION,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    sequence: int | None = _CHECKPOINT_SEQUENCE_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Create a detached peer-signing request for one exact registry record."""
+    from benchmarks.agent_cli_checkpoint_registry import (
+        CheckpointPeerTrust,
+        CheckpointRegistryStore,
+        build_checkpoint_exchange_request,
+    )
+
+    try:
+        witness_trust, ledger = _load_checkpoint_registry_dependencies(
+            witness_trust_path,
+            authority_root_ledger_path,
+        )
+        peer_trust = CheckpointPeerTrust.model_validate_json(
+            peer_trust_path.read_text(encoding="utf-8")
+        )
+        snapshot = CheckpointRegistryStore(
+            registry_path,
+            registry_id=registry_id,
+        ).replay(witness_trust, ledger)
+        if not snapshot.records:
+            raise ValueError("checkpoint registry has no records to export")
+        selected_sequence = len(snapshot.records) - 1 if sequence is None else sequence
+        if selected_sequence >= len(snapshot.records):
+            raise ValueError("checkpoint registry sequence does not exist")
+        request = build_checkpoint_exchange_request(
+            snapshot.records[selected_sequence],
+            peer_trust,
+            source_peer_id=source_peer_id,
+        )
+        if not output_path.parent.exists():
+            raise ValueError("checkpoint export output parent must already exist")
+        if output_path.exists():
+            raise ValueError("checkpoint export output already exists")
+        _write_new_evidence(output_path, request.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint registry export failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(request.to_json())
+    else:
+        console.print(
+            "Created checkpoint exchange signing request "
+            f"sequence={request.statement.record_sequence}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-registry-import")
+def import_agent_cli_checkpoint_registry_packet(
+    registry_path: Path = _CHECKPOINT_REGISTRY_OPTION,
+    registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
+    packet_path: Path = _CHECKPOINT_PACKET_INPUT,
+    peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
+    witness_trust_path: Path = _WITNESS_TRUST_INPUT,
+    authority_root_ledger_path: Path = _AUTHORITY_ROOT_LEDGER_INPUT,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Authenticate and atomically import one peer checkpoint packet."""
+    from benchmarks.agent_cli_checkpoint_registry import (
+        CheckpointPeerTrust,
+        CheckpointRegistryStore,
+        SignedCheckpointExchangePacket,
+    )
+
+    try:
+        if not registry_path.parent.exists():
+            raise ValueError("checkpoint registry parent must already exist")
+        witness_trust, ledger = _load_checkpoint_registry_dependencies(
+            witness_trust_path,
+            authority_root_ledger_path,
+        )
+        peer_trust = CheckpointPeerTrust.model_validate_json(
+            peer_trust_path.read_text(encoding="utf-8")
+        )
+        packet = SignedCheckpointExchangePacket.model_validate_json(
+            packet_path.read_text(encoding="utf-8")
+        )
+        record = CheckpointRegistryStore(
+            registry_path,
+            registry_id=registry_id,
+        ).import_packet(packet, peer_trust, witness_trust, ledger)
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint registry import failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(record.to_json())
+    else:
+        console.print(
+            f"Imported checkpoint registry sequence={record.sequence} "
+            f"tree_size={record.checkpoint.statement.current_tree_size}"
+        )
 
 
 @benchmark_app.command("agent-cli-campaign-envelope-template")

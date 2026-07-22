@@ -552,6 +552,33 @@ a gossip network, attest real-world witness identity, or maintain a durable glob
 checkpoint registry. The next slice should add an append-only local checkpoint store and
 authenticated peer exchange before considering an online witness service.
 
+## Phase 50 update
+
+Witnessed checkpoints now have a durable local trust boundary. Each registry record binds
+its registry ID, contiguous sequence, previous-record SHA-256, authority-root ledger,
+witness trust, compact consistency proof, and signed checkpoint into a deterministic
+self-fingerprint. Replay revalidates the entire hash chain plus every authority, Merkle,
+and witness signature. A partial tail, sequence gap, altered fingerprint or link, stale
+extension, and same-size different-root split view all fail closed.
+
+Append uses an exclusive file lock, `O_APPEND`, `fsync`, regular-file enforcement, and
+mode 0600. Duplicate local appends and authenticated packet retries are idempotent, while
+concurrent duplicate writers converge on one record. Read-only status does not create a
+missing registry.
+
+Peer exchange remains transport-neutral and private-key-free. A self-fingerprinted peer
+trust artifact supports globally unique Ed25519 key IDs plus active/revoked rotation, with
+at least one active key per declared peer. Detached signatures bind the source peer and
+exact registry record, checkpoint, log root, and tree size. Import authenticates the peer
+before entering the same locked append and conflict checks used for local storage.
+
+Phase 50 passed 3,679 unit tests with repository-wide Ruff clean. Tests used in-memory
+keys and local temporary files only; no external log, witness, peer service, agent, or paid
+API ran. The remaining boundary is transport and catch-up: there is no listener, discovery,
+real-world peer identity attestation, global consensus, or atomic multi-record range sync.
+The next slice should add signed range bundles, atomic contiguous import, durable peer
+cursors, and acknowledgements before exposing an online gossip transport.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:
