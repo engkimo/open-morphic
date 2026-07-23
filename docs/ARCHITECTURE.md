@@ -564,8 +564,8 @@ morphic-agent/
 │   ├── agent_cli_checkpoint_registry.py # Registry + signed peer range/cursor sync
 │   ├── agent_cli_peer_trust_ledger.py # Majority-signed peer key rollover continuity
 │   ├── agent_cli_gossip_transport.py # Bounded challenge-authenticated loopback protocol
-│   ├── agent_cli_gossip.py        # Signed range fetch + acknowledgement gossip service
-│   ├── agent_cli_gossip_sync.py   # Trust-pinned resumable pull loop + durable audit
+│   ├── agent_cli_gossip.py        # Transport-neutral signed range/ack operations + service
+│   ├── agent_cli_gossip_sync.py   # Sender-injected trust-pinned pull loop + durable audit
 │   ├── agent_cli_gossip_tls_identity.py # Peer-signed leaf/SPKI enrollment + rotation pins
 │   ├── agent_cli_gossip_tls_transport.py # TLS 1.3 mutual-auth remote gossip protocol
 │   ├── agent_cli_campaign.py       # Read-only lifecycle status across artifacts

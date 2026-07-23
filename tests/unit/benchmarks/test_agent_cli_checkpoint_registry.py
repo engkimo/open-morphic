@@ -1335,11 +1335,31 @@ async def test_authenticated_gossip_fetches_range_and_submits_acknowledgement(
         handler=service,
         max_requests=8,
     ):
+        transport_operations: list[str] = []
+
+        async def recording_sender(
+            *,
+            operation: str,
+            payload: dict[str, object],
+        ) -> dict[str, object]:
+            transport_operations.append(operation)
+            return await send_checkpoint_gossip_request(
+                descriptor_path=descriptor_path,
+                operation=operation,
+                payload=payload,
+            )
+
+        status = await fetch_checkpoint_gossip_status(
+            descriptor_path=descriptor_path,
+            request_sender=recording_sender,
+        )
+        assert status["source_peer_id"] == "peer-1"
         fetched = await fetch_signed_checkpoint_range(
             descriptor_path=descriptor_path,
             start_sequence=0,
             max_records=3,
             peer_trust=peer_trust,
+            request_sender=recording_sender,
         )
         assert fetched == bundle
 
@@ -1379,10 +1399,16 @@ async def test_authenticated_gossip_fetches_range_and_submits_acknowledgement(
         cursor_record = await submit_signed_checkpoint_acknowledgement(
             descriptor_path=descriptor_path,
             acknowledgement=acknowledgement,
+            request_sender=recording_sender,
         )
 
         assert cursor_record.acknowledgement == acknowledgement
         assert cursor_store.replay(peer_trust).cursor_count == 1
+        assert transport_operations == [
+            "status",
+            "fetch_range",
+            "submit_acknowledgement",
+        ]
 
         fetched_path = tmp_path / "gossip-range.json"
         cli_fetch = await asyncio.to_thread(
@@ -1584,7 +1610,7 @@ async def test_gossip_sync_resumes_retries_pins_trust_and_rejects_tampering(
         registry_id="production-registry",
         source_peer_id="peer-1",
         handler=service,
-        max_requests=15,
+        max_requests=32,
     ):
         first = await run_checkpoint_gossip_sync(
             descriptor_path=descriptor_path,
@@ -1605,6 +1631,50 @@ async def test_gossip_sync_resumes_retries_pins_trust_and_rejects_tampering(
             policy.policy_sha256
         )
         assert target.replay(witness_trust, authority_ledger).records == records
+
+        injected_target = CheckpointRegistryStore(
+            tmp_path / "sync-injected-target.jsonl",
+            registry_id="production-registry",
+        )
+        injected_audit = CheckpointGossipSyncAuditStore(
+            tmp_path / "sync-injected-audit.jsonl",
+            registry_id="production-registry",
+            source_peer_id="peer-1",
+        )
+        injected_operations: list[str] = []
+
+        async def injected_sender(
+            *,
+            operation: str,
+            payload: dict[str, object],
+        ) -> dict[str, object]:
+            injected_operations.append(operation)
+            return await send_checkpoint_gossip_request(
+                descriptor_path=descriptor_path,
+                operation=operation,
+                payload=payload,
+            )
+
+        injected = await run_checkpoint_gossip_sync(
+            descriptor_path=descriptor_path,
+            registry_store=injected_target,
+            audit_store=injected_audit,
+            peer_trust_ledger=trust_ledger_v1,
+            witness_trust=witness_trust,
+            authority_root_ledger=authority_ledger,
+            policy=policy,
+            request_sender=injected_sender,
+        )
+
+        assert injected.stop_reason == "up_to_date"
+        assert injected.records_imported == 3
+        assert injected_operations == [
+            "status",
+            "fetch_range",
+            "status",
+            "fetch_range",
+            "status",
+        ]
 
         from benchmarks import agent_cli_gossip_sync as sync_module
 

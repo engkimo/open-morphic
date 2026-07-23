@@ -494,6 +494,62 @@ class CheckpointMutualTlsGossipServer:
             self.descriptor_path.unlink(missing_ok=True)
 
 
+class CheckpointMutualTlsGossipClient:
+    """Reusable request sender with one pinned mutual-TLS configuration."""
+
+    def __init__(
+        self,
+        *,
+        descriptor_path: Path,
+        client_peer_id: str,
+        tls_trust: CheckpointPeerTlsTrust,
+        certificate_path: Path,
+        private_key_path: Path,
+        certificate_authority_path: Path,
+        server_hostname: str,
+        allowed_server_addresses: frozenset[str],
+        request_timeout_seconds: float = DEFAULT_GOSSIP_REQUEST_TIMEOUT_SECONDS,
+    ) -> None:
+        _validate_identifier(client_peer_id, label="client_peer_id")
+        _validate_identifier(server_hostname, label="server_hostname")
+        if not 0 < request_timeout_seconds <= 30:
+            raise ValueError("checkpoint gossip timeout must be in (0, 30] seconds")
+        self.descriptor_path = descriptor_path
+        self.client_peer_id = client_peer_id
+        self.tls_trust = CheckpointPeerTlsTrust.model_validate(
+            tls_trust.model_dump(mode="json")
+        )
+        self.certificate_path = certificate_path
+        self.private_key_path = private_key_path
+        self.certificate_authority_path = certificate_authority_path
+        self.server_hostname = server_hostname
+        self.allowed_server_addresses = _validated_addresses(
+            allowed_server_addresses,
+            label="server address",
+        )
+        self.request_timeout_seconds = request_timeout_seconds
+
+    async def __call__(
+        self,
+        *,
+        operation: str,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return await send_checkpoint_mtls_gossip_request(
+            descriptor_path=self.descriptor_path,
+            client_peer_id=self.client_peer_id,
+            tls_trust=self.tls_trust,
+            certificate_path=self.certificate_path,
+            private_key_path=self.private_key_path,
+            certificate_authority_path=self.certificate_authority_path,
+            server_hostname=self.server_hostname,
+            allowed_server_addresses=self.allowed_server_addresses,
+            operation=operation,
+            payload=payload,
+            request_timeout_seconds=self.request_timeout_seconds,
+        )
+
+
 async def send_checkpoint_mtls_gossip_request(
     *,
     descriptor_path: Path,

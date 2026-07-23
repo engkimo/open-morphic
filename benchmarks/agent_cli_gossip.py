@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,6 +21,15 @@ from benchmarks.agent_cli_gossip_transport import (
     GossipRequestError,
     send_checkpoint_gossip_request,
 )
+
+
+class CheckpointGossipRequestSender(Protocol):
+    async def __call__(
+        self,
+        *,
+        operation: str,
+        payload: dict[str, object],
+    ) -> dict[str, object]: ...
 
 
 class _RequestModel(BaseModel):
@@ -45,6 +55,22 @@ def _resolve_peer_trust(
         return source
     resolved = source.resolve_peer_trust(peer_trust_sha256)
     return CheckpointPeerTrust.model_validate(resolved.model_dump(mode="json"))
+
+
+async def _send_gossip_request(
+    *,
+    descriptor_path: Path,
+    operation: str,
+    payload: dict[str, object],
+    request_sender: CheckpointGossipRequestSender | None,
+) -> dict[str, object]:
+    if request_sender is None:
+        return await send_checkpoint_gossip_request(
+            descriptor_path=descriptor_path,
+            operation=operation,
+            payload=payload,
+        )
+    return await request_sender(operation=operation, payload=payload)
 
 
 class CheckpointGossipService:
@@ -167,16 +193,18 @@ async def fetch_signed_checkpoint_range(
     start_sequence: int,
     max_records: int,
     peer_trust: CheckpointPeerTrustSource,
+    request_sender: CheckpointGossipRequestSender | None = None,
 ) -> SignedCheckpointRangeBundle:
     """Fetch and independently verify one already signed range bundle."""
     request = _FetchRangeRequest(
         start_sequence=start_sequence,
         max_records=max_records,
     )
-    result = await send_checkpoint_gossip_request(
+    result = await _send_gossip_request(
         descriptor_path=descriptor_path,
         operation="fetch_range",
         payload=request.model_dump(mode="json"),
+        request_sender=request_sender,
     )
     payload = result.get("range_bundle")
     if not isinstance(payload, dict):
@@ -191,13 +219,15 @@ async def submit_signed_checkpoint_acknowledgement(
     *,
     descriptor_path: Path,
     acknowledgement: SignedCheckpointAcknowledgement,
+    request_sender: CheckpointGossipRequestSender | None = None,
 ) -> CheckpointPeerCursorRecord:
     """Submit one signed acknowledgement and validate the returned cursor record."""
     request = _SubmitAcknowledgementRequest(acknowledgement=acknowledgement)
-    result = await send_checkpoint_gossip_request(
+    result = await _send_gossip_request(
         descriptor_path=descriptor_path,
         operation="submit_acknowledgement",
         payload=request.model_dump(mode="json"),
+        request_sender=request_sender,
     )
     payload = result.get("cursor_record")
     if not isinstance(payload, dict):
@@ -211,10 +241,12 @@ async def submit_signed_checkpoint_acknowledgement(
 async def fetch_checkpoint_gossip_status(
     *,
     descriptor_path: Path,
+    request_sender: CheckpointGossipRequestSender | None = None,
 ) -> dict[str, object]:
     """Return authenticated online range availability without mutating either peer."""
-    return await send_checkpoint_gossip_request(
+    return await _send_gossip_request(
         descriptor_path=descriptor_path,
         operation="status",
         payload={},
+        request_sender=request_sender,
     )

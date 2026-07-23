@@ -2310,6 +2310,54 @@ def _load_checkpoint_peer_trust_source(
     )
 
 
+def _active_checkpoint_peer_trust(peer_trust_source: Any) -> Any:
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointPeerTrust
+    from benchmarks.agent_cli_peer_trust_ledger import CheckpointPeerTrustLedger
+
+    if isinstance(peer_trust_source, CheckpointPeerTrust):
+        return peer_trust_source
+    if isinstance(peer_trust_source, CheckpointPeerTrustLedger):
+        return peer_trust_source.active_trust
+    raise ValueError("unsupported checkpoint peer trust source")
+
+
+def _build_checkpoint_mtls_client(
+    *,
+    descriptor_path: Path,
+    peer_trust_source: Any,
+    tls_trust_path: Path,
+    client_peer_id: str,
+    certificate_path: Path,
+    private_key_path: Path,
+    certificate_authority_path: Path,
+    server_hostname: str,
+    allowed_server_addresses: list[str],
+) -> Any:
+    from benchmarks.agent_cli_gossip_tls_identity import (
+        CheckpointPeerTlsTrust,
+        verify_checkpoint_peer_tls_trust,
+    )
+    from benchmarks.agent_cli_gossip_tls_transport import (
+        CheckpointMutualTlsGossipClient,
+    )
+
+    active_peer_trust = _active_checkpoint_peer_trust(peer_trust_source)
+    tls_trust = CheckpointPeerTlsTrust.model_validate_json(
+        tls_trust_path.read_text(encoding="utf-8")
+    )
+    verify_checkpoint_peer_tls_trust(tls_trust, active_peer_trust)
+    return CheckpointMutualTlsGossipClient(
+        descriptor_path=descriptor_path,
+        client_peer_id=client_peer_id,
+        tls_trust=tls_trust,
+        certificate_path=certificate_path,
+        private_key_path=private_key_path,
+        certificate_authority_path=certificate_authority_path,
+        server_hostname=server_hostname,
+        allowed_server_addresses=frozenset(allowed_server_addresses),
+    )
+
+
 @benchmark_app.command("agent-cli-checkpoint-cursor-store")
 def store_agent_cli_checkpoint_cursor(
     cursor_ledger_path: Path = _CHECKPOINT_CURSOR_LEDGER_OPTION,
@@ -2495,7 +2543,10 @@ def serve_agent_cli_checkpoint_gossip_mtls(
     cursor_ledger_path: Path = _CHECKPOINT_CURSOR_LEDGER_OPTION,
     registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
     source_peer_id: str = _CHECKPOINT_SOURCE_PEER_OPTION,
-    peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
+    peer_trust_path: Path | None = _OPTIONAL_CHECKPOINT_PEER_TRUST_INPUT,
+    peer_trust_ledger_path: Path | None = (
+        _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT
+    ),
     tls_trust_path: Path = _CHECKPOINT_TLS_TRUST_INPUT,
     certificate_path: Path = _CHECKPOINT_TLS_CERTIFICATE_INPUT,
     private_key_path: Path = _CHECKPOINT_TLS_PRIVATE_KEY_INPUT,
@@ -2507,10 +2558,7 @@ def serve_agent_cli_checkpoint_gossip_mtls(
     lifetime_seconds: float = _CHECKPOINT_GOSSIP_LIFETIME_OPTION,
 ) -> None:
     """Serve checkpoint gossip over TLS 1.3 mutual authentication."""
-    from benchmarks.agent_cli_checkpoint_registry import (
-        CheckpointPeerCursorStore,
-        CheckpointPeerTrust,
-    )
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointPeerCursorStore
     from benchmarks.agent_cli_gossip import CheckpointGossipService
     from benchmarks.agent_cli_gossip_tls_identity import (
         CheckpointPeerTlsTrust,
@@ -2525,13 +2573,17 @@ def serve_agent_cli_checkpoint_gossip_mtls(
             raise ValueError("checkpoint gossip descriptor parent must already exist")
         if not cursor_ledger_path.parent.exists():
             raise ValueError("checkpoint gossip cursor parent must already exist")
-        peer_trust = CheckpointPeerTrust.model_validate_json(
-            peer_trust_path.read_text(encoding="utf-8")
+        peer_trust = _load_checkpoint_peer_trust_source(
+            peer_trust_path,
+            peer_trust_ledger_path,
         )
         tls_trust = CheckpointPeerTlsTrust.model_validate_json(
             tls_trust_path.read_text(encoding="utf-8")
         )
-        verify_checkpoint_peer_tls_trust(tls_trust, peer_trust)
+        verify_checkpoint_peer_tls_trust(
+            tls_trust,
+            _active_checkpoint_peer_trust(peer_trust),
+        )
         service = CheckpointGossipService(
             registry_id=registry_id,
             source_peer_id=source_peer_id,
@@ -2588,34 +2640,27 @@ def show_agent_cli_checkpoint_gossip_mtls_status(
 ) -> None:
     """Query checkpoint status over pinned TLS 1.3 mutual authentication."""
     from benchmarks.agent_cli_checkpoint_registry import CheckpointPeerTrust
-    from benchmarks.agent_cli_gossip_tls_identity import (
-        CheckpointPeerTlsTrust,
-        verify_checkpoint_peer_tls_trust,
-    )
-    from benchmarks.agent_cli_gossip_tls_transport import (
-        send_checkpoint_mtls_gossip_request,
-    )
+    from benchmarks.agent_cli_gossip import fetch_checkpoint_gossip_status
 
     try:
-        tls_trust = CheckpointPeerTlsTrust.model_validate_json(
-            tls_trust_path.read_text(encoding="utf-8")
-        )
         peer_trust = CheckpointPeerTrust.model_validate_json(
             peer_trust_path.read_text(encoding="utf-8")
         )
-        verify_checkpoint_peer_tls_trust(tls_trust, peer_trust)
+        client = _build_checkpoint_mtls_client(
+            descriptor_path=descriptor_path,
+            peer_trust_source=peer_trust,
+            tls_trust_path=tls_trust_path,
+            client_peer_id=client_peer_id,
+            certificate_path=certificate_path,
+            private_key_path=private_key_path,
+            certificate_authority_path=certificate_authority_path,
+            server_hostname=server_hostname,
+            allowed_server_addresses=allowed_server_addresses,
+        )
         status = _run(
-            send_checkpoint_mtls_gossip_request(
+            fetch_checkpoint_gossip_status(
                 descriptor_path=descriptor_path,
-                client_peer_id=client_peer_id,
-                tls_trust=tls_trust,
-                certificate_path=certificate_path,
-                private_key_path=private_key_path,
-                certificate_authority_path=certificate_authority_path,
-                server_hostname=server_hostname,
-                allowed_server_addresses=frozenset(allowed_server_addresses),
-                operation="status",
-                payload={},
+                request_sender=client,
             )
         )
     except (OSError, RuntimeError, ValueError) as exc:
@@ -2628,6 +2673,129 @@ def show_agent_cli_checkpoint_gossip_mtls_status(
             "Mutually authenticated checkpoint gossip "
             f"source={status.get('source_peer_id', 'unknown')} "
             f"ranges={len(status.get('available_ranges', []))}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-gossip-mtls-fetch")
+def fetch_agent_cli_checkpoint_gossip_mtls_range(
+    descriptor_path: Path = _CHECKPOINT_GOSSIP_DESCRIPTOR_INPUT,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    start_sequence: int = _CHECKPOINT_START_SEQUENCE_OPTION,
+    max_records: int = _CHECKPOINT_MAX_RECORDS_OPTION,
+    peer_trust_path: Path | None = _OPTIONAL_CHECKPOINT_PEER_TRUST_INPUT,
+    peer_trust_ledger_path: Path | None = (
+        _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT
+    ),
+    tls_trust_path: Path = _CHECKPOINT_TLS_TRUST_INPUT,
+    client_peer_id: str = _CHECKPOINT_TLS_CLIENT_PEER_OPTION,
+    certificate_path: Path = _CHECKPOINT_TLS_CERTIFICATE_INPUT,
+    private_key_path: Path = _CHECKPOINT_TLS_PRIVATE_KEY_INPUT,
+    certificate_authority_path: Path = _CHECKPOINT_TLS_CA_INPUT,
+    server_hostname: str = _CHECKPOINT_TLS_SERVER_HOSTNAME_OPTION,
+    allowed_server_addresses: list[str] = _CHECKPOINT_TLS_ALLOWED_SERVERS_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Fetch and verify one signed range over pinned mutual TLS."""
+    from benchmarks.agent_cli_gossip import fetch_signed_checkpoint_range
+
+    try:
+        if not output_path.parent.exists():
+            raise ValueError("checkpoint gossip output parent must already exist")
+        if output_path.exists():
+            raise ValueError("checkpoint gossip output already exists")
+        peer_trust = _load_checkpoint_peer_trust_source(
+            peer_trust_path,
+            peer_trust_ledger_path,
+        )
+        client = _build_checkpoint_mtls_client(
+            descriptor_path=descriptor_path,
+            peer_trust_source=peer_trust,
+            tls_trust_path=tls_trust_path,
+            client_peer_id=client_peer_id,
+            certificate_path=certificate_path,
+            private_key_path=private_key_path,
+            certificate_authority_path=certificate_authority_path,
+            server_hostname=server_hostname,
+            allowed_server_addresses=allowed_server_addresses,
+        )
+        bundle = _run(
+            fetch_signed_checkpoint_range(
+                descriptor_path=descriptor_path,
+                start_sequence=start_sequence,
+                max_records=max_records,
+                peer_trust=peer_trust,
+                request_sender=client,
+            )
+        )
+        _write_new_evidence(output_path, bundle.to_json())
+    except (OSError, RuntimeError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint mTLS fetch failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+    if as_json:
+        typer.echo(bundle.to_json())
+    else:
+        console.print(
+            "Fetched mutually authenticated checkpoint range "
+            f"{bundle.statement.first_sequence}->{bundle.statement.last_sequence}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-gossip-mtls-ack")
+def submit_agent_cli_checkpoint_gossip_mtls_acknowledgement(
+    descriptor_path: Path = _CHECKPOINT_GOSSIP_DESCRIPTOR_INPUT,
+    acknowledgement_path: Path = _CHECKPOINT_ACKNOWLEDGEMENT_INPUT,
+    peer_trust_path: Path | None = _OPTIONAL_CHECKPOINT_PEER_TRUST_INPUT,
+    peer_trust_ledger_path: Path | None = (
+        _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT
+    ),
+    tls_trust_path: Path = _CHECKPOINT_TLS_TRUST_INPUT,
+    client_peer_id: str = _CHECKPOINT_TLS_CLIENT_PEER_OPTION,
+    certificate_path: Path = _CHECKPOINT_TLS_CERTIFICATE_INPUT,
+    private_key_path: Path = _CHECKPOINT_TLS_PRIVATE_KEY_INPUT,
+    certificate_authority_path: Path = _CHECKPOINT_TLS_CA_INPUT,
+    server_hostname: str = _CHECKPOINT_TLS_SERVER_HOSTNAME_OPTION,
+    allowed_server_addresses: list[str] = _CHECKPOINT_TLS_ALLOWED_SERVERS_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Submit a signed acknowledgement over pinned mutual TLS."""
+    from benchmarks.agent_cli_checkpoint_registry import SignedCheckpointAcknowledgement
+    from benchmarks.agent_cli_gossip import submit_signed_checkpoint_acknowledgement
+
+    try:
+        peer_trust = _load_checkpoint_peer_trust_source(
+            peer_trust_path,
+            peer_trust_ledger_path,
+        )
+        client = _build_checkpoint_mtls_client(
+            descriptor_path=descriptor_path,
+            peer_trust_source=peer_trust,
+            tls_trust_path=tls_trust_path,
+            client_peer_id=client_peer_id,
+            certificate_path=certificate_path,
+            private_key_path=private_key_path,
+            certificate_authority_path=certificate_authority_path,
+            server_hostname=server_hostname,
+            allowed_server_addresses=allowed_server_addresses,
+        )
+        acknowledgement = SignedCheckpointAcknowledgement.model_validate_json(
+            acknowledgement_path.read_text(encoding="utf-8")
+        )
+        record = _run(
+            submit_signed_checkpoint_acknowledgement(
+                descriptor_path=descriptor_path,
+                acknowledgement=acknowledgement,
+                request_sender=client,
+            )
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint mTLS ack failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+    if as_json:
+        typer.echo(record.to_json())
+    else:
+        console.print(
+            "Submitted mutually authenticated checkpoint acknowledgement "
+            f"sequence={record.acknowledgement.statement.acknowledged_record_sequence}"
         )
 
 
@@ -2778,6 +2946,100 @@ def sync_agent_cli_checkpoint_gossip(
     else:
         console.print(
             "Checkpoint gossip sync stopped "
+            f"reason={result.stop_reason} records={result.local_record_count} "
+            f"imported={result.records_imported} retries={result.retries}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-gossip-mtls-sync")
+def sync_agent_cli_checkpoint_gossip_mtls(
+    descriptor_path: Path = _CHECKPOINT_GOSSIP_DESCRIPTOR_INPUT,
+    registry_path: Path = _CHECKPOINT_REGISTRY_OPTION,
+    sync_audit_path: Path = _CHECKPOINT_GOSSIP_SYNC_AUDIT_OPTION,
+    registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
+    source_peer_id: str = _CHECKPOINT_SOURCE_PEER_OPTION,
+    peer_trust_ledger_path: Path = _CHECKPOINT_PEER_TRUST_LEDGER_INPUT,
+    witness_trust_path: Path = _WITNESS_TRUST_INPUT,
+    authority_root_ledger_path: Path = _AUTHORITY_ROOT_LEDGER_INPUT,
+    tls_trust_path: Path = _CHECKPOINT_TLS_TRUST_INPUT,
+    client_peer_id: str = _CHECKPOINT_TLS_CLIENT_PEER_OPTION,
+    certificate_path: Path = _CHECKPOINT_TLS_CERTIFICATE_INPUT,
+    private_key_path: Path = _CHECKPOINT_TLS_PRIVATE_KEY_INPUT,
+    certificate_authority_path: Path = _CHECKPOINT_TLS_CA_INPUT,
+    server_hostname: str = _CHECKPOINT_TLS_SERVER_HOSTNAME_OPTION,
+    allowed_server_addresses: list[str] = _CHECKPOINT_TLS_ALLOWED_SERVERS_OPTION,
+    max_rounds: int = _CHECKPOINT_GOSSIP_SYNC_ROUNDS_OPTION,
+    max_records: int = _CHECKPOINT_MAX_RECORDS_OPTION,
+    max_attempts: int = _CHECKPOINT_GOSSIP_SYNC_ATTEMPTS_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Run the bounded resumable pull loop over pinned mutual TLS."""
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointRegistryStore
+    from benchmarks.agent_cli_gossip_sync import (
+        CheckpointGossipSyncAuditStore,
+        CheckpointGossipSyncPolicy,
+        run_checkpoint_gossip_sync,
+    )
+    from benchmarks.agent_cli_peer_trust_ledger import CheckpointPeerTrustLedger
+
+    try:
+        if not registry_path.parent.exists():
+            raise ValueError("checkpoint gossip registry parent must already exist")
+        if not sync_audit_path.parent.exists():
+            raise ValueError("checkpoint gossip sync audit parent must already exist")
+        witness_trust, authority_ledger = _load_checkpoint_registry_dependencies(
+            witness_trust_path,
+            authority_root_ledger_path,
+        )
+        peer_trust_ledger = CheckpointPeerTrustLedger.model_validate_json(
+            peer_trust_ledger_path.read_text(encoding="utf-8")
+        )
+        client = _build_checkpoint_mtls_client(
+            descriptor_path=descriptor_path,
+            peer_trust_source=peer_trust_ledger,
+            tls_trust_path=tls_trust_path,
+            client_peer_id=client_peer_id,
+            certificate_path=certificate_path,
+            private_key_path=private_key_path,
+            certificate_authority_path=certificate_authority_path,
+            server_hostname=server_hostname,
+            allowed_server_addresses=allowed_server_addresses,
+        )
+        retry_delays = tuple(
+            min(0.05 * (2**index), 1.0) for index in range(max_attempts - 1)
+        )
+        result = _run(
+            run_checkpoint_gossip_sync(
+                descriptor_path=descriptor_path,
+                registry_store=CheckpointRegistryStore(
+                    registry_path,
+                    registry_id=registry_id,
+                ),
+                audit_store=CheckpointGossipSyncAuditStore(
+                    sync_audit_path,
+                    registry_id=registry_id,
+                    source_peer_id=source_peer_id,
+                ),
+                peer_trust_ledger=peer_trust_ledger,
+                witness_trust=witness_trust,
+                authority_root_ledger=authority_ledger,
+                policy=CheckpointGossipSyncPolicy(
+                    max_rounds=max_rounds,
+                    max_records=max_records,
+                    max_attempts_per_request=max_attempts,
+                    retry_delays_seconds=retry_delays,
+                ),
+                request_sender=client,
+            )
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint mTLS sync failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+    if as_json:
+        typer.echo(result.to_json())
+    else:
+        console.print(
+            "Mutually authenticated checkpoint sync stopped "
             f"reason={result.stop_reason} records={result.local_record_count} "
             f"imported={result.records_imported} retries={result.retries}"
         )

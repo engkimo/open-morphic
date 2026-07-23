@@ -575,6 +575,19 @@
 - [x] T5509 Add private-key-free enrollment-template, enrollment-finalization, trust, mTLS-serve, and mTLS-status CLI paths.
 - [x] T5510 Document CA/out-of-band trust boundaries and defer mTLS fetch/ack/sync CLI wiring, discovery, automatic signing, and revocation status.
 
+## Phase 56 - Mutual-TLS Artifact Sync
+
+- [x] T5601 Add RED tests for transport-neutral status/fetch/ack operations, sync sender injection, reusable mTLS requests, and CLI registration.
+- [x] T5602 Define one typed authenticated request-sender protocol while preserving protocol-v1 loopback as the default.
+- [x] T5603 Route status, signed range fetch, and signed acknowledgement submission through the injected sender.
+- [x] T5604 Keep peer-signature and returned-artifact verification after transport completion on every sender.
+- [x] T5605 Route the existing bounded resumable sync loop through the same sender without changing audit, retry, recovery, budget, or rollback semantics.
+- [x] T5606 Add a reusable TLS 1.3 mutual-auth client that retains exact certificate, hostname, address, and TLS-trust pins.
+- [x] T5607 Add mTLS fetch and acknowledgement CLI paths with exactly one artifact peer-trust snapshot or generation ledger.
+- [x] T5608 Add an mTLS sync CLI backed by the active generation's reverified TLS enrollment trust.
+- [x] T5609 Preserve the token-free descriptor, no-plaintext-fallback policy, and all existing protocol bounds.
+- [x] T5610 Document the remaining certificate revocation/expiry policy, discovery, and automatic signing boundaries.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

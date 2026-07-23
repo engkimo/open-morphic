@@ -23,6 +23,7 @@ from benchmarks.agent_cli_checkpoint_registry import (
 )
 from benchmarks.agent_cli_comparison import SCHEMA_VERSION
 from benchmarks.agent_cli_gossip import (
+    CheckpointGossipRequestSender,
     fetch_checkpoint_gossip_status,
     fetch_signed_checkpoint_range,
 )
@@ -464,6 +465,7 @@ async def run_checkpoint_gossip_sync(
     witness_trust: TransparencyWitnessTrust,
     authority_root_ledger: SignedAuthorityRootLedger,
     policy: CheckpointGossipSyncPolicy,
+    request_sender: CheckpointGossipRequestSender | None = None,
 ) -> CheckpointGossipSyncResult:
     """Pull exact signed ranges until current, bounded, or safely stopped."""
     ledger = CheckpointPeerTrustLedger.model_validate(
@@ -525,12 +527,20 @@ async def run_checkpoint_gossip_sync(
                     await asyncio.sleep(policy.retry_delays_seconds[attempt - 1])
             return None
 
+        async def fetch_status() -> dict[str, object]:
+            if request_sender is None:
+                return await fetch_checkpoint_gossip_status(
+                    descriptor_path=descriptor_path
+                )
+            return await fetch_checkpoint_gossip_status(
+                descriptor_path=descriptor_path,
+                request_sender=request_sender,
+            )
+
         while rounds < policy.max_rounds:
             raw_status = await request_with_retry(
                 "status",
-                lambda: fetch_checkpoint_gossip_status(
-                    descriptor_path=descriptor_path
-                ),
+                fetch_status,
             )
             if raw_status is None:
                 return _stop_sync(
@@ -598,6 +608,7 @@ async def run_checkpoint_gossip_sync(
                 start_sequence=next_sequence,
                 max_records=bundle_record_count,
                 peer_trust=ledger,
+                request_sender=request_sender,
             )
             bundle_result = await request_with_retry(
                 "fetch_range",

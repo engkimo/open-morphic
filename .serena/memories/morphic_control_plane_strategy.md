@@ -734,6 +734,33 @@ certificate revocation status and key custody. Phase 56 should wire fetch, ackno
 sync CUI paths to protocol v2, then add revocation/expiry policy and authenticated discovery
 without reintroducing bearer tokens or plaintext fallback.
 
+## Phase 56 update
+
+Checkpoint artifact operations no longer depend directly on the Phase 53 loopback transport.
+Status, signed range fetch, and signed acknowledgement submission accept one typed authenticated
+request sender, while an omitted sender preserves protocol v1 and every existing caller. The
+reusable protocol-v2 client retains the exact mTLS descriptor, client peer identity, TLS trust,
+leaf/key/CA paths, hostname, address allowlist, and timeout configuration.
+
+This split deliberately leaves artifact trust outside transport trust. Every fetched range is
+still verified under its exact peer-trust generation after receipt, and an acknowledgement
+response must return the exact submitted signed artifact. The Phase 54 catch-up loop now uses
+the sender for status and fetch only; whole-loop locking, hash-chained audit, registry-ahead
+recovery, trust rollback/fork pins, retry delays, round/record budgets, and stop reasons remain
+one implementation rather than an mTLS fork.
+
+The CUI now exposes mTLS fetch, acknowledgement, and resumable sync. Before connecting, it
+rebuilds TLS enrollment trust against the supplied peer-trust snapshot or the active generation
+of a signed peer-trust ledger. Protocol v2 continues to require TLS 1.3, mutual certificates,
+hostname and address checks, active DER/SPKI pins, one-use nonces, bounded messages, and a
+token-free descriptor with no plaintext fallback.
+
+Phase 56 passed 3,700 unit tests with repository-wide Ruff, focused mypy, and wheel build
+clean. No external peer, paid API, or non-loopback listener ran. Phase 57 should add a
+peer-signed explicit certificate revocation chain and deterministic expiry/pre-expiry policy
+before authenticated discovery. TLS handshake expiry remains enforced, but Morphic does not yet
+provide revocation status, warning windows, OCSP/CRL policy, or automatic enrollment/ack signing.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

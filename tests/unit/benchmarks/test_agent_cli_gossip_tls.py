@@ -31,6 +31,7 @@ from benchmarks.agent_cli_gossip_tls_identity import (
     build_signed_checkpoint_peer_tls_enrollment,
 )
 from benchmarks.agent_cli_gossip_tls_transport import (
+    CheckpointMutualTlsGossipClient,
     CheckpointMutualTlsGossipServer,
     send_checkpoint_mtls_gossip_request,
 )
@@ -394,6 +395,25 @@ async def test_peer_signed_tls_rotation_and_mutual_tls_transport(
                 payload={},
             )
 
+        reusable_client = CheckpointMutualTlsGossipClient(
+            descriptor_path=descriptor_path,
+            client_peer_id="client-peer",
+            tls_trust=tls_trust,
+            certificate_path=client_certificate_path,
+            private_key_path=client_key_path,
+            certificate_authority_path=ca_path,
+            server_hostname="localhost",
+            allowed_server_addresses=frozenset({"127.0.0.1"}),
+        )
+        reusable_response = await reusable_client(
+            operation="fetch_range",
+            payload={"start_sequence": 3},
+        )
+        assert reusable_response == {
+            "operation": "fetch_range",
+            "payload": {"start_sequence": 3},
+        }
+
         tls_trust_path = tmp_path / "tls-trust.json"
         tls_trust_path.write_text(tls_trust.to_json(), encoding="utf-8")
         (tmp_path / "peer-trust.json").write_text(
@@ -553,3 +573,12 @@ def test_tls_identity_cli_is_private_key_free(tmp_path: Path) -> None:
     )
     assert serve_help.exit_code == 0, serve_help.output
     assert "Allowed client IP" in serve_help.output
+    for command in (
+        "agent-cli-checkpoint-gossip-mtls-fetch",
+        "agent-cli-checkpoint-gossip-mtls-ack",
+        "agent-cli-checkpoint-gossip-mtls-sync",
+    ):
+        result = runner.invoke(app, ["benchmark", command, "--help"])
+        assert result.exit_code == 0, result.output
+        assert "--tls-trust" in result.output
+        assert "--private-key" in result.output

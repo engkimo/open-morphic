@@ -1128,8 +1128,80 @@ serverも接続元allowlist、active client DER/SPKI pin、request内client peer
 private keyはなく、平文protocolへのfallbackはない。private key fileはgroup/other accessを許可しない。
 
 CA bundleとgenesis peer trustの真正な初回配布、DNS/address運用、certificate revocation status、private key保護は
-operator境界である。Phase 55のmTLS CUIはserve/statusまでで、fetch/ack/syncのmTLS CUI配線、peer discovery、
-automatic enrollment/ack signing、常駐daemonは未実装である。
+operator境界である。Phase 55のmTLS CUIはserve/statusまでとし、fetch/ack/syncは次のtransport-neutral統合で扱う。
+
+### Mutual-TLS artifact fetch, acknowledgement, and sync
+
+Phase 56では、artifact操作を特定transportから分離した。`status`、`fetch_range`、
+`submit_acknowledgement`はtyped request senderを受け取り、未指定時だけPhase 53のloopback protocol v1を使う。
+protocol v2のreusable mTLS clientも同じsender contractを実装する。このためtransport追加後もrangeのpeer署名、
+ack response、witness/root/Merkle、registry overlap、sync audit、retry、rollback pinを別実装へ分岐させない。
+
+```bash
+morphic benchmark agent-cli-checkpoint-gossip-mtls-fetch \
+  --descriptor .morphic/gossip/peer-1-mtls.json \
+  --start-sequence 0 \
+  --max-records 100 \
+  --peer-trust-ledger checkpoint-peer-trust-ledger.json \
+  --tls-trust checkpoint-peer-tls-trust.json \
+  --client-peer-id peer-2 \
+  --certificate peer-2-tls.pem \
+  --private-key peer-2-tls-key.pem \
+  --certificate-authority checkpoint-peer-ca.pem \
+  --server-hostname peer-1.example.org \
+  --allow-server-address 192.0.2.10 \
+  --output received-range.json \
+  --json
+
+morphic benchmark agent-cli-checkpoint-gossip-mtls-ack \
+  --descriptor .morphic/gossip/peer-1-mtls.json \
+  --acknowledgement signed-acknowledgement.json \
+  --peer-trust-ledger checkpoint-peer-trust-ledger.json \
+  --tls-trust checkpoint-peer-tls-trust.json \
+  --client-peer-id peer-2 \
+  --certificate peer-2-tls.pem \
+  --private-key peer-2-tls-key.pem \
+  --certificate-authority checkpoint-peer-ca.pem \
+  --server-hostname peer-1.example.org \
+  --allow-server-address 192.0.2.10 \
+  --json
+```
+
+fetchはmTLS responseを受けた後も`SignedCheckpointRangeBundle`をexact peer trust generationで再検証し、
+outputを既存pathへ上書きしない。ackは外部署名済みartifactだけを送信し、返却されたcursor recordが送信ackを
+変更していないことを確認する。TLS transportはack用peer private keyを読まず、client TLS keyだけをhandshakeに使う。
+
+bounded catch-upも同じmTLS senderを注入できる。
+
+```bash
+morphic benchmark agent-cli-checkpoint-gossip-mtls-sync \
+  --descriptor .morphic/gossip/peer-1-mtls.json \
+  --registry checkpoint-registry.jsonl \
+  --sync-audit checkpoint-sync-peer-1.jsonl \
+  --registry-id example-org-checkpoints \
+  --source-peer-id peer-1 \
+  --peer-trust-ledger checkpoint-peer-trust-ledger.json \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger authority-root-ledger.json \
+  --tls-trust checkpoint-peer-tls-trust.json \
+  --client-peer-id peer-2 \
+  --certificate peer-2-tls.pem \
+  --private-key peer-2-tls-key.pem \
+  --certificate-authority checkpoint-peer-ca.pem \
+  --server-hostname peer-1.example.org \
+  --allow-server-address 192.0.2.10 \
+  --max-rounds 16 \
+  --max-records 1000 \
+  --max-attempts 3 \
+  --json
+```
+
+mTLS trustは提示peer-trust ledgerのactive generationに対して全enrollment署名を再検証してから接続する。
+sync loopはPhase 54と同じwhole-loop lock、hash-chained audit、crash recovery、trust rollback/fork pin、
+round/record/attempt budget、machine-readable stop reasonを使う。transport errorだけが既存bounded retry対象になる。
+
+certificateの期限はTLS handshakeで検証されるが、接続前の運用警告、署名付き明示revocation、grace period、
+OCSP/CRL policyはまだない。authenticated peer discovery、automatic enrollment/ack signing、daemon化も次の境界である。
 
 ---
 

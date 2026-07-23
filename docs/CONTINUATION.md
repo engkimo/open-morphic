@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-07-22
-> Latest work: Morphic Chat CLI Phase 55 peer-signed remote mutual TLS
+> Latest work: Morphic Chat CLI Phase 56 mutual-TLS artifact sync
 
 ## Latest Session Notes (2026-06-26)
 
@@ -468,6 +468,16 @@ Phase 55 implemented:
 - Verification: 3,700 unit tests passed; repository-wide Ruff, focused mypy, and wheel build are clean. Tests use loopback, local temporary certificates, and in-memory Ed25519 keys only.
 - Security boundary: CA/genesis trust distribution, DNS/address operations, certificate revocation status, private-key custody, peer discovery, automatic signing, and mTLS fetch/ack/sync CLI wiring remain operator/out-of-scope boundaries.
 
+Phase 56 implemented:
+- Added a typed authenticated request-sender protocol beneath status, signed range fetch, and signed acknowledgement submission. Omitting it preserves the existing protocol-v1 loopback behavior and public callers.
+- Added a reusable protocol-v2 mTLS client that retains one exact descriptor, client peer, TLS trust, leaf/key/CA, hostname, server address allowlist, and timeout configuration.
+- Artifact validation remains transport-independent: fetched ranges are still reverified under their exact peer-trust generation, and returned cursor records must contain the exact submitted acknowledgement.
+- The Phase 54 bounded resumable sync loop now accepts the same sender for status and fetch operations. Locking, deterministic audit records, crash recovery, retry delays, budgets, trust rollback/fork rejection, registry import, and stop reasons are unchanged.
+- Added mTLS fetch, acknowledgement, and sync CLI paths. Each rebuilds TLS trust against either the supplied peer-trust snapshot or the active generation of the supplied ledger before network access.
+- The token-free descriptor, TLS 1.3-only mutual authentication, hostname/address checks, active DER/SPKI pins, nonce replay defense, message limits, and deterministic cleanup remain the protocol-v2 boundary.
+- Verification: 3,700 unit tests passed; repository-wide Ruff, focused mypy, and wheel build are clean.
+- Security boundary: handshake expiry is enforced by TLS, but signed explicit revocation, pre-expiry warnings/grace periods, OCSP/CRL policy, peer discovery, and automatic enrollment/ack signing remain out of scope.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -477,7 +487,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Route fetch/ack/sync through the protocol-v2 mTLS transport, then add explicit certificate revocation/expiry policy and authenticated peer discovery without weakening the pinned trust path.
+- Add peer-signed certificate revocation and deterministic expiry policy before authenticated discovery, without weakening active DER/SPKI pins or allowing transport downgrade.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`
