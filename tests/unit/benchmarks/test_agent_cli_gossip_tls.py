@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from click import unstyle
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -578,7 +579,12 @@ def test_tls_identity_cli_is_private_key_free(tmp_path: Path) -> None:
         "agent-cli-checkpoint-gossip-mtls-ack",
         "agent-cli-checkpoint-gossip-mtls-sync",
     ):
-        result = runner.invoke(app, ["benchmark", command, "--help"])
+        result = runner.invoke(
+            app,
+            ["benchmark", command, "--help"],
+            color=False,
+        )
         assert result.exit_code == 0, result.output
-        assert "--tls-trust" in result.output
-        assert "--private-key" in result.output
+        help_output = unstyle(result.output)
+        assert "--tls-trust" in help_output
+        assert "--private-key" in help_output
