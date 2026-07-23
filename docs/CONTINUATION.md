@@ -1,5 +1,11 @@
 # Morphic-Agent — Continuation State
 
+## Phase 57 checkpoint (2026-07-23)
+
+- Peer-signed TLS revocation chain and trust-bound revoked-generation filtering implemented.
+- mTLS server/client expiry rejection plus deterministic warning-window reporting implemented.
+- Unit suite: 3,700 passed. CUI issuance/trust commands and dedicated revocation fixtures remain next.
+
 > Last updated: 2026-07-22
 > Latest work: Morphic Chat CLI Phase 56 mutual-TLS artifact sync
 

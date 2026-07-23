@@ -769,3 +769,19 @@ events, incremental durable streaming, safe terminal progress, and provenance-ch
 thread resume. The implementation passed 3,513 unit tests with repository-wide Ruff
 clean before publication. The next development sequence is cancellation/steering first,
 then a Claude Code adapter behind the same scoped streaming and resume capabilities.
+
+## Phase 57 update
+
+TLS trust now carries an explicit peer-signed revocation chain. Revocations bind registry,
+peer, enrollment generation/fingerprint, peer-trust fingerprint, reason, and UTC timestamp;
+only an active peer identity key may sign them, and revoked generations are excluded from
+active certificate/SPKI resolution. Trust fingerprints include the normalized revocation set,
+and re-verification checks both enrollment and revocation signatures.
+
+Authenticated TLS server/client construction now applies a deterministic expiry policy before
+opening transport: expired active leaves are rejected, while a configurable warning window is
+reported as immutable `(peer_id, generation, expires_at, seconds_remaining)` tuples. Existing
+callers retain defaults and TLS 1.3 handshake checks remain unchanged.
+
+Phase 57 unit verification remains green at 3,700 tests; next work is to expose revocation
+issuance/trust updates and expiry warnings through the CUI and add dedicated regression fixtures.

@@ -11,6 +11,7 @@ import secrets
 import ssl
 import stat
 from contextlib import suppress
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol, Self
 
@@ -20,6 +21,7 @@ from benchmarks.agent_cli_gossip_tls_identity import (
     CheckpointPeerTlsTrust,
     certificate_fingerprints,
     resolve_active_tls_peer,
+    validate_checkpoint_peer_tls_expiry,
     verify_active_tls_certificate,
 )
 
@@ -165,11 +167,16 @@ class CheckpointMutualTlsGossipServer:
         request_timeout_seconds: float = DEFAULT_GOSSIP_REQUEST_TIMEOUT_SECONDS,
         max_requests: int = 64,
         max_concurrent_clients: int = MAX_GOSSIP_CONCURRENT_CLIENTS,
+        now: datetime | None = None,
+        expiry_warning_window_seconds: int = 0,
     ) -> None:
         _validate_identifier(registry_id, label="registry_id")
         _validate_identifier(server_peer_id, label="server_peer_id")
         if tls_trust.registry_id != registry_id:
             raise ValueError("TLS trust uses another registry")
+        self.expiry_warnings = validate_checkpoint_peer_tls_expiry(
+            tls_trust, now=now, warning_window_seconds=expiry_warning_window_seconds
+        )
         try:
             bind_host = str(ipaddress.ip_address(bind_host))
             advertised_host = str(ipaddress.ip_address(advertised_host))
@@ -280,9 +287,7 @@ class CheckpointMutualTlsGossipServer:
                 if not 0 < lifetime_timeout_seconds <= 3600:
                     raise ValueError("checkpoint gossip lifetime must be in (0, 3600] seconds")
                 with suppress(TimeoutError):
-                    await asyncio.wait_for(
-                        self.wait_stopped(), timeout=lifetime_timeout_seconds
-                    )
+                    await asyncio.wait_for(self.wait_stopped(), timeout=lifetime_timeout_seconds)
         finally:
             await self.close()
 
@@ -333,9 +338,7 @@ class CheckpointMutualTlsGossipServer:
             peer_certificate = ssl_object.getpeercert(binary_form=True)
             if not peer_certificate:
                 raise ValueError("client TLS certificate is missing")
-            authenticated_peer_id = resolve_active_tls_peer(
-                peer_certificate, self._tls_trust
-            )
+            authenticated_peer_id = resolve_active_tls_peer(peer_certificate, self._tls_trust)
             raw = await self._read_request_line(reader)
             request = _MutualTlsRequest.model_validate_json(raw)
             client_nonce = request.client_nonce
@@ -412,9 +415,7 @@ class CheckpointMutualTlsGossipServer:
                 self._stopped.set()
 
     async def _read_request_line(self, reader: asyncio.StreamReader) -> bytes:
-        raw = await asyncio.wait_for(
-            reader.readline(), timeout=self._request_timeout_seconds
-        )
+        raw = await asyncio.wait_for(reader.readline(), timeout=self._request_timeout_seconds)
         if not raw or len(raw) > MAX_GOSSIP_REQUEST_BYTES or not raw.endswith(b"\n"):
             raise ValueError("checkpoint gossip request size is invalid")
         return raw
@@ -509,6 +510,8 @@ class CheckpointMutualTlsGossipClient:
         server_hostname: str,
         allowed_server_addresses: frozenset[str],
         request_timeout_seconds: float = DEFAULT_GOSSIP_REQUEST_TIMEOUT_SECONDS,
+        now: datetime | None = None,
+        expiry_warning_window_seconds: int = 0,
     ) -> None:
         _validate_identifier(client_peer_id, label="client_peer_id")
         _validate_identifier(server_hostname, label="server_hostname")
@@ -516,8 +519,9 @@ class CheckpointMutualTlsGossipClient:
             raise ValueError("checkpoint gossip timeout must be in (0, 30] seconds")
         self.descriptor_path = descriptor_path
         self.client_peer_id = client_peer_id
-        self.tls_trust = CheckpointPeerTlsTrust.model_validate(
-            tls_trust.model_dump(mode="json")
+        self.tls_trust = CheckpointPeerTlsTrust.model_validate(tls_trust.model_dump(mode="json"))
+        self.expiry_warnings = validate_checkpoint_peer_tls_expiry(
+            self.tls_trust, now=now, warning_window_seconds=expiry_warning_window_seconds
         )
         self.certificate_path = certificate_path
         self.private_key_path = private_key_path
@@ -591,9 +595,7 @@ async def send_checkpoint_mtls_gossip_request(
     ):
         raise ValueError("checkpoint gossip descriptor active certificate pin is invalid")
     _require_private_key_permissions(private_key_path)
-    verify_active_tls_certificate(
-        _read_certificate(certificate_path), tls_trust, client_peer_id
-    )
+    verify_active_tls_certificate(_read_certificate(certificate_path), tls_trust, client_peer_id)
     nonce = client_nonce if client_nonce is not None else secrets.token_bytes(32)
     if len(nonce) != 32:
         raise ValueError("checkpoint gossip client nonce must contain 32 bytes")
@@ -633,9 +635,7 @@ async def send_checkpoint_mtls_gossip_request(
         server_certificate = ssl_object.getpeercert(binary_form=True)
         if not server_certificate:
             raise RuntimeError("checkpoint gossip server certificate is missing")
-        verify_active_tls_certificate(
-            server_certificate, tls_trust, descriptor.server_peer_id
-        )
+        verify_active_tls_certificate(server_certificate, tls_trust, descriptor.server_peer_id)
         request = _MutualTlsRequest(
             protocol_version=GOSSIP_MTLS_PROTOCOL_VERSION,
             registry_id=descriptor.registry_id,
@@ -650,9 +650,7 @@ async def send_checkpoint_mtls_gossip_request(
         if len(encoded) > MAX_GOSSIP_REQUEST_BYTES:
             raise ValueError("checkpoint gossip request exceeds protocol limit")
         connected_writer.write(encoded)
-        await asyncio.wait_for(
-            connected_writer.drain(), timeout=request_timeout_seconds
-        )
+        await asyncio.wait_for(connected_writer.drain(), timeout=request_timeout_seconds)
         raw = await asyncio.wait_for(reader.readline(), timeout=request_timeout_seconds)
         if not raw or len(raw) > MAX_GOSSIP_RESPONSE_BYTES or not raw.endswith(b"\n"):
             raise RuntimeError("checkpoint gossip endpoint returned an invalid response")

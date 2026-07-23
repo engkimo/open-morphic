@@ -6,7 +6,7 @@ import base64
 import hashlib
 import ipaddress
 import json
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Literal
 
 from cryptography import x509
@@ -67,15 +67,9 @@ def _load_certificate(certificate: bytes) -> x509.Certificate:
 def _certificate_metadata(certificate_bytes: bytes) -> dict[str, object]:
     certificate = _load_certificate(certificate_bytes)
     try:
-        constraints = certificate.extensions.get_extension_for_class(
-            x509.BasicConstraints
-        ).value
-        san = certificate.extensions.get_extension_for_class(
-            x509.SubjectAlternativeName
-        ).value
-        usages = certificate.extensions.get_extension_for_class(
-            x509.ExtendedKeyUsage
-        ).value
+        constraints = certificate.extensions.get_extension_for_class(x509.BasicConstraints).value
+        san = certificate.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+        usages = certificate.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
         key_usage = certificate.extensions.get_extension_for_class(x509.KeyUsage).value
     except x509.ExtensionNotFound as exc:
         raise ValueError("TLS leaf certificate is missing required extensions") from exc
@@ -198,6 +192,48 @@ class CheckpointPeerTlsEnrollment(_FrozenModel):
         return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
 
 
+class CheckpointPeerTlsRevocationStatement(_FrozenModel):
+    schema_version: int
+    registry_id: str = Field(min_length=1, max_length=200)
+    peer_id: str = Field(min_length=1, max_length=200)
+    generation: int = Field(ge=1)
+    enrollment_sha256: str = Field(pattern=_SHA256_PATTERN)
+    peer_trust_sha256: str = Field(pattern=_SHA256_PATTERN)
+    reason: str = Field(min_length=1, max_length=500)
+    revoked_at: str = Field(min_length=1)
+    statement_sha256: str = Field(pattern=_SHA256_PATTERN)
+
+    @model_validator(mode="after")
+    def validate_statement(self) -> CheckpointPeerTlsRevocationStatement:
+        if self.schema_version != SCHEMA_VERSION:
+            raise ValueError(f"schema_version must be {SCHEMA_VERSION}")
+        _validate_identifier(self.peer_id, label="peer_id")
+        _validate_identifier(self.reason, label="reason")
+        if self.statement_sha256 != _canonical_sha256(
+            self.model_dump(mode="json", exclude={"statement_sha256"})
+        ):
+            raise ValueError("TLS revocation statement fingerprint does not match")
+        return self
+
+    def signing_bytes(self) -> bytes:
+        return _canonical_json(self.model_dump(mode="json")).encode()
+
+
+class CheckpointPeerTlsRevocation(_FrozenModel):
+    statement: CheckpointPeerTlsRevocationStatement
+    key_id: str = Field(min_length=1, max_length=200)
+    signature_base64: str = Field(min_length=1)
+    revocation_sha256: str = Field(pattern=_SHA256_PATTERN)
+
+    @model_validator(mode="after")
+    def validate_revocation(self) -> CheckpointPeerTlsRevocation:
+        _decode_base64(self.signature_base64, label="TLS revocation signature", length=64)
+        payload = self.model_dump(mode="json", exclude={"revocation_sha256"})
+        if self.revocation_sha256 != _canonical_sha256(payload):
+            raise ValueError("TLS revocation fingerprint does not match")
+        return self
+
+
 def _enrollment_identity(enrollment: CheckpointPeerTlsEnrollment) -> tuple[str, int]:
     return enrollment.statement.peer_id, enrollment.statement.generation
 
@@ -207,6 +243,7 @@ class CheckpointPeerTlsTrust(_FrozenModel):
     registry_id: str = Field(min_length=1, max_length=200)
     peer_trust_sha256: str = Field(pattern=_SHA256_PATTERN)
     enrollments: tuple[CheckpointPeerTlsEnrollment, ...] = Field(min_length=1)
+    revocations: tuple[CheckpointPeerTlsRevocation, ...] = ()
     tls_trust_sha256: str = Field(pattern=_SHA256_PATTERN)
 
     @model_validator(mode="after")
@@ -236,10 +273,21 @@ class CheckpointPeerTlsTrust(_FrozenModel):
             )
             if statement.generation > 1 and (
                 predecessor is None
-                or statement.previous_enrollment_sha256
-                != predecessor.enrollment_sha256
+                or statement.previous_enrollment_sha256 != predecessor.enrollment_sha256
             ):
                 raise ValueError("TLS enrollment predecessor is missing or invalid")
+        targets = {
+            (item.statement.peer_id, item.statement.generation, item.statement.enrollment_sha256)
+            for item in self.revocations
+        }
+        if len(targets) != len(self.revocations):
+            raise ValueError("duplicate TLS revocation target")
+        enrollment_targets = {
+            (item.statement.peer_id, item.statement.generation, item.enrollment_sha256)
+            for item in self.enrollments
+        }
+        if not targets.issubset(enrollment_targets):
+            raise ValueError("TLS revocation target is not enrolled")
         active = [self.active_enrollment(peer) for peer in self.peer_ids()]
         if len({item.statement.certificate_sha256 for item in active}) != len(active):
             raise ValueError("active TLS certificate pins must be unique across peers")
@@ -259,7 +307,18 @@ class CheckpointPeerTlsTrust(_FrozenModel):
         matches = [item for item in self.enrollments if item.statement.peer_id == peer_id]
         if not matches:
             raise ValueError(f"peer has no active TLS enrollment: {peer_id}")
-        return matches[-1]
+        revoked = {
+            (item.statement.peer_id, item.statement.generation, item.statement.enrollment_sha256)
+            for item in self.revocations
+        }
+        for item in reversed(matches):
+            if (
+                item.statement.peer_id,
+                item.statement.generation,
+                item.enrollment_sha256,
+            ) not in revoked:
+                return item
+        raise ValueError(f"peer has no active TLS enrollment: {peer_id}")
 
     def to_json(self) -> str:
         return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
@@ -270,9 +329,7 @@ def _active_peer_keys(
     peer_id: str,
 ) -> tuple[CheckpointPeerKey, ...]:
     return tuple(
-        key
-        for key in peer_trust.keys
-        if key.peer_id == peer_id and key.status == "active"
+        key for key in peer_trust.keys if key.peer_id == peer_id and key.status == "active"
     )
 
 
@@ -297,6 +354,27 @@ def _verify_enrollment_signature(
         )
     except InvalidSignature as exc:
         raise ValueError("TLS enrollment signature is invalid") from exc
+
+
+def _verify_revocation_signature(
+    revocation: CheckpointPeerTlsRevocation,
+    peer_trust: CheckpointPeerTrust,
+) -> None:
+    keys = {key.key_id: key for key in _active_peer_keys(peer_trust, revocation.statement.peer_id)}
+    key = keys.get(revocation.key_id)
+    if key is None:
+        raise ValueError("TLS revocation signature key is not active for peer")
+    try:
+        Ed25519PublicKey.from_public_bytes(
+            _decode_base64(key.public_key_base64, label="peer public key", length=32)
+        ).verify(
+            _decode_base64(
+                revocation.signature_base64, label="TLS revocation signature", length=64
+            ),
+            revocation.statement.signing_bytes(),
+        )
+    except InvalidSignature as exc:
+        raise ValueError("TLS revocation signature is invalid") from exc
 
 
 def build_checkpoint_peer_tls_enrollment_template(
@@ -378,6 +456,7 @@ def build_signed_checkpoint_peer_tls_enrollment(
 def build_checkpoint_peer_tls_trust(
     peer_trust: CheckpointPeerTrust,
     enrollments: tuple[CheckpointPeerTlsEnrollment, ...],
+    revocations: tuple[CheckpointPeerTlsRevocation, ...] = (),
 ) -> CheckpointPeerTlsTrust:
     """Verify signed enrollment chains and publish deterministic TLS pins."""
     peer_trust = CheckpointPeerTrust.model_validate(peer_trust.model_dump(mode="json"))
@@ -392,11 +471,25 @@ def build_checkpoint_peer_tls_trust(
     )
     for enrollment in normalized:
         _verify_enrollment_signature(enrollment, peer_trust)
+    normalized_revocations = tuple(
+        sorted(
+            (
+                CheckpointPeerTlsRevocation.model_validate(item.model_dump(mode="json"))
+                for item in revocations
+            ),
+            key=lambda item: (item.statement.peer_id, item.statement.generation),
+        )
+    )
+    for revocation in normalized_revocations:
+        if revocation.statement.peer_trust_sha256 != peer_trust.peer_trust_sha256:
+            raise ValueError("TLS revocation uses another peer trust")
+        _verify_revocation_signature(revocation, peer_trust)
     payload = {
         "schema_version": SCHEMA_VERSION,
         "registry_id": peer_trust.registry_id,
         "peer_trust_sha256": peer_trust.peer_trust_sha256,
         "enrollments": [item.model_dump(mode="json") for item in normalized],
+        "revocations": [item.model_dump(mode="json") for item in normalized_revocations],
     }
     return CheckpointPeerTlsTrust.model_validate(
         {**payload, "tls_trust_sha256": _canonical_sha256(payload)}
@@ -408,7 +501,9 @@ def verify_checkpoint_peer_tls_trust(
     peer_trust: CheckpointPeerTrust,
 ) -> None:
     """Reverify every enrollment signature against an exact peer trust artifact."""
-    verified = build_checkpoint_peer_tls_trust(peer_trust, tls_trust.enrollments)
+    verified = build_checkpoint_peer_tls_trust(
+        peer_trust, tls_trust.enrollments, tls_trust.revocations
+    )
     if verified != tls_trust:
         raise ValueError("TLS trust does not match checkpoint peer trust")
 
@@ -427,10 +522,7 @@ def verify_active_tls_certificate(
     """Require a leaf certificate to match both active peer pins."""
     certificate_sha256, spki_sha256 = certificate_fingerprints(certificate)
     active = tls_trust.active_enrollment(peer_id).statement
-    if (
-        certificate_sha256 != active.certificate_sha256
-        or spki_sha256 != active.spki_sha256
-    ):
+    if certificate_sha256 != active.certificate_sha256 or spki_sha256 != active.spki_sha256:
         raise ValueError("active peer TLS certificate pin does not match")
 
 
@@ -444,12 +536,34 @@ def resolve_active_tls_peer(
         peer_id
         for peer_id in tls_trust.peer_ids()
         if (
-            tls_trust.active_enrollment(peer_id).statement.certificate_sha256
-            == certificate_sha256
-            and tls_trust.active_enrollment(peer_id).statement.spki_sha256
-            == spki_sha256
+            tls_trust.active_enrollment(peer_id).statement.certificate_sha256 == certificate_sha256
+            and tls_trust.active_enrollment(peer_id).statement.spki_sha256 == spki_sha256
         )
     ]
     if len(matches) != 1:
         raise ValueError("TLS certificate does not match an active peer enrollment")
     return matches[0]
+
+
+def validate_checkpoint_peer_tls_expiry(
+    tls_trust: CheckpointPeerTlsTrust,
+    *,
+    now: datetime | None = None,
+    warning_window_seconds: int = 0,
+) -> tuple[tuple[str, int, str, int], ...]:
+    """Reject expired active leaves and return deterministic pre-expiry warnings."""
+    if warning_window_seconds < 0:
+        raise ValueError("warning_window_seconds must be non-negative")
+    current = (now or datetime.now(UTC)).astimezone(UTC)
+    warnings: list[tuple[str, int, str, int]] = []
+    for peer_id in tls_trust.peer_ids():
+        statement = tls_trust.active_enrollment(peer_id).statement
+        expires = datetime.fromisoformat(
+            statement.not_valid_after.replace("Z", "+00:00")
+        ).astimezone(UTC)
+        seconds = int((expires - current).total_seconds())
+        if seconds < 0:
+            raise ValueError(f"active TLS certificate is expired: {peer_id}")
+        if seconds <= warning_window_seconds:
+            warnings.append((peer_id, statement.generation, statement.not_valid_after, seconds))
+    return tuple(warnings)
