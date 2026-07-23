@@ -562,6 +562,19 @@
 - [x] T5409 Keep secrets and raw exception text out of deterministic audit records.
 - [x] T5410 Add a private-key-free gossip-sync CLI while deferring acknowledgement signing and remote mTLS.
 
+## Phase 55 - Peer-Signed Remote Mutual TLS
+
+- [x] T5501 Add RED tests for enrollment signatures, certificate rotation, mTLS exchange, replay, hostname/address rejection, plaintext rejection, cleanup, and CLI.
+- [x] T5502 Bind exact leaf DER and SPKI SHA-256 pins, subject/issuer, serial, validity, SANs, and client/server EKUs into deterministic enrollment statements.
+- [x] T5503 Require one active peer Ed25519 identity signature and reverify it against the exact peer-trust fingerprint.
+- [x] T5504 Chain monotonic per-peer certificate generations and reject missing, mismatched, duplicate, or cross-peer active pins.
+- [x] T5505 Publish self-fingerprinted TLS trust with exactly one active enrollment per included peer and reject inactive certificate use.
+- [x] T5506 Add TLS 1.3-only mutual certificate authentication with no token or plaintext fallback.
+- [x] T5507 Require certificate hostname verification plus explicit canonical client/server IP allowlists and peer-id-to-leaf-pin matching.
+- [x] T5508 Preserve bounded request/response size, concurrency, nonce retention, timeout, request capacity, and deterministic descriptor/client cleanup.
+- [x] T5509 Add private-key-free enrollment-template, enrollment-finalization, trust, mTLS-serve, and mTLS-status CLI paths.
+- [x] T5510 Document CA/out-of-band trust boundaries and defer mTLS fetch/ack/sync CLI wiring, discovery, automatic signing, and revocation status.
+
 ## Deferred
 
 - [ ] D001 Textual full-screen TUI.

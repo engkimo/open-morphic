@@ -498,6 +498,109 @@ _CHECKPOINT_GOSSIP_LIFETIME_OPTION = typer.Option(
     max=3600.0,
     help="Maximum listener lifetime without deterministic shutdown.",
 )
+_CHECKPOINT_TLS_CERTIFICATE_INPUT = typer.Option(
+    ...,
+    "--certificate",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Active TLS leaf certificate PEM.",
+)
+_CHECKPOINT_TLS_PRIVATE_KEY_INPUT = typer.Option(
+    ...,
+    "--private-key",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="TLS private key with owner-only permissions.",
+)
+_CHECKPOINT_TLS_CA_INPUT = typer.Option(
+    ...,
+    "--certificate-authority",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="CA bundle used for mutual certificate verification.",
+)
+_CHECKPOINT_TLS_TRUST_INPUT = typer.Option(
+    ...,
+    "--tls-trust",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Peer-signed TLS trust JSON.",
+)
+_CHECKPOINT_TLS_ENROLLMENTS_INPUT = typer.Option(
+    ...,
+    "--enrollments",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="JSON object containing signed TLS enrollments.",
+)
+_CHECKPOINT_TLS_TEMPLATE_INPUT = typer.Option(
+    ...,
+    "--template",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Private-key-free TLS enrollment template JSON.",
+)
+_CHECKPOINT_TLS_KEY_ID_OPTION = typer.Option(
+    ...,
+    "--key-id",
+    help="Eligible peer identity key ID used for the detached signature.",
+)
+_CHECKPOINT_TLS_SIGNATURE_OPTION = typer.Option(
+    ...,
+    "--signature-base64",
+    help="Detached Ed25519 signature over the template signing payload.",
+)
+_CHECKPOINT_TLS_PREDECESSOR_INPUT = typer.Option(
+    None,
+    "--predecessor",
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    help="Required predecessor enrollment for generation greater than one.",
+)
+_CHECKPOINT_TLS_BIND_HOST_OPTION = typer.Option(
+    ...,
+    "--bind-host",
+    help="Explicit bind IP.",
+)
+_CHECKPOINT_TLS_ADVERTISED_HOST_OPTION = typer.Option(
+    ...,
+    "--advertised-host",
+    help="Explicit client-visible IP.",
+)
+_CHECKPOINT_TLS_ALLOWED_CLIENTS_OPTION = typer.Option(
+    ...,
+    "--allow-client-address",
+    help="Allowed client IP; repeat for each address.",
+)
+_CHECKPOINT_TLS_CLIENT_PEER_OPTION = typer.Option(
+    ...,
+    "--client-peer-id",
+    help="Enrolled client peer identity.",
+)
+_CHECKPOINT_TLS_SERVER_HOSTNAME_OPTION = typer.Option(
+    ...,
+    "--server-hostname",
+    help="DNS name that must match the server certificate SAN.",
+)
+_CHECKPOINT_TLS_ALLOWED_SERVERS_OPTION = typer.Option(
+    ...,
+    "--allow-server-address",
+    help="Allowed server IP; repeat for each address.",
+)
 _CHECKPOINT_GOSSIP_SYNC_AUDIT_OPTION = typer.Option(
     ...,
     "--sync-audit",
@@ -1563,6 +1666,172 @@ def create_agent_cli_checkpoint_peer_trust(
         console.print(f"Created checkpoint peer trust with {len(trust.keys)} keys")
 
 
+@benchmark_app.command("agent-cli-checkpoint-peer-tls-enrollment-template")
+def create_agent_cli_checkpoint_peer_tls_enrollment_template(
+    certificate_path: Path = _CHECKPOINT_TLS_CERTIFICATE_INPUT,
+    peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
+    peer_id: str = typer.Option(..., "--peer-id", help="Peer identity to enroll."),
+    generation: int = typer.Option(
+        ...,
+        "--generation",
+        min=1,
+        help="Monotonic TLS enrollment generation.",
+    ),
+    predecessor_path: Path | None = _CHECKPOINT_TLS_PREDECESSOR_INPUT,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Create a private-key-free peer-signed TLS enrollment request."""
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointPeerTrust
+    from benchmarks.agent_cli_gossip_tls_identity import (
+        CheckpointPeerTlsEnrollment,
+        build_checkpoint_peer_tls_enrollment_template,
+    )
+
+    try:
+        peer_trust = CheckpointPeerTrust.model_validate_json(
+            peer_trust_path.read_text(encoding="utf-8")
+        )
+        predecessor = (
+            CheckpointPeerTlsEnrollment.model_validate_json(
+                predecessor_path.read_text(encoding="utf-8")
+            )
+            if predecessor_path is not None
+            else None
+        )
+        template = build_checkpoint_peer_tls_enrollment_template(
+            certificate_path.read_bytes(),
+            peer_trust,
+            peer_id=peer_id,
+            generation=generation,
+            predecessor=predecessor,
+        )
+        if not output_path.parent.exists():
+            raise ValueError("TLS enrollment output parent must already exist")
+        if output_path.exists():
+            raise ValueError("TLS enrollment output already exists")
+        _write_new_evidence(output_path, template.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI TLS enrollment template failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(template.to_json())
+    else:
+        console.print(
+            "Created TLS enrollment signing request "
+            f"peer={peer_id} generation={generation}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-peer-tls-enrollment")
+def create_agent_cli_checkpoint_peer_tls_enrollment(
+    template_path: Path = _CHECKPOINT_TLS_TEMPLATE_INPUT,
+    certificate_path: Path = _CHECKPOINT_TLS_CERTIFICATE_INPUT,
+    peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
+    key_id: str = _CHECKPOINT_TLS_KEY_ID_OPTION,
+    signature_base64: str = _CHECKPOINT_TLS_SIGNATURE_OPTION,
+    predecessor_path: Path | None = _CHECKPOINT_TLS_PREDECESSOR_INPUT,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Verify an external identity signature and finalize one TLS enrollment."""
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointPeerTrust
+    from benchmarks.agent_cli_gossip_tls_identity import (
+        CheckpointPeerTlsEnrollment,
+        CheckpointPeerTlsEnrollmentTemplate,
+        build_signed_checkpoint_peer_tls_enrollment,
+    )
+
+    try:
+        template = CheckpointPeerTlsEnrollmentTemplate.model_validate_json(
+            template_path.read_text(encoding="utf-8")
+        )
+        peer_trust = CheckpointPeerTrust.model_validate_json(
+            peer_trust_path.read_text(encoding="utf-8")
+        )
+        predecessor = (
+            CheckpointPeerTlsEnrollment.model_validate_json(
+                predecessor_path.read_text(encoding="utf-8")
+            )
+            if predecessor_path is not None
+            else None
+        )
+        enrollment = build_signed_checkpoint_peer_tls_enrollment(
+            template,
+            certificate_path.read_bytes(),
+            peer_trust,
+            key_id=key_id,
+            signature_base64=signature_base64,
+            predecessor=predecessor,
+        )
+        if not output_path.parent.exists():
+            raise ValueError("TLS enrollment output parent must already exist")
+        if output_path.exists():
+            raise ValueError("TLS enrollment output already exists")
+        _write_new_evidence(output_path, enrollment.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI TLS enrollment failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(enrollment.to_json())
+    else:
+        console.print(
+            "Verified TLS enrollment "
+            f"peer={enrollment.statement.peer_id} "
+            f"generation={enrollment.statement.generation}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-peer-tls-trust")
+def create_agent_cli_checkpoint_peer_tls_trust(
+    peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
+    enrollments_path: Path = _CHECKPOINT_TLS_ENROLLMENTS_INPUT,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Verify enrollment chains and publish active per-peer TLS pins."""
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointPeerTrust
+    from benchmarks.agent_cli_gossip_tls_identity import (
+        CheckpointPeerTlsEnrollment,
+        build_checkpoint_peer_tls_trust,
+    )
+
+    try:
+        peer_trust = CheckpointPeerTrust.model_validate_json(
+            peer_trust_path.read_text(encoding="utf-8")
+        )
+        payload = json.loads(enrollments_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or not isinstance(
+            payload.get("enrollments"), list
+        ):
+            raise ValueError("TLS enrollments JSON must contain an enrollments array")
+        trust = build_checkpoint_peer_tls_trust(
+            peer_trust,
+            tuple(
+                CheckpointPeerTlsEnrollment.model_validate(item)
+                for item in payload["enrollments"]
+            ),
+        )
+        if not output_path.parent.exists():
+            raise ValueError("TLS trust output parent must already exist")
+        if output_path.exists():
+            raise ValueError("TLS trust output already exists")
+        _write_new_evidence(output_path, trust.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI TLS trust failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+    if as_json:
+        typer.echo(trust.to_json())
+    else:
+        console.print(
+            "Created checkpoint TLS trust "
+            f"peers={len(trust.peer_ids())} enrollments={len(trust.enrollments)}"
+        )
+
+
 @benchmark_app.command("agent-cli-checkpoint-peer-trust-rotation-template")
 def create_agent_cli_checkpoint_peer_trust_rotation_template(
     predecessor_path: Path = _CHECKPOINT_PREDECESSOR_PEER_TRUST_INPUT,
@@ -2216,6 +2485,149 @@ def show_agent_cli_checkpoint_gossip_status(
             "Authenticated checkpoint gossip "
             f"source={status['source_peer_id']} "
             f"ranges={len(status['available_ranges'])}"
+        )
+
+
+@benchmark_app.command("agent-cli-checkpoint-gossip-mtls-serve")
+def serve_agent_cli_checkpoint_gossip_mtls(
+    descriptor_path: Path = _CHECKPOINT_GOSSIP_DESCRIPTOR_OUTPUT,
+    range_bundles_path: Path = _CHECKPOINT_GOSSIP_BUNDLES_INPUT,
+    cursor_ledger_path: Path = _CHECKPOINT_CURSOR_LEDGER_OPTION,
+    registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
+    source_peer_id: str = _CHECKPOINT_SOURCE_PEER_OPTION,
+    peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
+    tls_trust_path: Path = _CHECKPOINT_TLS_TRUST_INPUT,
+    certificate_path: Path = _CHECKPOINT_TLS_CERTIFICATE_INPUT,
+    private_key_path: Path = _CHECKPOINT_TLS_PRIVATE_KEY_INPUT,
+    certificate_authority_path: Path = _CHECKPOINT_TLS_CA_INPUT,
+    bind_host: str = _CHECKPOINT_TLS_BIND_HOST_OPTION,
+    advertised_host: str = _CHECKPOINT_TLS_ADVERTISED_HOST_OPTION,
+    allowed_client_addresses: list[str] = _CHECKPOINT_TLS_ALLOWED_CLIENTS_OPTION,
+    max_requests: int = _CHECKPOINT_GOSSIP_MAX_REQUESTS_OPTION,
+    lifetime_seconds: float = _CHECKPOINT_GOSSIP_LIFETIME_OPTION,
+) -> None:
+    """Serve checkpoint gossip over TLS 1.3 mutual authentication."""
+    from benchmarks.agent_cli_checkpoint_registry import (
+        CheckpointPeerCursorStore,
+        CheckpointPeerTrust,
+    )
+    from benchmarks.agent_cli_gossip import CheckpointGossipService
+    from benchmarks.agent_cli_gossip_tls_identity import (
+        CheckpointPeerTlsTrust,
+        verify_checkpoint_peer_tls_trust,
+    )
+    from benchmarks.agent_cli_gossip_tls_transport import (
+        CheckpointMutualTlsGossipServer,
+    )
+
+    try:
+        if not descriptor_path.parent.exists():
+            raise ValueError("checkpoint gossip descriptor parent must already exist")
+        if not cursor_ledger_path.parent.exists():
+            raise ValueError("checkpoint gossip cursor parent must already exist")
+        peer_trust = CheckpointPeerTrust.model_validate_json(
+            peer_trust_path.read_text(encoding="utf-8")
+        )
+        tls_trust = CheckpointPeerTlsTrust.model_validate_json(
+            tls_trust_path.read_text(encoding="utf-8")
+        )
+        verify_checkpoint_peer_tls_trust(tls_trust, peer_trust)
+        service = CheckpointGossipService(
+            registry_id=registry_id,
+            source_peer_id=source_peer_id,
+            range_bundles=_load_checkpoint_gossip_bundles(range_bundles_path),
+            cursor_store=CheckpointPeerCursorStore(
+                cursor_ledger_path,
+                registry_id=registry_id,
+            ),
+            peer_trust=peer_trust,
+        )
+
+        async def run_server() -> None:
+            server = CheckpointMutualTlsGossipServer(
+                descriptor_path=descriptor_path,
+                bind_host=bind_host,
+                advertised_host=advertised_host,
+                registry_id=registry_id,
+                server_peer_id=source_peer_id,
+                handler=service,
+                tls_trust=tls_trust,
+                certificate_path=certificate_path,
+                private_key_path=private_key_path,
+                certificate_authority_path=certificate_authority_path,
+                allowed_client_addresses=frozenset(allowed_client_addresses),
+                max_requests=max_requests,
+            )
+            async with server:
+                console.print(
+                    "Checkpoint gossip listening with TLS 1.3 mutual auth "
+                    f"descriptor={descriptor_path} max_requests={max_requests}"
+                )
+                await server.serve_until_stopped(
+                    lifetime_timeout_seconds=lifetime_seconds
+                )
+
+        _run(run_server())
+    except (OSError, RuntimeError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint mTLS server failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+
+
+@benchmark_app.command("agent-cli-checkpoint-gossip-mtls-status")
+def show_agent_cli_checkpoint_gossip_mtls_status(
+    descriptor_path: Path = _CHECKPOINT_GOSSIP_DESCRIPTOR_INPUT,
+    peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
+    tls_trust_path: Path = _CHECKPOINT_TLS_TRUST_INPUT,
+    client_peer_id: str = _CHECKPOINT_TLS_CLIENT_PEER_OPTION,
+    certificate_path: Path = _CHECKPOINT_TLS_CERTIFICATE_INPUT,
+    private_key_path: Path = _CHECKPOINT_TLS_PRIVATE_KEY_INPUT,
+    certificate_authority_path: Path = _CHECKPOINT_TLS_CA_INPUT,
+    server_hostname: str = _CHECKPOINT_TLS_SERVER_HOSTNAME_OPTION,
+    allowed_server_addresses: list[str] = _CHECKPOINT_TLS_ALLOWED_SERVERS_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Query checkpoint status over pinned TLS 1.3 mutual authentication."""
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointPeerTrust
+    from benchmarks.agent_cli_gossip_tls_identity import (
+        CheckpointPeerTlsTrust,
+        verify_checkpoint_peer_tls_trust,
+    )
+    from benchmarks.agent_cli_gossip_tls_transport import (
+        send_checkpoint_mtls_gossip_request,
+    )
+
+    try:
+        tls_trust = CheckpointPeerTlsTrust.model_validate_json(
+            tls_trust_path.read_text(encoding="utf-8")
+        )
+        peer_trust = CheckpointPeerTrust.model_validate_json(
+            peer_trust_path.read_text(encoding="utf-8")
+        )
+        verify_checkpoint_peer_tls_trust(tls_trust, peer_trust)
+        status = _run(
+            send_checkpoint_mtls_gossip_request(
+                descriptor_path=descriptor_path,
+                client_peer_id=client_peer_id,
+                tls_trust=tls_trust,
+                certificate_path=certificate_path,
+                private_key_path=private_key_path,
+                certificate_authority_path=certificate_authority_path,
+                server_hostname=server_hostname,
+                allowed_server_addresses=frozenset(allowed_server_addresses),
+                operation="status",
+                payload={},
+            )
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        console.print(f"[red]Agent CLI checkpoint mTLS status failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+    if as_json:
+        typer.echo(json.dumps(status, ensure_ascii=False, sort_keys=True))
+    else:
+        console.print(
+            "Mutually authenticated checkpoint gossip "
+            f"source={status.get('source_peer_id', 'unknown')} "
+            f"ranges={len(status.get('available_ranges', []))}"
         )
 
 

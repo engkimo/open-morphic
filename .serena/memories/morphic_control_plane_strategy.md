@@ -698,6 +698,42 @@ Phase 55 should add an explicit remote mTLS boundary: peer-id-bound certificate/
 enrollment anchored to the existing Ed25519 peer trust, TLS 1.3 only, address allowlists,
 hostname/IP verification, certificate rotation continuity, and no plaintext fallback.
 
+## Phase 55 update
+
+Checkpoint gossip now has an explicit remote-capable mutual TLS boundary. A deterministic
+enrollment statement binds one non-CA leaf certificate's normalized DER and SPKI SHA-256
+pins, subject and issuer, serial, validity interval, DNS/IP SANs, and dual client/server
+authentication EKUs to one active Ed25519 peer identity signature. The signing template
+and finalization CUI never read an identity private key.
+
+Certificate rotation is a per-peer contiguous generation chain. Each successor binds the
+exact predecessor enrollment fingerprint. TLS trust construction reverifies every identity
+signature under the exact peer-trust fingerprint, rejects missing generations or registry
+changes, and exposes only the highest generation as active. Active certificate and SPKI pins
+must also be unique across peers. Runtime server and client credentials must match both
+active pins, so an enrolled but superseded certificate cannot authenticate.
+
+Transport protocol version two uses TLS 1.3 only and requires certificates on both sides.
+The client verifies the CA chain, certificate hostname, explicit descriptor/server IP
+allowlist, connected peer address, exact TLS-trust fingerprint, and server DER/SPKI pins.
+The server verifies an explicit client IP allowlist, resolves the handshake leaf to exactly
+one active peer, and requires the request's client peer ID to match. Its mode 0600 descriptor
+contains no bearer token, and plaintext input never reaches the application protocol.
+
+One-use nonce replay defense plus the existing 64 KiB request, 2 MiB response, concurrency,
+timeout, retained-nonce, request-count, and deterministic cleanup bounds remain in force.
+Private key files must deny group and other access. The CUI now covers enrollment template,
+detached-signature finalization, trust publication, mTLS serve, and mTLS status; any loaded
+TLS trust is cryptographically rechecked against its peer trust before network use.
+
+Phase 55 passed 3,700 unit tests with repository-wide Ruff, focused mypy, and wheel build
+clean. Tests used loopback sockets, temporary local CA/leaf certificates, and in-memory
+Ed25519 identity keys only. No external peer, agent, paid API, or non-loopback listener ran.
+Remaining operator boundaries are authentic CA/genesis distribution, DNS/address operations,
+certificate revocation status and key custody. Phase 56 should wire fetch, acknowledgement, and resumable
+sync CUI paths to protocol v2, then add revocation/expiry policy and authenticated discovery
+without reintroducing bearer tokens or plaintext fallback.
+
 ## Publication checkpoint (2026-07-15)
 
 Phases 26-31 form the first complete native Codex control-plane vertical slice:

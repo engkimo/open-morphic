@@ -1,7 +1,7 @@
 # Morphic-Agent — Continuation State
 
 > Last updated: 2026-07-22
-> Latest work: Morphic Chat CLI Phase 54 durable bounded gossip catch-up loop
+> Latest work: Morphic Chat CLI Phase 55 peer-signed remote mutual TLS
 
 ## Latest Session Notes (2026-06-26)
 
@@ -457,6 +457,17 @@ Phase 54 implemented:
 - Verification: 3,698 unit tests passed; repository-wide Ruff and focused mypy clean; loopback/in-memory test keys only, with no external peer, agent, paid API, or non-loopback listener.
 - Security boundary: the local pin is tamper-evident, not resistant to an attacker who can rewrite the complete audit and registry. Automatic acknowledgement signing, peer discovery, and remote mTLS remain out-of-scope.
 
+Phase 55 implemented:
+- Added private-key-free TLS leaf enrollment statements binding normalized DER and SPKI SHA-256 pins, subject/issuer, serial, validity, SANs, and client/server EKUs to an existing active peer Ed25519 identity signature.
+- Per-peer certificate rotation is a contiguous generation chain. Missing or mismatched predecessors, invalid/inactive identity signatures, registry/trust mismatch, and duplicate active leaf/SPKI pins across peers fail closed.
+- Added a self-fingerprinted TLS trust artifact with deterministic active enrollment resolution. Runtime credentials must match both the active certificate and SPKI pins; an older enrolled certificate cannot start a server or authenticate a client.
+- Added protocol version 2 transport using TLS 1.3 only with required mutual CA validation. The client additionally verifies hostname, explicit server IP allowlist, connected peer address, descriptor trust fingerprint, and active server pins.
+- The server verifies an explicit client IP allowlist, the handshake leaf against an active peer enrollment, and the request's declared client peer ID. Plaintext connections never reach the application protocol and there is no token or plaintext fallback.
+- Preserved 64 KiB request, 2 MiB response, eight-client default, 1,024 nonce/request capacity, timeout, replay, and deterministic listener/client/owned-descriptor cleanup bounds. The mode 0600 descriptor is token-free and TLS private keys must deny group/other access.
+- Added private-key-free enrollment-template, detached-signature enrollment finalization, TLS trust, mTLS serve, and mTLS status CLI paths. Loaded trust artifacts are reverified against the exact peer trust before CUI network use.
+- Verification: 3,700 unit tests passed; repository-wide Ruff, focused mypy, and wheel build are clean. Tests use loopback, local temporary certificates, and in-memory Ed25519 keys only.
+- Security boundary: CA/genesis trust distribution, DNS/address operations, certificate revocation status, private-key custody, peer discovery, automatic signing, and mTLS fetch/ack/sync CLI wiring remain operator/out-of-scope boundaries.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -466,7 +477,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Add explicit remote mTLS peer enrollment and certificate/SPKI pinning, with peer-id binding, TLS 1.3-only policy, address allowlists, and no plaintext fallback.
+- Route fetch/ack/sync through the protocol-v2 mTLS transport, then add explicit certificate revocation/expiry policy and authenticated peer discovery without weakening the pinned trust path.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

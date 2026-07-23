@@ -1053,6 +1053,84 @@ attackerへのsecure monotonic counterではない。またloopはprivate keyを
 行わない。次はremote bindを許可する前に、peer Ed25519 identityへbindしたmTLS certificate/SPKI enrollment、
 TLS 1.3-only、address allowlist、plaintext fallback禁止を追加する。
 
+### Peer-signed remote mutual TLS
+
+Phase 55では、既存checkpoint peer trustのEd25519 identityへTLS leaf certificateを署名付きで登録する。
+templateはcertificateの正規化DER SHA-256、SPKI SHA-256、subject/issuer、serial、有効期間、DNS/IP SAN、
+client/server EKUをbindし、秘密鍵を含まない。generation 2以降は直前enrollment fingerprintを必須とする。
+
+```bash
+morphic benchmark agent-cli-checkpoint-peer-tls-enrollment-template \
+  --certificate peer-1-tls.pem \
+  --peer-trust checkpoint-peer-trust.json \
+  --peer-id peer-1 \
+  --generation 1 \
+  --output peer-1-tls-template.json \
+  --json
+
+# signing_payload_base64をpeer-1のactive Ed25519 identity keyで外部署名する。
+morphic benchmark agent-cli-checkpoint-peer-tls-enrollment \
+  --template peer-1-tls-template.json \
+  --certificate peer-1-tls.pem \
+  --peer-trust checkpoint-peer-trust.json \
+  --key-id peer-1-key-1 \
+  --signature-base64 "$PEER_1_TLS_SIGNATURE" \
+  --output peer-1-tls-enrollment.json \
+  --json
+
+# tls-enrollments.jsonはenrollments配列に全世代をpeer/generation順不同で格納できる。
+morphic benchmark agent-cli-checkpoint-peer-tls-trust \
+  --peer-trust checkpoint-peer-trust.json \
+  --enrollments tls-enrollments.json \
+  --output checkpoint-peer-tls-trust.json \
+  --json
+```
+
+certificateはCAではないleafで、少なくとも1つのSAN、digital signature key usage、client authとserver authの
+両EKUを持つ必要がある。trust生成時は全enrollment signature、peer/trust/registry、連続generation chainを
+再検証する。runtimeは各peerの最高generationだけをactiveとし、DERとSPKIの両pinが一致しない旧certificateを
+起動前または接続時に拒否する。同じactive certificate/SPKIを複数peerへ割り当てることもできない。
+
+```bash
+morphic benchmark agent-cli-checkpoint-gossip-mtls-serve \
+  --descriptor .morphic/gossip/peer-1-mtls.json \
+  --range-bundles signed-checkpoint-ranges.json \
+  --cursor-ledger checkpoint-peer-cursors.jsonl \
+  --registry-id example-org-checkpoints \
+  --source-peer-id peer-1 \
+  --peer-trust checkpoint-peer-trust.json \
+  --tls-trust checkpoint-peer-tls-trust.json \
+  --certificate peer-1-tls.pem \
+  --private-key peer-1-tls-key.pem \
+  --certificate-authority checkpoint-peer-ca.pem \
+  --bind-host 0.0.0.0 \
+  --advertised-host 192.0.2.10 \
+  --allow-client-address 192.0.2.20 \
+  --max-requests 64 \
+  --lifetime-seconds 300
+
+morphic benchmark agent-cli-checkpoint-gossip-mtls-status \
+  --descriptor .morphic/gossip/peer-1-mtls.json \
+  --peer-trust checkpoint-peer-trust.json \
+  --tls-trust checkpoint-peer-tls-trust.json \
+  --client-peer-id peer-2 \
+  --certificate peer-2-tls.pem \
+  --private-key peer-2-tls-key.pem \
+  --certificate-authority checkpoint-peer-ca.pem \
+  --server-hostname peer-1.example.org \
+  --allow-server-address 192.0.2.10 \
+  --json
+```
+
+transport protocol version 2はTLS 1.3だけを許可し、serverはclient certificateを必須化する。clientはCA chain、
+certificate hostname、descriptor host allowlist、接続後peer address、active server DER/SPKI pinをすべて照合する。
+serverも接続元allowlist、active client DER/SPKI pin、request内client peer IDを照合する。0600 descriptorにtokenや
+private keyはなく、平文protocolへのfallbackはない。private key fileはgroup/other accessを許可しない。
+
+CA bundleとgenesis peer trustの真正な初回配布、DNS/address運用、certificate revocation status、private key保護は
+operator境界である。Phase 55のmTLS CUIはserve/statusまでで、fetch/ack/syncのmTLS CUI配線、peer discovery、
+automatic enrollment/ack signing、常駐daemonは未実装である。
+
 ---
 
 ## Agent CLI Router
