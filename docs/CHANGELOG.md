@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **[FEAT/BENCHMARK]** Phase 58 TLS trust CLIへ`--revocations`を追加し、peer-signed revocation bundleを検証したrevocation-aware trust artifactを発行可能にした。
+
 - **[FEAT/BENCHMARK]** Phase 57 TLS revocation/expiry policyを追加: active peer Ed25519 keyで署名されたcertificate enrollment revocation chainをTLS trust fingerprintへbindし、revoked generationをactive pin解決から除外。mTLS server/clientはtransport開始前にexpired leafを拒否し、設定可能なpre-expiry warning windowを公開する。
 
 - **[FEAT/BENCHMARK]** Phase 56 mutual-TLS artifact syncをTDDで追加: checkpoint gossipのstatus/fetch/ackをtyped authenticated request senderへ分離し、protocol-v1 loopbackをdefaultとして完全互換のまま維持。reusable protocol-v2 mTLS clientを同じcontractへ接続し、range受信後のpeer Ed25519署名・exact trust generation検証、ack response同一性検証をtransport外の既存pathで継続する。Phase 54 bounded resumable syncもsender注入へ対応し、whole-loop lock、hash-chained audit、crash recovery、trust rollback/fork pin、retry/budget/stop reasonを変更せずmTLSで利用可能にした。active peer-trust generationに対してTLS enrollment署名を再検証するmTLS fetch/ack/sync CLIを追加。明示certificate revocation/expiry warning、discovery、automatic signingは未保証。

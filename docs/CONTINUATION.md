@@ -6,6 +6,11 @@
 - mTLS server/client expiry rejection plus deterministic warning-window reporting implemented.
 - Unit suite: 3,700 passed. CUI issuance/trust commands and dedicated revocation fixtures remain next.
 
+## Phase 58 checkpoint (2026-07-24)
+
+- TLS trust CUI accepts optional signed `--revocations` bundle and includes it in the published trust.
+- Focused TLS tests and Ruff pass; next slice is dedicated revocation fixture coverage and issuance templates.
+
 > Last updated: 2026-07-22
 > Latest work: Morphic Chat CLI Phase 56 mutual-TLS artifact sync
 

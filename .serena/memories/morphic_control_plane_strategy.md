@@ -785,3 +785,10 @@ callers retain defaults and TLS 1.3 handshake checks remain unchanged.
 
 Phase 57 unit verification remains green at 3,700 tests; next work is to expose revocation
 issuance/trust updates and expiry warnings through the CUI and add dedicated regression fixtures.
+
+## Phase 58 update
+
+The checkpoint TLS trust CLI now accepts an optional signed revocation bundle and publishes
+the resulting revocation-aware trust fingerprint. This keeps revocation verification offline,
+explicit, and compatible with the existing enrollment/trust artifact workflow. PR #44 CI is
+green after the Phase 57 transport policy changes.

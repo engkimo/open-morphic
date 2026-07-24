@@ -33,6 +33,9 @@ _AGENT_CLI_RESULTS_OPTION = typer.Option(
     help="Recorded trial observations JSON.",
 )
 _AGENT_CLI_JSON_OPTION = typer.Option(False, "--json", help="Emit deterministic JSON.")
+_CHECKPOINT_TLS_REVOCATIONS_OPTION = typer.Option(
+    None, "--revocations", exists=True, file_okay=True, dir_okay=False, readable=True
+)
 _RECORDER_CONFIG_OPTION = typer.Option(
     ...,
     "--config",
@@ -1788,6 +1791,7 @@ def create_agent_cli_checkpoint_peer_tls_enrollment(
 def create_agent_cli_checkpoint_peer_tls_trust(
     peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
     enrollments_path: Path = _CHECKPOINT_TLS_ENROLLMENTS_INPUT,
+    revocations_path: Path | None = _CHECKPOINT_TLS_REVOCATIONS_OPTION,
     output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
     as_json: bool = _AGENT_CLI_JSON_OPTION,
 ) -> None:
@@ -1795,6 +1799,7 @@ def create_agent_cli_checkpoint_peer_tls_trust(
     from benchmarks.agent_cli_checkpoint_registry import CheckpointPeerTrust
     from benchmarks.agent_cli_gossip_tls_identity import (
         CheckpointPeerTlsEnrollment,
+        CheckpointPeerTlsRevocation,
         build_checkpoint_peer_tls_trust,
     )
 
@@ -1807,12 +1812,24 @@ def create_agent_cli_checkpoint_peer_tls_trust(
             payload.get("enrollments"), list
         ):
             raise ValueError("TLS enrollments JSON must contain an enrollments array")
+        revocations: tuple[CheckpointPeerTlsRevocation, ...] = ()
+        if revocations_path is not None:
+            revocation_payload = json.loads(revocations_path.read_text(encoding="utf-8"))
+            if not isinstance(revocation_payload, dict) or not isinstance(
+                revocation_payload.get("revocations"), list
+            ):
+                raise ValueError("TLS revocations JSON must contain a revocations array")
+            revocations = tuple(
+                CheckpointPeerTlsRevocation.model_validate(item)
+                for item in revocation_payload["revocations"]
+            )
         trust = build_checkpoint_peer_tls_trust(
             peer_trust,
             tuple(
                 CheckpointPeerTlsEnrollment.model_validate(item)
                 for item in payload["enrollments"]
             ),
+            revocations,
         )
         if not output_path.parent.exists():
             raise ValueError("TLS trust output parent must already exist")
