@@ -11,6 +11,11 @@
 - TLS trust CUI accepts optional signed `--revocations` bundle and includes it in the published trust.
 - Focused TLS tests and Ruff pass; next slice is dedicated revocation fixture coverage and issuance templates.
 
+## Phase 59 checkpoint (2026-07-25)
+
+- Added revocation template/finalization APIs with active-key eligibility and detached signature verification.
+- Focused TLS tests and Ruff pass; next slice is CLI commands and dedicated revocation regression fixtures.
+
 > Last updated: 2026-07-22
 > Latest work: Morphic Chat CLI Phase 56 mutual-TLS artifact sync
 

@@ -234,6 +234,65 @@ class CheckpointPeerTlsRevocation(_FrozenModel):
         return self
 
 
+class CheckpointPeerTlsRevocationTemplate(_FrozenModel):
+    statement: CheckpointPeerTlsRevocationStatement
+    eligible_key_ids: tuple[str, ...] = Field(min_length=1)
+    signing_payload_base64: str = Field(min_length=1)
+    signatures_completed: Literal[False] = False
+
+    @model_validator(mode="after")
+    def validate_template(self) -> CheckpointPeerTlsRevocationTemplate:
+        if tuple(sorted(set(self.eligible_key_ids))) != self.eligible_key_ids:
+            raise ValueError("eligible peer key IDs must be sorted and unique")
+        expected = base64.b64encode(self.statement.signing_bytes()).decode()
+        if self.signing_payload_base64 != expected:
+            raise ValueError("TLS revocation signing payload does not match statement")
+        return self
+
+    def to_json(self) -> str:
+        return json.dumps(self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
+
+
+def build_checkpoint_peer_tls_revocation_template(
+    tls_trust: CheckpointPeerTlsTrust,
+    peer_trust: CheckpointPeerTrust,
+    *,
+    peer_id: str,
+    generation: int,
+    reason: str,
+    revoked_at: str,
+) -> CheckpointPeerTlsRevocationTemplate:
+    """Create a private-key-free request to revoke one enrolled generation."""
+    enrollment = next(
+        (item for item in tls_trust.enrollments
+         if item.statement.peer_id == peer_id and item.statement.generation == generation),
+        None,
+    )
+    if enrollment is None:
+        raise ValueError("TLS revocation target is not enrolled")
+    active_keys = tuple(sorted(key.key_id for key in _active_peer_keys(peer_trust, peer_id)))
+    if not active_keys:
+        raise ValueError("TLS revocation peer has no active identity key")
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "registry_id": tls_trust.registry_id,
+        "peer_id": peer_id,
+        "generation": generation,
+        "enrollment_sha256": enrollment.enrollment_sha256,
+        "peer_trust_sha256": tls_trust.peer_trust_sha256,
+        "reason": reason,
+        "revoked_at": revoked_at,
+    }
+    statement = CheckpointPeerTlsRevocationStatement.model_validate(
+        {**payload, "statement_sha256": _canonical_sha256(payload)}
+    )
+    return CheckpointPeerTlsRevocationTemplate(
+        statement=statement,
+        eligible_key_ids=active_keys,
+        signing_payload_base64=base64.b64encode(statement.signing_bytes()).decode(),
+    )
+
+
 def _enrollment_identity(enrollment: CheckpointPeerTlsEnrollment) -> tuple[str, int]:
     return enrollment.statement.peer_id, enrollment.statement.generation
 
@@ -375,6 +434,28 @@ def _verify_revocation_signature(
         )
     except InvalidSignature as exc:
         raise ValueError("TLS revocation signature is invalid") from exc
+
+
+def build_signed_checkpoint_peer_tls_revocation(
+    template: CheckpointPeerTlsRevocationTemplate,
+    peer_trust: CheckpointPeerTrust,
+    *,
+    key_id: str,
+    signature_base64: str,
+) -> CheckpointPeerTlsRevocation:
+    """Verify a peer signature and finalize a TLS revocation artifact."""
+    if key_id not in template.eligible_key_ids:
+        raise ValueError("TLS revocation signature key is not eligible")
+    payload = {
+        "statement": template.statement.model_dump(mode="json"),
+        "key_id": key_id,
+        "signature_base64": signature_base64,
+    }
+    revocation = CheckpointPeerTlsRevocation.model_validate(
+        {**payload, "revocation_sha256": _canonical_sha256(payload)}
+    )
+    _verify_revocation_signature(revocation, peer_trust)
+    return revocation
 
 
 def build_checkpoint_peer_tls_enrollment_template(

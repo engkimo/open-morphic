@@ -792,3 +792,10 @@ The checkpoint TLS trust CLI now accepts an optional signed revocation bundle an
 the resulting revocation-aware trust fingerprint. This keeps revocation verification offline,
 explicit, and compatible with the existing enrollment/trust artifact workflow. PR #44 CI is
 green after the Phase 57 transport policy changes.
+
+## Phase 59 update
+
+Added private-key-free `CheckpointPeerTlsRevocationTemplate` generation and signed revocation
+finalization. The template binds one enrolled peer/generation, reason, timestamp, trust hash,
+and eligible active identity keys; finalization verifies the detached Ed25519 signature before
+returning the self-fingerprinted revocation artifact.

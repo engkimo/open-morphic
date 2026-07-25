@@ -1,6 +1,7 @@
 # CLAUDE.md Changelog
 
 ## Unreleased
+- **[FEAT/BENCHMARK]** Phase 59 TLS revocation issuance APIを追加: private-key-free templateが対象generation・reason・時刻・trust hashとeligible active keyをbindし、finalizationでEd25519署名を検証してrevocation artifactを発行する。
 
 - **[FEAT/BENCHMARK]** Phase 58 TLS trust CLIへ`--revocations`を追加し、peer-signed revocation bundleを検証したrevocation-aware trust artifactを発行可能にした。
 
