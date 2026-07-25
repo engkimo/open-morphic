@@ -1,6 +1,7 @@
 # CLAUDE.md Changelog
 
 ## Unreleased
+- **[FEAT/BENCHMARK]** mTLS status CUIへ`tls_expiry_warnings`を追加し、期限警告をJSON・human outputから観測可能にした。
 - **[TEST/BENCHMARK]** Phase 61 TLS revocation CLIのtemplate/finalization round-trip回帰fixtureを追加。
 - **[FEAT/BENCHMARK]** Phase 60 TLS revocation template/finalization CUIを追加。
 - **[FEAT/BENCHMARK]** Phase 59 TLS revocation issuance APIを追加: private-key-free templateが対象generation・reason・時刻・trust hashとeligible active keyをbindし、finalizationでEd25519署名を検証してrevocation artifactを発行する。

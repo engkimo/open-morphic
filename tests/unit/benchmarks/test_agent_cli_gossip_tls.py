@@ -451,7 +451,9 @@ async def test_peer_signed_tls_rotation_and_mutual_tls_transport(
             ],
         )
         assert cli_status.exit_code == 0, cli_status.output
-        assert json.loads(cli_status.output) == {"operation": "status", "payload": {}}
+        assert json.loads(cli_status.output) == {
+            "operation": "status", "payload": {}, "tls_expiry_warnings": []
+        }
 
         reader, writer = await asyncio.open_connection(
             descriptor["host"],

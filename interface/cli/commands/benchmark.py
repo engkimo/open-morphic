@@ -2726,12 +2726,19 @@ def show_agent_cli_checkpoint_gossip_mtls_status(
         console.print(f"[red]Agent CLI checkpoint mTLS status failed: {exc}[/red]")
         raise typer.Exit(code=1) from None
     if as_json:
-        typer.echo(json.dumps(status, ensure_ascii=False, sort_keys=True))
+        typer.echo(
+            json.dumps(
+                {**status, "tls_expiry_warnings": client.expiry_warnings},
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
     else:
         console.print(
             "Mutually authenticated checkpoint gossip "
             f"source={status.get('source_peer_id', 'unknown')} "
-            f"ranges={len(status.get('available_ranges', []))}"
+            f"ranges={len(status.get('available_ranges', []))} "
+            f"tls_expiry_warnings={len(client.expiry_warnings)}"
         )
 
 

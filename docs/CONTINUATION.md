@@ -1,5 +1,9 @@
 # Morphic-Agent — Continuation State
 
+## Final smoke checkpoint (2026-07-25)
+
+- mTLS status exposes deterministic TLS expiry warnings.
+
 ## Phase 61 checkpoint (2026-07-25)
 
 - Added end-to-end revocation CLI regression fixture from trust load through finalized artifact.

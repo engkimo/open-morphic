@@ -808,3 +808,8 @@ overwritten and finalized output remains deterministic JSON.
 
 TLS identity CLI regression now covers trust load, private-key-free revocation template,
 detached peer signature finalization, and artifact round-trip validation.
+## Completion checkpoint
+
+The mTLS status CUI now exposes `tls_expiry_warnings` in JSON and the human summary, making
+pre-expiry policy observable during actual operation. The current vertical slice is ready for
+manual CLI smoke testing.
