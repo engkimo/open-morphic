@@ -1,6 +1,7 @@
 # CLAUDE.md Changelog
 
 ## Unreleased
+- **[TEST/BENCHMARK]** Phase 61 TLS revocation CLIのtemplate/finalization round-trip回帰fixtureを追加。
 - **[FEAT/BENCHMARK]** Phase 60 TLS revocation template/finalization CUIを追加。
 - **[FEAT/BENCHMARK]** Phase 59 TLS revocation issuance APIを追加: private-key-free templateが対象generation・reason・時刻・trust hashとeligible active keyをbindし、finalizationでEd25519署名を検証してrevocation artifactを発行する。
 

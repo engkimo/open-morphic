@@ -804,3 +804,7 @@ returning the self-fingerprinted revocation artifact.
 The revocation workflow is now exposed through two offline CUI commands: a private-key-free
 template request and detached peer-signature finalization. Existing evidence is never
 overwritten and finalized output remains deterministic JSON.
+## Phase 61 update
+
+TLS identity CLI regression now covers trust load, private-key-free revocation template,
+detached peer signature finalization, and artifact round-trip validation.

@@ -1,5 +1,9 @@
 # Morphic-Agent — Continuation State
 
+## Phase 61 checkpoint (2026-07-25)
+
+- Added end-to-end revocation CLI regression fixture from trust load through finalized artifact.
+
 ## Phase 60 checkpoint (2026-07-25)
 
 - Added offline revocation template and signature-finalization CLI commands.

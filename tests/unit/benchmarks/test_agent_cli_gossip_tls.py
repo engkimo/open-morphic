@@ -26,10 +26,13 @@ from benchmarks.agent_cli_checkpoint_registry import (
 from benchmarks.agent_cli_comparison import SCHEMA_VERSION
 from benchmarks.agent_cli_gossip_tls_identity import (
     CheckpointPeerTlsEnrollment,
+    CheckpointPeerTlsRevocation,
+    CheckpointPeerTlsRevocationTemplate,
     CheckpointPeerTlsTrust,
     build_checkpoint_peer_tls_enrollment_template,
     build_checkpoint_peer_tls_trust,
     build_signed_checkpoint_peer_tls_enrollment,
+    build_signed_checkpoint_peer_tls_revocation,
 )
 from benchmarks.agent_cli_gossip_tls_transport import (
     CheckpointMutualTlsGossipClient,
@@ -568,6 +571,45 @@ def test_tls_identity_cli_is_private_key_free(tmp_path: Path) -> None:
     assert CheckpointPeerTlsTrust.model_validate_json(
         tls_trust_path.read_text(encoding="utf-8")
     ).active_enrollment("server-peer") == enrollment
+
+    revocation_template_path = tmp_path / "tls-revocation-template.json"
+    revocation_result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "agent-cli-checkpoint-peer-tls-revocation-template",
+            "--tls-trust", str(tls_trust_path),
+            "--peer-trust", str(peer_trust_path),
+            "--peer-id", "server-peer", "--generation", "1",
+            "--reason", "key compromise", "--revoked-at", "2026-07-25T00:00:00+00:00",
+            "--output", str(revocation_template_path), "--json",
+        ],
+    )
+    assert revocation_result.exit_code == 0, revocation_result.output
+    revocation_template = CheckpointPeerTlsRevocationTemplate.model_validate_json(
+        revocation_template_path.read_text(encoding="utf-8")
+    )
+    revocation = build_signed_checkpoint_peer_tls_revocation(
+        revocation_template, peer_trust, key_id="server-peer-identity-1",
+        signature_base64=base64.b64encode(
+            identity_keys["server-peer"].sign(revocation_template.statement.signing_bytes())
+        ).decode(),
+    )
+    revocation_path = tmp_path / "tls-revocation.json"
+    finalize_result = runner.invoke(
+        app,
+        [
+            "benchmark", "agent-cli-checkpoint-peer-tls-revocation",
+            "--revocation-template", str(revocation_template_path),
+            "--peer-trust", str(peer_trust_path), "--key-id", revocation.key_id,
+            "--signature-base64", revocation.signature_base64,
+            "--output", str(revocation_path), "--json",
+        ],
+    )
+    assert finalize_result.exit_code == 0, finalize_result.output
+    assert CheckpointPeerTlsRevocation.model_validate_json(
+        revocation_path.read_text(encoding="utf-8")
+    ) == revocation
     serve_help = runner.invoke(
         app,
         ["benchmark", "agent-cli-checkpoint-gossip-mtls-serve", "--help"],
