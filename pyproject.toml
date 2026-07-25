@@ -44,6 +44,7 @@ dependencies = [
     "orjson>=3.10",
     "structlog>=24.4",
     "ddgs>=9.11.4",
+    "cryptography>=46.0.5",
 ]
 
 [project.optional-dependencies]
@@ -66,7 +67,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["domain", "application", "infrastructure", "interface", "shared"]
+packages = ["domain", "application", "infrastructure", "interface", "shared", "benchmarks"]
 
 [tool.ruff]
 target-version = "py312"

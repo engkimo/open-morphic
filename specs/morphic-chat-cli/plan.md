@@ -65,6 +65,80 @@ executor role -> may use Codex CLI or local LAEE tools
 
 Keeping these separate prevents the design from hard-coding "Claude is the architect" or "Codex is always implementer."
 
+### Direct route before always-on council
+
+Council is a quality mechanism, not the default execution topology for every task. The
+CLI should also support a direct runtime that delegates one goal to one routed native
+agent engine. Direct mode reuses `CouncilRuntimePort` temporarily so session/event
+orchestration stays unchanged, but emits one `IMPLEMENTER` turn and one decision.
+
+Direct mode is explicit while native permission propagation is incomplete. The first
+supported adapter is Codex CLI: `read-only`, `workspace-write`, and
+`danger-full-access` map to explicit Codex sandboxes, while `confirm-destructive` is
+rejected because `codex exec` has no interactive approval channel. Direct mode makes
+exactly one route call and never converts route failure into deterministic local success.
+Other native engines remain unavailable in direct mode until their permission and
+workspace controls are mapped explicitly.
+
+Native adapter output is normalized into `AgentEngineEvent` values and attached to the
+single implementer turn. `SendChatMessageUseCase` writes each value as an independent
+`engine_event` before the council argument, decision, and assistant response. This makes
+tool activity, file changes, plans, and lifecycle state replayable without parsing a
+provider blob embedded only in the final response. Workspace and permission propagation
+uses a separate `ScopedAgentEnginePort`; ordinary adapters keep the smaller common port
+and are skipped when a scoped run is requested.
+
+For live execution, `StreamingScopedAgentEnginePort` adds an event sink without widening
+the ordinary or buffered scoped contracts. Codex drains stdout and stderr concurrently,
+decodes each JSONL stdout line with stateful thread/sequence tracking, and publishes it
+before process completion. `StreamingCouncilRuntimePort` carries the sink to the
+application layer, where the user message is persisted first and each native event is
+appended immediately. The final result still retains its complete event metadata for
+non-streaming consumers, but the streaming send path does not append it twice.
+
+Terminal progress is a best-effort observer downstream of durable event append. The
+renderer uses an allowlist of lifecycle, tool, file, and plan event types, normalizes
+whitespace, and truncates detail. It never reads the raw payload and ignores assistant
+messages, generic progress/reasoning, and unknown provider events. A renderer exception
+is logged but does not cancel native execution or roll back the already-written ledger.
+
+Native thread continuity is reconstructed from the Morphic ledger, not from a global
+provider "last session" lookup. `ChatSession` records engine id, provider session id,
+workspace root, and permission mode when a native event first identifies a thread.
+Resume replays the ledger to rebuild that binding. `ResumableStreamingScopedAgentEnginePort`
+is a separate capability; Codex implements it with `exec` scope flags before
+`resume <thread_id> <prompt>`. Direct runtime compares stored workspace and permission
+provenance with the current turn and fails before route execution on mismatch.
+
+Interactive cancellation uses one interface-level `ActiveTurnController` around the
+send-message coroutine. It owns exactly one child task and temporarily routes SIGINT to
+that task. Controller-requested cancellation becomes a local `TurnCancelledError`, while
+external cancellation of the parent remains `CancelledError`. After a controlled stop,
+the REPL replays the append-only ledger before accepting another prompt so sequence and
+native-session state include every event persisted during cancellation. The controller
+is injectable, providing the same cancellation primitive for a later local or remote
+control transport without coupling application use cases to POSIX signals.
+
+External local control is an opt-in interface adapter over that same controller.
+`ChatControlServer` binds a random port on `127.0.0.1` only for the lifetime of an active
+turn and writes a hashed, session-scoped descriptor under `.morphic/control/`. The
+descriptor contains protocol version 1 and a per-server random token, with directory
+mode 0700 and file mode 0600. Requests are one bounded JSON line and must match token,
+session, and an allowlisted command. The client refuses any descriptor whose host is not
+the exact loopback address. `morphic chat-control` is therefore a local control primitive
+that can be carried through SSH or a future authenticated API/MCP bridge without opening
+an unauthenticated workspace listener or changing application/domain contracts.
+
+Steering is provider-neutral control built on cancellation and explicit resume. The
+loopback protocol accepts one non-empty replacement prompt capped at 2048 UTF-8 bytes.
+`ActiveTurnController` uses first-writer-wins queueing, cancels the current child task,
+and exposes the queued prompt only after cleanup. The REPL then replays the ledger,
+appends `turn_steered` metadata without duplicating prompt content, and sends the prompt
+through the ordinary message use case. Replay restores the provider-native session id,
+workspace, and permission provenance before routing, so steer cannot switch providers or
+widen scope. Queued prompts bypass local slash-command parsing and are always native
+session input.
+
 ### Morphic owns execution state
 
 External CLIs can contribute proposals or execute delegated tasks, but Morphic should own:
@@ -313,4 +387,5 @@ Manual validation:
 8. Add `morphic code "<goal>"` one-shot entry.
 9. Add diagnostics commands.
 10. Add first external engine adapter behind registry.
-
+11. Add an explicit single-engine direct route before making real execution the default.
+12. Add normalized streaming/resume/approval events and native permission mappings.

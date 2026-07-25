@@ -228,6 +228,983 @@ class CodexCLIDriver:
 
 ---
 
+## Same-task comparative evidence
+
+Morphicの優位性は主観的な総合点ではなく、同一課題・同一workspace revision・
+同一verification checks・同一反復数で比較する。記録済み試行は次で評価する。
+
+```bash
+morphic benchmark agent-cli \
+  --manifest benchmark-manifest.json \
+  --results benchmark-results.json
+
+# CI artifact向けのstable JSON
+morphic benchmark agent-cli \
+  --manifest benchmark-manifest.json \
+  --results benchmark-results.json \
+  --json
+```
+
+manifestは3 arms (`codex_cli`, `claude_code`, `morphic_control`)を必須とし、taskに
+`id`, `goal`, `workspace_revision`, `checks`, `handoff_assertions`を宣言する。
+resultsは各arm × trialをexactly once記録し、completion、accepted patch、通過した
+checks/handoff assertions、elapsed time、cost、human interventions、recoveryを持つ。
+
+評価器は以下をarm別に算出し、metricごとのleaderを示す。
+
+- completion rate / accepted patch rate
+- verification rate（宣言済みchecksから算出）
+- median elapsed seconds / mean cost / mean human interventions
+- recovery rate
+- context-handoff fidelity（宣言済みhandoff assertionsから算出）
+
+恣意的なweightを避けるためcomposite scoreは作らない。出力にはtimestampを含めず、
+JSON keyをsortして同じ入力からbyte-stableなartifactを作る。このコマンドはファイルを
+読むだけでnative engineやpaid APIを起動しない。将来のlive recorderはcost capを伴う
+別のexplicit opt-inとして追加する。
+
+### Isolated trial recorder
+
+Phase 41のrecorderはdefaultでread-only planだけを返す。manifestとrecorder configを
+検証し、trial count、command fingerprints、設定上の最大費用見積りを出すが、agent、
+Git worktree、verification commandは起動しない。
+
+```bash
+# Read-only plan. No worktree or agent process is created.
+morphic benchmark agent-cli-record \
+  --manifest benchmark-manifest.json \
+  --config recorder-config.json \
+  --json
+
+# Explicit live execution. worktree root must be outside the source repository.
+morphic benchmark agent-cli-record \
+  --manifest benchmark-manifest.json \
+  --config recorder-config.json \
+  --source-root . \
+  --worktree-root ../morphic-benchmark-worktrees \
+  --evidence benchmark-evidence.json \
+  --execute \
+  --acknowledge-paid \
+  --cost-cap-usd 3.00 \
+  --json
+```
+
+recorder configは3 armの`arm_commands`と`estimated_cost_usd_per_trial`、manifestと
+exact matchする`check_commands` / `handoff_commands`、1 commandあたりの
+`timeout_seconds`を持つ。argvは配列で指定し、`{goal}`, `{workspace}`, `{arm}`,
+`{trial}`を使用できる。shell展開は行わない。
+
+実行には`--execute`、`--acknowledge-paid`、全trialの最大見積りを覆う
+`--cost-cap-usd`がすべて必要。各arm/trialはpinned revisionの別detached worktreeで
+実行され、正常・失敗・例外を問わずcleanupする。evidenceはargv/stdout/stderrの
+SHA-256、byte数、exit code、timeout、elapsed time、check/assertion結果だけを保存し、
+raw prompt/outputは保存しない。既存evidenceは上書きしない。
+
+このcost capは設定見積りに対する事前authorization gateであり、provider請求額を
+process内でhard-stopするものではない。実費とaccepted-patch判定は
+`pending_adjudication`として残す。provider receipt parserとreview adjudicatorが
+揃うまでは、recorder evidenceをPhase 40の最終comparison resultへ自動変換しない。
+
+### Receipt normalization and adjudication
+
+Phase 42ではrecorderがagent stdoutを保持している瞬間だけreceiptを解析し、raw出力を
+捨てる前に以下のnormalized fieldsへ変換する。
+
+- provider / success / model
+- non-negative token usage
+- cost USD / cost source
+- parse error count
+
+CodexはJSONL usageと`model_hints.codex_cli`から既存のcost calculatorで再計算し、
+receipt costが一致しない場合は拒否する。Claudeはstream-json resultの
+`total_cost_usd`をprovider-reported valueとして保持する。Morphic-controlled commandは
+最後に次のcanonical envelopeを出力する必要がある。
+
+```json
+{
+  "type": "morphic_benchmark_receipt",
+  "success": true,
+  "model": "o4-mini",
+  "usage": {"input_tokens": 120, "output_tokens": 30},
+  "cost_usd": 0.02
+}
+```
+
+全trialでreceiptが得られた場合だけevidenceの`cost_collection`が
+`normalized_receipts`になる。欠損を0ドルとして補完しない。
+
+independent review bundleは各arm/trialについてagent argv fingerprint、accepted patch、
+human interventions、recovery、reviewer id、review artifact SHA-256を記録する。次のoffline
+commandがmachine evidenceとreview bundleを結合する。
+
+```bash
+morphic benchmark agent-cli-finalize \
+  --manifest benchmark-manifest.json \
+  --evidence benchmark-evidence.json \
+  --reviews benchmark-reviews.json \
+  --output benchmark-results.json \
+  --json
+
+morphic benchmark agent-cli \
+  --manifest benchmark-manifest.json \
+  --results benchmark-results.json \
+  --json
+```
+
+finalizerは完全なarm/trial matrix、task/revision identity、provider、argv fingerprint、
+check/handoff evidence、receipt parse status、review consistency、actual-cost totalを検証する。
+失敗trialをacceptedにするreview、authorized cap超過、既存outputへの上書きは拒否する。
+この処理はagentやpaid APIを起動せず、同じ入力からtimestamp-free/sorted-key resultを作る。
+
+### First-party Morphic receipt and zero-cost rehearsal
+
+Morphic-controlled armはwrapperなしでcanonical receiptを出力できる。通常のone-shot出力を
+維持し、最後のstdout lineだけをreceiptにする。
+
+```bash
+morphic code \
+  --benchmark-receipt \
+  --workspace . \
+  "Implement the benchmark task"
+```
+
+`--benchmark-receipt`はcouncil turnのcostを合算し、normalized completion eventに含まれる
+non-negative usage counterだけを集約する。model fieldは
+`morphic-control[<sorted engine ids>]`となる。実行失敗またはCtrl-Cでは、未確定費用を
+0ドルと偽らずreceiptを出さないため、recorder/finalizerは欠損としてfail closedする。
+通常のflagなし出力は変えない。
+
+Phase 43のlocal rehearsalは外部agentやAPIを起動せず、Phase 41-42の全経路を検査する。
+
+```bash
+morphic benchmark agent-cli-rehearse \
+  --source-root . \
+  --revision HEAD \
+  --output-dir ../agent-cli-rehearsal
+```
+
+このコマンドが使うarm commandは内部生成された`python -c` fixtureだけで、利用者が
+Codex/Claude commandへ差し替えるoptionはない。configured estimateとnormalized actual
+costはともに0ドル。pinned detached worktreeで3 armを通し、次のbundleを新規directoryへ
+exclusiveに発行する。
+
+- `manifest.json`
+- `recorder-config.json`
+- `evidence.json`
+- `reviews.json`
+- `results.json`
+
+rehearsal reviewは`accepted_patch=false`に固定される。これはreceipt/parser/join/isolationの
+動作確認であり、agent品質比較ではない。既存output directoryは上書きしない。read-only
+planの編集開始点として`benchmarks/templates/agent_cli_manifest.example.json`と
+`agent_cli_recorder.example.json`も同梱する。実キャンペーンは従来どおり別の
+`agent-cli-record --execute --acknowledge-paid --cost-cap-usd ...`による明示承認が必要。
+
+### Campaign preflight and bound reviews
+
+Phase 44では実キャンペーン前にimmutable revision、runtime declarations、全commandを
+1つのnon-authorizing artifactへ固定する。runtime versionは利用者が収集してJSONへ記入し、
+Morphic自身は`--version`を含むagent commandを実行しない。
+
+```bash
+morphic benchmark agent-cli-preflight \
+  --manifest benchmark-manifest.json \
+  --config recorder-config.json \
+  --runtime-versions runtime-versions.json \
+  --source-root . \
+  --output benchmark-preflight.json \
+  --json
+```
+
+manifestの`workspace_revision`はsymbolic `HEAD`ではなく、Gitで解決できるfull lowercase
+40-character commit hashでなければならない。runtime declarationは3 armをexactly once持ち、
+各`executable`がrecorder configのarm command先頭と一致する必要がある。version stringは
+whitespace-normalize後にSHA-256化される。arm/check/handoff commandもPhase 41と同じ方法で
+fingerprintされる。raw goalを公開せずにgoal/timeout/model hintを含む完全な契約変更を
+検出するため、manifest全体とconfig全体のcanonical SHA-256も保持する。artifact自身の
+SHA-256と`execution_authorized=false`を含み、preflight成功だけでagent実行は許可されない。
+
+recording後はindependent reviewer用の未記入templateを生成する。
+
+```bash
+morphic benchmark agent-cli-review-template \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --output benchmark-reviews.json \
+  --json
+```
+
+templateは全arm/trialを持ち、human judgment fieldsはすべて`null`、
+`review_completed=false`である。reviewerはaccepted patch、interventions、recovery、reviewer id、
+review artifact SHA-256を埋め、最後に`review_completed=true`へ変更する。preflight/evidence
+SHA-256とagent argv SHA-256は変更しない。
+
+```bash
+morphic benchmark agent-cli-finalize \
+  --manifest benchmark-manifest.json \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --reviews benchmark-reviews.json \
+  --output benchmark-results.json
+```
+
+bound reviewを`--preflight`なしでfinalizeすること、別evidenceへ流用すること、fingerprintを
+変更することは拒否される。Phase 42形式のbinding fieldを持たないlegacy reviewは後方互換で
+利用できる。`benchmarks/templates/agent_cli_runtime_versions.example.json`を編集開始点として
+同梱する。
+
+### Reviewer separation and campaign status
+
+Phase 45ではoperatorとreviewerの構造的分離をpolicy declarationで固定する。
+`benchmarks/templates/agent_cli_review_policy.example.json`をコピーし、operator ID、許可する
+reviewer IDs、必要なminimum distinct reviewer数を記入する。
+
+```json
+{
+  "schema_version": 1,
+  "benchmark_id": "campaign-001",
+  "operator_id": "operator-1",
+  "reviewer_ids": ["reviewer-1", "reviewer-2"],
+  "minimum_distinct_reviewers": 2
+}
+```
+
+このpolicyをreview template生成とfinalizeの両方へ渡す。
+
+```bash
+morphic benchmark agent-cli-review-template \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --review-policy reviewer-policy.json \
+  --output benchmark-reviews.json
+
+morphic benchmark agent-cli-finalize \
+  --manifest benchmark-manifest.json \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --reviews benchmark-reviews.json \
+  --review-policy reviewer-policy.json \
+  --output benchmark-results.json
+```
+
+policyはreviewer IDsをsortしてcanonical SHA-256を作り、review artifactへbindする。
+operator自身のreview、allowlist外ID、minimum distinct reviewer未達、decision数より大きく
+実現不能なminimumは拒否する。これは宣言されたIDの構造的分離であり、本人確認や署名を
+意味しない。
+
+campaignの現在位置はartifactを変更せず確認できる。
+
+```bash
+morphic benchmark agent-cli-status \
+  --manifest benchmark-manifest.json \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --reviews benchmark-reviews.json \
+  --review-policy reviewer-policy.json \
+  --results benchmark-results.json \
+  --json
+```
+
+status stageは`manifest_ready` → `preflight_ready` → `recorded` → `review_pending` →
+`review_complete` → `finalized`。途中artifactの欠落、別manifest/evidenceの混入、estimate、
+policy、review、resultsの不一致はfail closedになる。このcommandはファイルを読むだけで、
+全stageにおいて`paid_execution_authorized=false`を返す。
+
+### Signed reviewer attestations
+
+Phase 46では、policyのreviewer IDをEd25519公開鍵へ結び付ける。まず
+`benchmarks/templates/agent_cli_reviewer_trust.example.json`をコピーし、example公開鍵を
+各reviewerが管理する実鍵へ必ず置き換える。trust declarationはreview policy SHA-256、
+reviewer ID、key ID、公開鍵、`active` / `revoked` statusをcanonical SHA-256へ固定する。
+key rotation時は旧鍵を`revoked`で残し、新しいactive keyを追加する。
+
+trust-bound review templateを生成し、reviewerがdecisionを完了した後、canonical signing
+payloadを生成する。
+
+```bash
+morphic benchmark agent-cli-review-template \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --review-policy reviewer-policy.json \
+  --reviewer-trust reviewer-trust.json \
+  --output benchmark-reviews.json
+
+# reviewerがbenchmark-reviews.jsonを完成させ、review_completed=trueにした後
+morphic benchmark agent-cli-attestation-template \
+  --reviews benchmark-reviews.json \
+  --review-policy reviewer-policy.json \
+  --reviewer-trust reviewer-trust.json \
+  --output benchmark-attestation-template.json \
+  --json
+```
+
+attestation templateはdistinct reviewerごとに1つのstatementと
+`signing_payload_base64`を出す。statementはbenchmark/task/revision、preflight、evidence、
+review policy、reviewer trust、completed reviews全体、当該reviewerのdecision集合をbindする。
+Morphicは秘密鍵を読まず、reviewerはpayloadを自身のEd25519秘密鍵で外部署名し、署名とkey IDを
+`ReviewAttestationBundle`へ格納する。
+
+```bash
+morphic benchmark agent-cli-finalize \
+  --manifest benchmark-manifest.json \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --reviews benchmark-reviews.json \
+  --review-policy reviewer-policy.json \
+  --reviewer-trust reviewer-trust.json \
+  --attestations benchmark-attestations.json \
+  --output benchmark-results.json
+```
+
+trust-bound reviewはdistinct reviewer全員の署名が揃わない限りfinalizeできない。unknown key、
+revoked key、invalid signature、欠落reviewer、別review/evidence/policy/trustからの混入は拒否する。
+statusには`review_attestation_pending`が加わり、検証後だけ`review_complete`へ進む。unsigned legacy
+campaignは従来の6段階とfinalize behaviorを維持する。署名は登録済み秘密鍵の保有を証明するが、
+trust declarationのkey enrollment自体は実在人物の本人確認ではない。組織CA、OIDC/Sigstore、
+または外部key directoryとの結合は次段階である。
+
+### Organization-authority anchored campaigns
+
+Phase 47では、offline Ed25519 organization authorityをout-of-band trust anchorとして追加する。
+`agent_cli_reviewer_authority.example.json`と`agent_cli_anchored_reviewer_trust.example.json`を
+開始点にできるが、同梱example公開鍵は実運用で必ず組織管理鍵へ置き換える。authority artifactは
+authority ID、algorithm、public key、public-key SHA-256、self fingerprintを固定する。秘密鍵は
+Morphicへ渡さない。
+
+anchored trustを作成後、全reviewer keyについてCA署名payloadを生成する。
+
+```bash
+morphic benchmark agent-cli-reviewer-enrollment-template \
+  --review-policy reviewer-policy.json \
+  --reviewer-trust anchored-reviewer-trust.json \
+  --reviewer-authority reviewer-authority.json \
+  --output reviewer-enrollment-template.json \
+  --json
+```
+
+organization authorityは各`signing_payload_base64`を外部署名し、statementとsignatureを
+`ReviewerEnrollmentBundle`へ格納する。statementはauthority、benchmark、review policy、
+exact reviewer trust、reviewer/key ID、reviewer public-key fingerprintをbindする。trust内の
+active/revokedを含む全鍵がexactly once CA enrollmentされなければ検証は失敗する。
+
+authority-bound finalizeは通常のreview attestationsに加えてauthorityとenrollmentsを要求する。
+
+```bash
+morphic benchmark agent-cli-finalize \
+  --manifest benchmark-manifest.json \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --reviews benchmark-reviews.json \
+  --review-policy reviewer-policy.json \
+  --reviewer-trust anchored-reviewer-trust.json \
+  --reviewer-authority reviewer-authority.json \
+  --reviewer-enrollments reviewer-enrollments.json \
+  --attestations benchmark-attestations.json \
+  --output benchmark-results.json
+```
+
+results生成後、全artifactを1つのauthority signing payloadへ固定する。
+
+```bash
+morphic benchmark agent-cli-campaign-envelope-template \
+  --manifest benchmark-manifest.json \
+  --preflight benchmark-preflight.json \
+  --evidence benchmark-evidence.json \
+  --reviews benchmark-reviews.json \
+  --review-policy reviewer-policy.json \
+  --reviewer-trust anchored-reviewer-trust.json \
+  --reviewer-authority reviewer-authority.json \
+  --reviewer-enrollments reviewer-enrollments.json \
+  --attestations benchmark-attestations.json \
+  --results benchmark-results.json \
+  --output campaign-envelope-template.json
+```
+
+envelopeはmanifest、preflight、evidence、reviews、policy、trust、enrollments、attestations、
+resultsのSHA-256とidentityをbindし、`paid_execution_authorized=false`を固定する。authorityが
+payloadを外部署名した`SignedCampaignEnvelope`をstatusへ渡した場合だけauthority-bound campaignは
+`finalized`になる。署名前は`campaign_envelope_pending`、CA enrollment不足時は
+`reviewer_enrollment_pending`を返す。unanchored Phase 46とunsigned legacy campaignは従来どおり。
+
+このoffline CA経路はoperatorだけが作ったreviewer鍵を排除できる。ただしauthority root公開鍵の
+安全なout-of-band配布、certificate expiry、root revocation/rotation、transparency logは別契約であり、
+現在のartifactだけでは保証しない。
+
+### Authority-root continuity and campaign transparency
+
+Phase 48ではrootをversioned ledgerとして扱う。generation 1はout-of-band genesisで、generation 2以降は
+直前rootが`generation`、predecessor SHA-256、successor SHA-256を外部署名する。Morphicは秘密鍵を読まず、
+rotation signing requestを生成する。
+
+```bash
+morphic benchmark agent-cli-authority-rotation-template \
+  --generation 2 \
+  --predecessor predecessor-authority.json \
+  --successor successor-authority.json \
+  --output rotation-request.json
+```
+
+署名済みrotation certificateをgeneration列へ格納後、active rootが署名するledger payloadを作る。
+`--generations`は`generations`配列とoptional `revoked_authority_sha256`配列を持つJSON objectである。
+
+```bash
+morphic benchmark agent-cli-authority-root-ledger-template \
+  --generations authority-generations.json \
+  --output authority-root-ledger-request.json
+```
+
+ledgerはcontiguous generation、root非再利用、各predecessor署名、既知rootだけのrevocation、非revoked
+active root、active-root ledger署名を検証する。ledger-bound reviewer trustは
+`reviewer_authority_sha256`にactive root、`authority_root_ledger_sha256`にexact ledgerを指定する。
+finalizeとcampaign envelope templateには`--authority-root-ledger`を渡す。fieldを持たないPhase 47 artifactは
+fingerprintと署名bytesを変更せず従来経路を維持する。
+
+透明性ログはcomplete entry arrayからoffline生成できる。
+
+```bash
+morphic benchmark agent-cli-transparency-log \
+  --log-id example-org-agent-cli \
+  --entries transparency-entries.json \
+  --output transparency-log.json
+
+morphic benchmark agent-cli-transparency-tree-head-template \
+  --log transparency-log.json \
+  --authority-root-ledger signed-authority-root-ledger.json \
+  --output tree-head-request.json
+
+morphic benchmark agent-cli-transparency-proof \
+  --log transparency-log.json \
+  --tree-head signed-tree-head.json \
+  --leaf-index 2 \
+  --output campaign-envelope-proof.json
+```
+
+Merkle treeはRFC 6962と同じdomain separation、すなわちleafを
+`SHA256(0x00 || canonical_entry)`、nodeを`SHA256(0x01 || left || right)`で構築する。tree headは
+active rootが外部署名する。ledger-bound campaignはexact campaign envelope SHA-256のinclusion proofを
+`agent-cli-status --transparency-proof ...`で検証するまで`transparency_pending`であり、検証後だけ
+`finalized`になる。旧/new complete logのappend-only検証は旧entriesが新logのexact prefixであることを
+要求する。
+
+この契約は初回genesis鍵の安全な配布やcompromise後のout-of-band trust resetを代替しない。
+certificate expiry、OIDC/Sigstore identityもまだ実装しない。どのCLIもpaid executionを許可しない。
+
+### Compact consistency and witness checkpoints
+
+Phase 49では、complete旧logを配布せずにappend-only growthを検証できる。current complete log、旧/newの
+active-root-signed tree head、root ledgerからRFC 6962 minimal consistency proofを作る。
+
+```bash
+morphic benchmark agent-cli-transparency-consistency-proof \
+  --current-log transparency-log-current.json \
+  --previous-tree-head signed-tree-head-previous.json \
+  --current-tree-head signed-tree-head-current.json \
+  --authority-root-ledger signed-authority-root-ledger.json \
+  --output consistency-proof.json
+```
+
+proofは`SUBPROOF` recursionが返す最大`ceil(log2(n)) + 1`個のSHA-256 nodeだけを保持する。検証側は
+complete logなしで旧rootとnew rootを同時に再構成し、log ID、tree size、root ledger、tree-head署名、
+proof fingerprint、audit path、両rootのどれかが一致しなければ拒否する。
+
+単一log authorityのequivocationへ追加の監視境界を置く場合は、exampleを組織ごとのwitness公開鍵へ
+置き換えてtrustを正規化する。
+
+```bash
+morphic benchmark agent-cli-witness-trust \
+  --declaration benchmarks/templates/agent_cli_witness_trust.example.json \
+  --output witness-trust.json
+
+morphic benchmark agent-cli-witness-checkpoint-template \
+  --witness-trust witness-trust.json \
+  --consistency-proof consistency-proof.json \
+  --authority-root-ledger signed-authority-root-ledger.json \
+  --output witness-checkpoint-template.json
+```
+
+witness trustはwitness/key ID、Ed25519 public key、active/revoked status、minimum distinct countを
+self-fingerprintする。minimumはactive witness総数のstrict majorityでなければならず、任意の2 accepted
+quorumが少なくとも1 witnessで交差する。各witnessは同じcheckpoint statementを外部署名する。statementは
+old/new sizeとroot、両tree-head fingerprint、root ledger、consistency proof、witness trustをbindする。
+Morphicは秘密鍵を読まない。
+
+opt-in witness pathでは`agent-cli-status`へ次を追加する。
+
+```bash
+  --transparency-consistency-proof consistency-proof.json \
+  --transparency-witness-trust witness-trust-declaration.json \
+  --witness-checkpoint signed-witness-checkpoint.json
+```
+
+inclusion proofだけが揃った状態は`witness_pending`となり、compact consistencyとstrict-majority witness
+signaturesを検証後だけ`finalized`になる。witness inputを指定しないPhase 48 campaignは従来どおり
+inclusion verificationでfinalizeできる。同じlog IDとtree sizeに異なるwitnessed rootが存在した場合は
+split viewとして拒否する。
+
+### Durable checkpoint registry and authenticated peer exchange
+
+Phase 50では、検証済みwitness checkpointをlocal append-only registryへ保存する。recordはregistry ID、
+sequence、previous record SHA-256、root ledger、witness trust、consistency proof、checkpointをbindして
+self-fingerprintする。storeはappend前とstatus replay時に全recordを再検証する。
+
+```bash
+morphic benchmark agent-cli-checkpoint-registry-store \
+  --registry checkpoint-registry.jsonl \
+  --registry-id example-org-checkpoints \
+  --consistency-proof consistency-proof.json \
+  --witness-checkpoint signed-witness-checkpoint.json \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger signed-authority-root-ledger.json
+
+morphic benchmark agent-cli-checkpoint-registry-status \
+  --registry checkpoint-registry.jsonl \
+  --registry-id example-org-checkpoints \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger signed-authority-root-ledger.json \
+  --json
+```
+
+appendはprocess間file lock、`O_APPEND`、`fsync`、mode 0600を使用する。同じproof/checkpointのretryは
+同じrecordを返す。sequence gap、previous hash改ざん、record改ざん、truncated tail、現在headへ接続しない
+stale proof、同じsizeの異なるwitnessed rootは書き込み前または次回replayで拒否する。statusはregistryが
+存在しない場合もfileを作らない。
+
+peer公開鍵はexampleをdeployment固有の鍵へ置き換え、active rotation keyをpeerごとに最低1つ残す。
+
+```bash
+morphic benchmark agent-cli-checkpoint-peer-trust \
+  --declaration benchmarks/templates/agent_cli_checkpoint_peer_trust.example.json \
+  --output checkpoint-peer-trust.json
+
+morphic benchmark agent-cli-checkpoint-registry-export-template \
+  --registry checkpoint-registry.jsonl \
+  --registry-id example-org-checkpoints \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger signed-authority-root-ledger.json \
+  --peer-trust checkpoint-peer-trust.json \
+  --source-peer-id registry-peer-a \
+  --output checkpoint-exchange-request.json
+```
+
+exportはlatest recordをdefaultとし、`--sequence`で過去recordを選べる。requestのcanonical signing bytesを
+eligible Ed25519 keyで外部署名し、exact recordと署名を`SignedCheckpointExchangePacket`へ格納する。
+受信側はsource peer/keyのactive trust、packet/record fingerprint、署名、registry IDを検証してから、local
+headに対する同じlocked append経路でimportする。
+
+```bash
+morphic benchmark agent-cli-checkpoint-registry-import \
+  --registry peer-checkpoint-registry.jsonl \
+  --registry-id example-org-checkpoints \
+  --packet signed-checkpoint-packet.json \
+  --peer-trust checkpoint-peer-trust.json \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger signed-authority-root-ledger.json
+```
+
+これはtransport-neutralなlocal persistence/exchange contractであり、online listener、peer discovery、
+real-world peer identity、global consensusは提供しない。1 packetは1 exact recordを運ぶため、遅れたpeerの
+multi-record catch-upは現時点ではsequence順にpacketを交換する。private keyは全CLIで読み込まない。
+
+### Authenticated range sync and durable peer cursors
+
+Phase 51では、最大1000 recordまでのbounded contiguous rangeを1つのpeer署名でcatch-upできる。
+`--max-records`のdefaultは100、`--start-sequence`のdefaultは0である。
+
+```bash
+morphic benchmark agent-cli-checkpoint-range-export-template \
+  --registry checkpoint-registry.jsonl \
+  --registry-id example-org-checkpoints \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger signed-authority-root-ledger.json \
+  --peer-trust checkpoint-peer-trust.json \
+  --source-peer-id registry-peer-a \
+  --start-sequence 0 \
+  --max-records 100 \
+  --output checkpoint-range-request.json
+```
+
+range statementはbase previous-record hash、first/last sequenceとrecord hash、全record fingerprint列、
+registry ID、peer trustをbindする。eligible peer keyで外部署名してrecordsとともに
+`SignedCheckpointRangeBundle`へ格納する。受信側は次のcommandでimportする。
+
+```bash
+morphic benchmark agent-cli-checkpoint-range-import \
+  --registry peer-checkpoint-registry.jsonl \
+  --registry-id example-org-checkpoints \
+  --range-bundle signed-checkpoint-range.json \
+  --peer-trust checkpoint-peer-trust.json \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger signed-authority-root-ledger.json
+```
+
+importはpeer signatureとrange内部chain、全recordのauthority/witness/Merkle bindingを先に検証する。
+exclusive lock取得後に既存sequenceとのoverlapをexact record単位で比較し、missing contiguous suffixだけを
+1 batchでappend + `fsync`する。gap、conflicting overlap、stale/forked proofは書込み前に拒否する。
+process中のwrite failureはoriginal file sizeへtruncateする。process crash/power lossによるpartial tailは
+次回replayでfail closedになるが、filesystem-level transactionとは表現しない。
+
+rangeを現在headまで適用した受信peerはack signing requestを生成する。
+
+```bash
+morphic benchmark agent-cli-checkpoint-acknowledgement-template \
+  --registry peer-checkpoint-registry.jsonl \
+  --registry-id example-org-checkpoints \
+  --range-bundle signed-checkpoint-range.json \
+  --peer-trust checkpoint-peer-trust.json \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger signed-authority-root-ledger.json \
+  --acknowledging-peer-id registry-peer-b \
+  --output checkpoint-acknowledgement-request.json
+```
+
+ackはsource/receiver peer、exact range bundle、applied record sequence/hash、tree size/rootをbindする。
+receiverが外部署名した`SignedCheckpointAcknowledgement`をsourceへ返し、sourceはcursor ledgerへ保存する。
+
+```bash
+morphic benchmark agent-cli-checkpoint-cursor-store \
+  --cursor-ledger checkpoint-peer-cursors.jsonl \
+  --registry-id example-org-checkpoints \
+  --acknowledgement signed-checkpoint-acknowledgement.json \
+  --peer-trust checkpoint-peer-trust.json
+
+morphic benchmark agent-cli-checkpoint-cursor-status \
+  --cursor-ledger checkpoint-peer-cursors.jsonl \
+  --registry-id example-org-checkpoints \
+  --peer-trust checkpoint-peer-trust.json \
+  --json
+```
+
+cursor ledgerもmode 0600、file lock、hash chain、`O_APPEND`、`fsync`を使用する。source/receiver pairごとに
+acknowledged sequenceは単調増加し、exact retryだけ冪等化する。regression、同一sequenceの別record、
+signature/fingerprint/hash-chain tamperingは拒否する。
+
+現時点ではartifactを運ぶnetwork listener、peer discovery、global consensusを提供しない。またackは
+exact peer-trust fingerprintへbindされるため、trust更新後にhistorical cursorをreplayするには旧trust
+artifactが必要である。次のtrust sliceではpeer-trust generation ledgerとsigned rollover continuityを追加する。
+
+### Peer-trust generation and rollover continuity
+
+Phase 52では、旧trust artifactをoperatorが手動選択する代わりに、out-of-band genesisから署名で連結した
+peer-trust generation ledgerを使用できる。successor trustを用意し、直前trustのactive peer向けsigning
+requestを生成する。
+
+```bash
+morphic benchmark agent-cli-checkpoint-peer-trust-rotation-template \
+  --predecessor-peer-trust checkpoint-peer-trust-v1.json \
+  --successor-peer-trust checkpoint-peer-trust-v2.json \
+  --generation 2 \
+  --output checkpoint-peer-trust-rotation-request.json
+```
+
+required quorumはpredecessorのdistinct active peer数から`floor(n / 2) + 1`として自動計算する。
+各peerは同一statementをeligible active keyで外部署名する。statementはregistry、generation、
+predecessor/successor trust fingerprint、required quorumをbindする。署名を
+`CheckpointPeerTrustRotationCertificate`へ格納後、generation列からledgerを構築する。
+
+```bash
+morphic benchmark agent-cli-checkpoint-peer-trust-ledger \
+  --generations checkpoint-peer-trust-generations.json \
+  --output checkpoint-peer-trust-ledger.json
+```
+
+`--generations`は`generations`配列を持つJSON objectである。generation 1はrotationなしのgenesis、
+generation 2以降はtrustと直前世代が承認したrotation certificateを持つ。検証はcontiguous order、
+registry不変、trust非再利用、exact predecessor/successor、strict-majority distinct peers、active predecessor
+key、全Ed25519署名、certificate/ledger fingerprintを毎回確認する。
+
+cursor ledgerは単一snapshotの代わりにgeneration ledgerを使用できる。
+
+```bash
+morphic benchmark agent-cli-checkpoint-cursor-status \
+  --cursor-ledger checkpoint-peer-cursors.jsonl \
+  --registry-id example-org-checkpoints \
+  --peer-trust-ledger checkpoint-peer-trust-ledger.json \
+  --json
+```
+
+`cursor-store`も同じ`--peer-trust-ledger`を受け付ける。`--peer-trust`と`--peer-trust-ledger`はexactly oneを
+指定する。ackがbindするtrust fingerprintをledgerから解決するため、rotation前後のackを同一cursor chainで
+検証できる。revoked keyはsuccessor generationの新artifact署名には使えないが、predecessor generation時点で
+正当に署名されたhistorical ackはその世代のtrustで検証される。
+
+genesis trustの初回配布、最新ledger fingerprintのout-of-band pinning、古いがvalidなledgerへのrollback検出、
+real-world peer identity、network transportは別境界である。次はexplicit opt-in loopback transportでprotocol
+version、challenge nonce、replay防止、size/timeout制限を固定してからremote/TLSへ広げる。
+
+### Authenticated loopback checkpoint gossip
+
+Phase 53では、事前署名済みcheckpoint rangeとsigned acknowledgementを明示的opt-inのloopback transportで
+交換できる。server用JSONは`bundles`配列に`SignedCheckpointRangeBundle`を格納する。各bundleは起動前に
+peer trustで検証されるため、listenerがprivate keyを読むことはない。
+
+```bash
+morphic benchmark agent-cli-checkpoint-gossip-serve \
+  --descriptor .morphic/gossip/peer-1.json \
+  --range-bundles signed-checkpoint-ranges.json \
+  --cursor-ledger checkpoint-peer-cursors.jsonl \
+  --registry-id example-org-checkpoints \
+  --source-peer-id peer-1 \
+  --peer-trust-ledger checkpoint-peer-trust-ledger.json \
+  --max-requests 64 \
+  --lifetime-seconds 300
+```
+
+listenerは`127.0.0.1`のrandom portだけへbindする。descriptor parentは0700、descriptorは0600で、protocol
+version、registry、source peer、random instance id、32-byte bearer tokenを保持する。既存descriptorは上書き
+しない。各接続はone-use 32-byte client nonceとserver nonceを交換し、protocol、instance、registry、source
+peer、operation、payloadをHMAC-SHA256へbindする。challenge responseと最終responseも同じtokenで認証する。
+
+clientはstatusで配布可能なexact rangeを確認し、開始sequenceが一致する事前署名済みbundleを取得する。
+
+```bash
+morphic benchmark agent-cli-checkpoint-gossip-status \
+  --descriptor .morphic/gossip/peer-1.json \
+  --json
+
+morphic benchmark agent-cli-checkpoint-gossip-fetch \
+  --descriptor .morphic/gossip/peer-1.json \
+  --start-sequence 0 \
+  --max-records 100 \
+  --peer-trust-ledger checkpoint-peer-trust-ledger.json \
+  --output received-range.json \
+  --json
+```
+
+fetch clientはtransport HMACだけを信用せず、受信bundleのpeer Ed25519署名とexact trust fingerprintを再検証
+する。その後、既存`agent-cli-checkpoint-range-import`へ渡すことでauthority root、witness quorum、Merkle
+consistency、registry overlap/hash chainまで検証してatomic importする。fetchだけではregistryへ書き込まない。
+
+receiverが既存acknowledgement-templateを外部署名した後、source peerへ返せる。
+
+```bash
+morphic benchmark agent-cli-checkpoint-gossip-ack \
+  --descriptor .morphic/gossip/peer-1.json \
+  --acknowledgement signed-acknowledgement.json \
+  --json
+```
+
+serverはackのpeer署名、registry/source binding、trust generationを検証し、既存mode 0600・locked・
+hash-chained cursor storeのmonotonicity規則を通した場合だけ保存する。同一ack retryは冪等で、不正署名や
+regression/conflictは書き込み前に拒否する。
+
+protocol limitは64 KiB request、2 MiB response、8 concurrent clients、最大1,024 retained noncesと
+authenticated requests、各read/dispatch 2秒である。`--max-requests`到達、`--lifetime-seconds`、cancel、
+context終了時はlistenerを閉じ、active writer/taskを終了し、instance/tokenが一致するowned descriptorだけを
+削除する。
+
+descriptor tokenは同一host上の短命transportだけを認証する。remote bind、TLS/mTLS、peer discovery、
+automatic private-key signing、常駐daemon、複数rangeを自動追跡するpull loopは実装していない。次は
+trust-ledger rollback pinningを伴うbounded/resumable catch-up loopとdurable audit stateを追加してから、
+remote mTLSへ進む。
+
+### Durable bounded gossip catch-up loop
+
+Phase 54では、Phase 53のstatus/fetchをbounded loopとして実行し、verified local registryの次sequenceから
+再開できる。peer-trust snapshotではなくgeneration ledgerを必須にし、最新確認済みgenerationをdurable
+sync auditへpinする。
+
+```bash
+morphic benchmark agent-cli-checkpoint-gossip-sync \
+  --descriptor .morphic/gossip/peer-1.json \
+  --registry checkpoint-registry.jsonl \
+  --sync-audit checkpoint-sync-peer-1.jsonl \
+  --registry-id example-org-checkpoints \
+  --source-peer-id peer-1 \
+  --peer-trust-ledger checkpoint-peer-trust-ledger.json \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger authority-root-ledger.json \
+  --max-rounds 16 \
+  --max-records 1000 \
+  --max-attempts 3 \
+  --json
+```
+
+loopはauthenticated statusのavailable rangeから、`first_sequence <= next local sequence <= last_sequence`を
+満たす最も新しいstartを選ぶ。fetch後にstatusのbundle fingerprintと一致することを確認し、peer trust
+generationからEd25519 keyを解決する。その後、既存import pathでauthority root、witness quorum、Merkle
+consistency、overlap、hash chainを再検証し、missing suffixだけをatomic appendする。既存local prefixの再取得は
+許容するが、exact overlapでなければ0 byte mutationで失敗する。
+
+sync auditはmode 0600 JSONLで、1回のloop全体に`flock(LOCK_EX | LOCK_NB)`を保持する。同じauditに対する
+多重loopは待たずに拒否する。各recordはsequence、previous hash、registry/source、verified local head、
+peer-trust generation/trust/ledger fingerprint、exact loop-policy fingerprintをbindし、次のeventだけを記録する。
+
+- `imported`: range fingerprint、first/last sequence、新規import件数
+- `retry`: `status`または`fetch_range`とattempt番号のみ
+- `recovered`: registry append後・audit append前に停止した状態の回復
+- `trust_advanced`: contiguous trust ledger extensionのpin前進
+- `stopped`: machine-readableな停止理由
+
+停止理由は`up_to_date`、`range_gap`、`record_budget_exhausted`、
+`round_budget_exhausted`、`retry_exhausted`である。CLIのretry delayは50msから決定的に倍増し1秒でcapする。
+raw exception、descriptor token、timestampはauditへ書かない。
+
+registryはimport truthであり、auditはloop/recovery記録である。crashでregistryだけが先に進んだ場合、auditが
+最後にpinしたcount位置のregistry record fingerprintをverified registry内でexact照合する。一致する場合だけ
+current verified headを`recovered`として記録し、次sequenceから続行する。auditがregistryより先、またはpinした
+historical headが異なる場合はfail closedになる。
+
+各audit recordのtrust pinは、提示ledgerがそのgenerationを同じtrust fingerprintで含むことを要求する。
+active generationがpinより古ければrollback、同じactive generationでledger fingerprintが違えばforkとして
+network接続前に拒否する。contiguous signed extensionだけが`trust_advanced`として受理される。
+
+このpinはmode 0600 fileとhash chainによるlocal tamper evidenceであり、registry/audit全体を書き換えられるlocal
+attackerへのsecure monotonic counterではない。またloopはprivate keyを読まず、acknowledgementの自動署名・送信は
+行わない。次はremote bindを許可する前に、peer Ed25519 identityへbindしたmTLS certificate/SPKI enrollment、
+TLS 1.3-only、address allowlist、plaintext fallback禁止を追加する。
+
+### Peer-signed remote mutual TLS
+
+Phase 55では、既存checkpoint peer trustのEd25519 identityへTLS leaf certificateを署名付きで登録する。
+templateはcertificateの正規化DER SHA-256、SPKI SHA-256、subject/issuer、serial、有効期間、DNS/IP SAN、
+client/server EKUをbindし、秘密鍵を含まない。generation 2以降は直前enrollment fingerprintを必須とする。
+
+```bash
+morphic benchmark agent-cli-checkpoint-peer-tls-enrollment-template \
+  --certificate peer-1-tls.pem \
+  --peer-trust checkpoint-peer-trust.json \
+  --peer-id peer-1 \
+  --generation 1 \
+  --output peer-1-tls-template.json \
+  --json
+
+# signing_payload_base64をpeer-1のactive Ed25519 identity keyで外部署名する。
+morphic benchmark agent-cli-checkpoint-peer-tls-enrollment \
+  --template peer-1-tls-template.json \
+  --certificate peer-1-tls.pem \
+  --peer-trust checkpoint-peer-trust.json \
+  --key-id peer-1-key-1 \
+  --signature-base64 "$PEER_1_TLS_SIGNATURE" \
+  --output peer-1-tls-enrollment.json \
+  --json
+
+# tls-enrollments.jsonはenrollments配列に全世代をpeer/generation順不同で格納できる。
+morphic benchmark agent-cli-checkpoint-peer-tls-trust \
+  --peer-trust checkpoint-peer-trust.json \
+  --enrollments tls-enrollments.json \
+  --output checkpoint-peer-tls-trust.json \
+  --json
+```
+
+certificateはCAではないleafで、少なくとも1つのSAN、digital signature key usage、client authとserver authの
+両EKUを持つ必要がある。trust生成時は全enrollment signature、peer/trust/registry、連続generation chainを
+再検証する。runtimeは各peerの最高generationだけをactiveとし、DERとSPKIの両pinが一致しない旧certificateを
+起動前または接続時に拒否する。同じactive certificate/SPKIを複数peerへ割り当てることもできない。
+
+```bash
+morphic benchmark agent-cli-checkpoint-gossip-mtls-serve \
+  --descriptor .morphic/gossip/peer-1-mtls.json \
+  --range-bundles signed-checkpoint-ranges.json \
+  --cursor-ledger checkpoint-peer-cursors.jsonl \
+  --registry-id example-org-checkpoints \
+  --source-peer-id peer-1 \
+  --peer-trust checkpoint-peer-trust.json \
+  --tls-trust checkpoint-peer-tls-trust.json \
+  --certificate peer-1-tls.pem \
+  --private-key peer-1-tls-key.pem \
+  --certificate-authority checkpoint-peer-ca.pem \
+  --bind-host 0.0.0.0 \
+  --advertised-host 192.0.2.10 \
+  --allow-client-address 192.0.2.20 \
+  --max-requests 64 \
+  --lifetime-seconds 300
+
+morphic benchmark agent-cli-checkpoint-gossip-mtls-status \
+  --descriptor .morphic/gossip/peer-1-mtls.json \
+  --peer-trust checkpoint-peer-trust.json \
+  --tls-trust checkpoint-peer-tls-trust.json \
+  --client-peer-id peer-2 \
+  --certificate peer-2-tls.pem \
+  --private-key peer-2-tls-key.pem \
+  --certificate-authority checkpoint-peer-ca.pem \
+  --server-hostname peer-1.example.org \
+  --allow-server-address 192.0.2.10 \
+  --json
+```
+
+transport protocol version 2はTLS 1.3だけを許可し、serverはclient certificateを必須化する。clientはCA chain、
+certificate hostname、descriptor host allowlist、接続後peer address、active server DER/SPKI pinをすべて照合する。
+serverも接続元allowlist、active client DER/SPKI pin、request内client peer IDを照合する。0600 descriptorにtokenや
+private keyはなく、平文protocolへのfallbackはない。private key fileはgroup/other accessを許可しない。
+
+CA bundleとgenesis peer trustの真正な初回配布、DNS/address運用、certificate revocation status、private key保護は
+operator境界である。Phase 55のmTLS CUIはserve/statusまでとし、fetch/ack/syncは次のtransport-neutral統合で扱う。
+
+### Mutual-TLS artifact fetch, acknowledgement, and sync
+
+Phase 56では、artifact操作を特定transportから分離した。`status`、`fetch_range`、
+`submit_acknowledgement`はtyped request senderを受け取り、未指定時だけPhase 53のloopback protocol v1を使う。
+protocol v2のreusable mTLS clientも同じsender contractを実装する。このためtransport追加後もrangeのpeer署名、
+ack response、witness/root/Merkle、registry overlap、sync audit、retry、rollback pinを別実装へ分岐させない。
+
+```bash
+morphic benchmark agent-cli-checkpoint-gossip-mtls-fetch \
+  --descriptor .morphic/gossip/peer-1-mtls.json \
+  --start-sequence 0 \
+  --max-records 100 \
+  --peer-trust-ledger checkpoint-peer-trust-ledger.json \
+  --tls-trust checkpoint-peer-tls-trust.json \
+  --client-peer-id peer-2 \
+  --certificate peer-2-tls.pem \
+  --private-key peer-2-tls-key.pem \
+  --certificate-authority checkpoint-peer-ca.pem \
+  --server-hostname peer-1.example.org \
+  --allow-server-address 192.0.2.10 \
+  --output received-range.json \
+  --json
+
+morphic benchmark agent-cli-checkpoint-gossip-mtls-ack \
+  --descriptor .morphic/gossip/peer-1-mtls.json \
+  --acknowledgement signed-acknowledgement.json \
+  --peer-trust-ledger checkpoint-peer-trust-ledger.json \
+  --tls-trust checkpoint-peer-tls-trust.json \
+  --client-peer-id peer-2 \
+  --certificate peer-2-tls.pem \
+  --private-key peer-2-tls-key.pem \
+  --certificate-authority checkpoint-peer-ca.pem \
+  --server-hostname peer-1.example.org \
+  --allow-server-address 192.0.2.10 \
+  --json
+```
+
+fetchはmTLS responseを受けた後も`SignedCheckpointRangeBundle`をexact peer trust generationで再検証し、
+outputを既存pathへ上書きしない。ackは外部署名済みartifactだけを送信し、返却されたcursor recordが送信ackを
+変更していないことを確認する。TLS transportはack用peer private keyを読まず、client TLS keyだけをhandshakeに使う。
+
+bounded catch-upも同じmTLS senderを注入できる。
+
+```bash
+morphic benchmark agent-cli-checkpoint-gossip-mtls-sync \
+  --descriptor .morphic/gossip/peer-1-mtls.json \
+  --registry checkpoint-registry.jsonl \
+  --sync-audit checkpoint-sync-peer-1.jsonl \
+  --registry-id example-org-checkpoints \
+  --source-peer-id peer-1 \
+  --peer-trust-ledger checkpoint-peer-trust-ledger.json \
+  --witness-trust witness-trust.json \
+  --authority-root-ledger authority-root-ledger.json \
+  --tls-trust checkpoint-peer-tls-trust.json \
+  --client-peer-id peer-2 \
+  --certificate peer-2-tls.pem \
+  --private-key peer-2-tls-key.pem \
+  --certificate-authority checkpoint-peer-ca.pem \
+  --server-hostname peer-1.example.org \
+  --allow-server-address 192.0.2.10 \
+  --max-rounds 16 \
+  --max-records 1000 \
+  --max-attempts 3 \
+  --json
+```
+
+mTLS trustは提示peer-trust ledgerのactive generationに対して全enrollment署名を再検証してから接続する。
+sync loopはPhase 54と同じwhole-loop lock、hash-chained audit、crash recovery、trust rollback/fork pin、
+round/record/attempt budget、machine-readable stop reasonを使う。transport errorだけが既存bounded retry対象になる。
+
+certificateの期限はTLS handshakeで検証されるが、接続前の運用警告、署名付き明示revocation、grace period、
+OCSP/CRL policyはまだない。authenticated peer discovery、automatic enrollment/ack signing、daemon化も次の境界である。
+
+---
+
 ## Agent CLI Router
 
 ```python

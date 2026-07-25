@@ -6,6 +6,8 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from domain.entities.agent_engine_event import AgentEngineEvent
+
 
 class CouncilRole(str, Enum):
     """Deliberation responsibilities independent from execution engines."""
@@ -28,6 +30,7 @@ class CouncilTurn(BaseModel):
     engine_id: str = Field(min_length=1)
     content: str = Field(min_length=1)
     evidence: list[str] = Field(default_factory=list)
+    engine_events: list[AgentEngineEvent] = Field(default_factory=list)
     cost_usd: float = Field(default=0.0, ge=0.0)
     latency_ms: int = Field(default=0, ge=0)
 

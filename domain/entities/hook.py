@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+from datetime import UTC, datetime
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -42,3 +44,30 @@ class HookDiagnostic(BaseModel):
     message: str = Field(min_length=1)
     source_path: str | None = Field(default=None, min_length=1)
     duration_ms: float = Field(default=0.0, ge=0.0)
+
+
+class HookExecutionRequest(BaseModel):
+    """Normalized request to execute one validated hook command."""
+
+    model_config = ConfigDict(strict=True, validate_assignment=True, frozen=True)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), min_length=1)
+    session_id: str = Field(min_length=1)
+    hook_name: str = Field(min_length=1)
+    hook_type: HookType
+    command: str = Field(min_length=1)
+    source_path: str = Field(min_length=1)
+    requested_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
+
+
+class HookExecutionResult(BaseModel):
+    """Normalized result from a hook executor implementation."""
+
+    model_config = ConfigDict(strict=True, validate_assignment=True, frozen=True)
+
+    request_id: str = Field(min_length=1)
+    success: bool
+    stdout_summary: str = ""
+    stderr_summary: str = ""
+    exit_code: int | None = None
+    completed_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))

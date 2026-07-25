@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -15,11 +15,19 @@ from domain.entities.chat_session import PermissionMode
 from domain.entities.council_runtime import CouncilRole
 from domain.ports.council_runtime import CouncilRuntimePort
 from domain.ports.engine_registry import EngineRegistryPort
+from domain.ports.hook_executor import HookExecutorPort
+from domain.ports.local_executor import LocalExecutorPort
+from domain.ports.tool_executor import ToolExecutorPort
 from domain.value_objects.agent_engine import AgentEngineType
 from infrastructure.council.local_chat_council_runtime import LocalChatCouncilRuntime
 from infrastructure.council.route_chat_council_runtime import RouteChatCouncilRuntime
+from infrastructure.council.route_chat_direct_runtime import RouteChatDirectRuntime
 from infrastructure.engines.route_engine_registry import RouteEngineRegistry
 from infrastructure.engines.static_engine_registry import StaticEngineRegistry
+from infrastructure.hooks.noop_hook_executor import NoopHookExecutor
+from infrastructure.hooks.shell_hook_executor import ShellHookExecutor
+from infrastructure.tools.laee_tool_executor import LaeeToolExecutor
+from infrastructure.tools.noop_tool_executor import NoopToolExecutor
 from interface.cli._utils import _get_container, _run
 from interface.cli.chat_repl import ChatRepl
 from interface.cli.formatters import console
@@ -44,6 +52,21 @@ _CODE_ROUTE_COUNCIL_OPTION = typer.Option(
     "--route-council",
     help="Use route-backed engines for chat council roles.",
 )
+_CHAT_ROUTE_DIRECT_OPTION = typer.Option(
+    False,
+    "--route-direct",
+    help="Use one route-backed native engine for each chat turn.",
+)
+_CODE_ROUTE_DIRECT_OPTION = typer.Option(
+    False,
+    "--route-direct",
+    help="Use one route-backed native engine for the coding goal.",
+)
+_DIRECT_ENGINE_OPTION = typer.Option(
+    None,
+    "--engine",
+    help="Preferred engine for --route-direct; omit for automatic routing.",
+)
 _PLANNER_ENGINE_OPTION = typer.Option(
     None,
     "--planner-engine",
@@ -58,6 +81,16 @@ _LEADER_ENGINE_OPTION = typer.Option(
     None,
     "--leader-engine",
     help="Preferred route engine for the leader role.",
+)
+_PERMISSION_MODE_OPTION = typer.Option(
+    PermissionMode.CONFIRM_DESTRUCTIVE,
+    "--permission-mode",
+    help="Workspace permission mode.",
+)
+_BENCHMARK_RECEIPT_OPTION = typer.Option(
+    False,
+    "--benchmark-receipt",
+    help="Emit a canonical Morphic benchmark receipt as the final stdout line.",
 )
 
 
@@ -91,17 +124,29 @@ def chat_cmd(
         "--json",
         help="Emit machine-readable JSON for diagnostics.",
     ),
+    control: bool = typer.Option(
+        False,
+        "--control",
+        help="Enable authenticated loopback control for active turns.",
+    ),
     route_council: bool = _CHAT_ROUTE_COUNCIL_OPTION,
+    route_direct: bool = _CHAT_ROUTE_DIRECT_OPTION,
+    direct_engine: str | None = _DIRECT_ENGINE_OPTION,
     planner_engine: str | None = _PLANNER_ENGINE_OPTION,
     critic_engine: str | None = _CRITIC_ENGINE_OPTION,
     leader_engine: str | None = _LEADER_ENGINE_OPTION,
+    permission_mode: PermissionMode = _PERMISSION_MODE_OPTION,
     workspace: Path | None = _CHAT_WORKSPACE_OPTION,
 ) -> None:
     """Start the Morphic terminal chat REPL."""
     if doctor:
-        with _disabled_logging(json_output):
-            engine_registry = _chat_engine_registry()
-            payload = _run(_chat_doctor_payload(engine_registry=engine_registry))
+        try:
+            with _disabled_logging(json_output):
+                engine_registry = _chat_engine_registry()
+                payload = _run(_chat_doctor_payload(engine_registry=engine_registry))
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=2) from None
         if json_output:
             typer.echo(json.dumps(payload, ensure_ascii=False, sort_keys=True))
         else:
@@ -113,6 +158,8 @@ def chat_cmd(
         try:
             council_runtime = _chat_council_runtime(
                 route_council=route_council,
+                route_direct=route_direct,
+                direct_engine=direct_engine,
                 planner_engine=planner_engine,
                 critic_engine=critic_engine,
                 leader_engine=leader_engine,
@@ -120,21 +167,35 @@ def chat_cmd(
         except ValueError as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=2) from None
-    _run(
-        ChatRepl(
-            workspace_root=workspace or Path.cwd(),
-            council_runtime=council_runtime,
-            engine_registry=engine_registry,
-        ).run(resume=resume)
-    )
+    try:
+        _run(
+            ChatRepl(
+                workspace_root=workspace or Path.cwd(),
+                council_runtime=council_runtime,
+                engine_registry=engine_registry,
+                hook_executor_factory=lambda root: _chat_hook_executor(workspace_root=root),
+                tool_executor_factory=lambda _root: _chat_tool_executor(),
+                control_enabled=control,
+            ).run(resume=resume, permission_mode=permission_mode)
+        )
+    except (PermissionError, RuntimeError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    except KeyboardInterrupt:
+        typer.echo("Cancelled.", err=True)
+        raise typer.Exit(code=130) from None
 
 
 def code_cmd(
     goal: str = typer.Argument(..., help="One-shot coding goal."),
     route_council: bool = _CODE_ROUTE_COUNCIL_OPTION,
+    route_direct: bool = _CODE_ROUTE_DIRECT_OPTION,
+    direct_engine: str | None = _DIRECT_ENGINE_OPTION,
     planner_engine: str | None = _PLANNER_ENGINE_OPTION,
     critic_engine: str | None = _CRITIC_ENGINE_OPTION,
     leader_engine: str | None = _LEADER_ENGINE_OPTION,
+    permission_mode: PermissionMode = _PERMISSION_MODE_OPTION,
+    benchmark_receipt: bool = _BENCHMARK_RECEIPT_OPTION,
     workspace: Path | None = _CODE_WORKSPACE_OPTION,
 ) -> None:
     """Run one coding goal and persist the session ledger."""
@@ -143,6 +204,8 @@ def code_cmd(
         try:
             council_runtime = _chat_council_runtime(
                 route_council=route_council,
+                route_direct=route_direct,
+                direct_engine=direct_engine,
                 planner_engine=planner_engine,
                 critic_engine=critic_engine,
                 leader_engine=leader_engine,
@@ -150,13 +213,26 @@ def code_cmd(
         except ValueError as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=2) from None
-    _run(
-        ChatRepl(
-            workspace_root=workspace or Path.cwd(),
-            council_runtime=council_runtime,
-            engine_registry=engine_registry,
-        ).run_goal(goal=goal)
-    )
+    try:
+        result = _run(
+            ChatRepl(
+                workspace_root=workspace or Path.cwd(),
+                council_runtime=council_runtime,
+                engine_registry=engine_registry,
+                hook_executor_factory=lambda root: _chat_hook_executor(workspace_root=root),
+                tool_executor_factory=lambda _root: _chat_tool_executor(),
+            ).run_goal_with_result(goal=goal, permission_mode=permission_mode)
+        )
+    except (PermissionError, RuntimeError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    except KeyboardInterrupt:
+        typer.echo("Cancelled.", err=True)
+        raise typer.Exit(code=130) from None
+    if benchmark_receipt:
+        from benchmarks.agent_cli_receipts import build_morphic_benchmark_receipt
+
+        typer.echo(build_morphic_benchmark_receipt(result.turns).to_json())
 
 
 def _chat_engine_registry() -> EngineRegistryPort:
@@ -170,18 +246,125 @@ def _chat_engine_registry() -> EngineRegistryPort:
     return StaticEngineRegistry()
 
 
+def _chat_hook_executor(
+    *,
+    workspace_root: Path,
+    local_executor_factory: Callable[[], LocalExecutorPort] | None = None,
+) -> HookExecutorPort:
+    mode = _chat_hook_execution_mode()
+    if mode == "noop":
+        return NoopHookExecutor()
+    factory = local_executor_factory or _chat_local_executor
+    return ShellHookExecutor(
+        local_executor=factory(),
+        workspace_root=workspace_root,
+    )
+
+
+def _chat_hook_execution_mode() -> str:
+    mode = os.getenv("MORPHIC_CHAT_HOOK_EXECUTION", "noop").strip().lower()
+    if mode == "":
+        return "noop"
+    if mode in {"noop", "shell"}:
+        return mode
+    raise ValueError(
+        "Invalid hook execution mode "
+        f"'{mode}'. Expected one of: noop, shell"
+    )
+
+
+def _chat_tool_executor(
+    *,
+    local_executor_factory: Callable[[], LocalExecutorPort] | None = None,
+) -> ToolExecutorPort:
+    mode = _chat_tool_execution_mode()
+    if mode == "noop":
+        return NoopToolExecutor()
+    factory = local_executor_factory or _chat_local_executor
+    return LaeeToolExecutor(local_executor=factory())
+
+
+def _chat_tool_execution_mode() -> str:
+    mode = os.getenv("MORPHIC_CHAT_TOOL_EXECUTION", "noop").strip().lower()
+    if mode == "":
+        return "noop"
+    if mode in {"noop", "laee"}:
+        return mode
+    raise ValueError(
+        "Invalid tool execution mode "
+        f"'{mode}'. Expected one of: noop, laee"
+    )
+
+
+def _chat_local_executor() -> LocalExecutorPort:
+    from domain.value_objects.approval_mode import ApprovalMode
+    from infrastructure.local_execution.audit_log import JsonlAuditLogger
+    from infrastructure.local_execution.executor import LocalExecutor
+
+    try:
+        settings = _get_container().settings
+        approval_mode_value = settings.laee_approval_mode
+        audit_log_path = settings.laee_audit_log_path
+        undo_enabled = settings.laee_undo_enabled
+    except Exception:
+        approval_mode_value = "confirm-destructive"
+        audit_log_path = Path(".morphic/audit_log.jsonl")
+        undo_enabled = True
+
+    mode_map = {
+        "full-auto": ApprovalMode.FULL_AUTO,
+        "confirm-destructive": ApprovalMode.CONFIRM_DESTRUCTIVE,
+        "confirm-all": ApprovalMode.CONFIRM_ALL,
+    }
+    approval_mode = mode_map.get(
+        approval_mode_value,
+        ApprovalMode.CONFIRM_DESTRUCTIVE,
+    )
+    return LocalExecutor(
+        approval_mode=approval_mode,
+        audit_logger=JsonlAuditLogger(log_path=audit_log_path),
+        undo_enabled=undo_enabled,
+    )
+
+
 def _chat_council_runtime(
     *,
     route_council: bool = False,
+    route_direct: bool = False,
+    direct_engine: str | None = None,
     planner_engine: str | None = None,
     critic_engine: str | None = None,
     leader_engine: str | None = None,
 ) -> CouncilRuntimePort:
+    if route_direct and route_council:
+        raise ValueError("--route-direct and --route-council are mutually exclusive")
+    preferred_direct_engine = _direct_engine_preference(direct_engine)
+    if preferred_direct_engine is not None and not route_direct:
+        raise ValueError("--engine requires --route-direct")
     role_engines = _role_engine_preferences(
         planner_engine=planner_engine,
         critic_engine=critic_engine,
         leader_engine=leader_engine,
     )
+    if route_direct:
+        if preferred_direct_engine not in {
+            AgentEngineType.CODEX_CLI,
+            AgentEngineType.CLAUDE_CODE,
+        }:
+            raise ValueError(
+                "--route-direct requires --engine codex_cli or claude_code"
+            )
+        try:
+            container = _get_container()
+            route_to_engine = getattr(container, "route_to_engine", None)
+            if route_to_engine is not None:
+                return RouteChatDirectRuntime(
+                    route_to_engine,
+                    preferred_engine=preferred_direct_engine,
+                )
+        except Exception as exc:
+            raise ValueError(f"Direct route is unavailable: {exc}") from exc
+        raise ValueError("Direct route is unavailable: route engine is not configured")
     if not route_council and os.getenv("MORPHIC_CHAT_ROUTE_COUNCIL") != "1":
         return LocalChatCouncilRuntime()
     try:
@@ -195,6 +378,18 @@ def _chat_council_runtime(
     except Exception:
         return LocalChatCouncilRuntime()
     return LocalChatCouncilRuntime()
+
+
+def _direct_engine_preference(engine_id: str | None) -> AgentEngineType | None:
+    if engine_id is None:
+        return None
+    try:
+        return AgentEngineType(engine_id)
+    except ValueError as exc:
+        valid = ", ".join(engine.value for engine in AgentEngineType)
+        raise ValueError(
+            f"Invalid direct engine '{engine_id}'. Expected one of: {valid}"
+        ) from exc
 
 
 def _role_engine_preferences(
@@ -228,5 +423,7 @@ async def _chat_doctor_payload(
     engines = await registry.list_engines()
     return {
         "engines": [engine.model_dump(mode="json") for engine in engines],
+        "hook_execution_mode": _chat_hook_execution_mode(),
         "permission_modes": [mode.value for mode in PermissionMode],
+        "tool_execution_mode": _chat_tool_execution_mode(),
     }

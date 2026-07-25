@@ -1,7 +1,35 @@
 # Morphic-Agent — Continuation State
 
-> Last updated: 2026-06-26
-> Latest work: Morphic Chat CLI Phase 15 hook planning in tool harness
+## Final smoke checkpoint (2026-07-25)
+
+- mTLS status exposes deterministic TLS expiry warnings.
+
+## Phase 61 checkpoint (2026-07-25)
+
+- Added end-to-end revocation CLI regression fixture from trust load through finalized artifact.
+
+## Phase 60 checkpoint (2026-07-25)
+
+- Added offline revocation template and signature-finalization CLI commands.
+
+## Phase 57 checkpoint (2026-07-23)
+
+- Peer-signed TLS revocation chain and trust-bound revoked-generation filtering implemented.
+- mTLS server/client expiry rejection plus deterministic warning-window reporting implemented.
+- Unit suite: 3,700 passed. CUI issuance/trust commands and dedicated revocation fixtures remain next.
+
+## Phase 58 checkpoint (2026-07-24)
+
+- TLS trust CUI accepts optional signed `--revocations` bundle and includes it in the published trust.
+- Focused TLS tests and Ruff pass; next slice is dedicated revocation fixture coverage and issuance templates.
+
+## Phase 59 checkpoint (2026-07-25)
+
+- Added revocation template/finalization APIs with active-key eligibility and detached signature verification.
+- Focused TLS tests and Ruff pass; next slice is CLI commands and dedicated revocation regression fixtures.
+
+> Last updated: 2026-07-22
+> Latest work: Morphic Chat CLI Phase 56 mutual-TLS artifact sync
 
 ## Latest Session Notes (2026-06-26)
 
@@ -102,6 +130,382 @@ Phase 15 implemented:
 - Existing tool execution behavior is unchanged when no hook planner is injected.
 - Session ledger ordering is preserved across hook plan, diff, tool requested/completed, verification, and post hook plan events.
 
+Phase 16 implemented:
+- Added hook execution domain contracts: `HookExecutionRequest`, `HookExecutionResult`, and `HookExecutorPort`.
+- Added `hook_execution_requested` and `hook_execution_completed` chat session events.
+- Added `ExecuteChatHookUseCase`, which validates hook diagnostics, skips disabled hooks without invoking the executor, executes enabled hooks through `HookExecutorPort`, and records request/completion events in the session ledger.
+- FAIL hook diagnostics now block both planning and execution at the application layer.
+- Shell-backed hook command execution and approval/risk policy wiring remain deferred; unit tests use a fake executor only.
+
+Phase 17 implemented:
+- Added `NoopHookExecutor`, a safe infrastructure adapter for `HookExecutorPort` that records successful hook execution results without invoking shell commands.
+- `ExecuteChatToolUseCase` now accepts an optional `ExecuteChatHookUseCase` as `hook_runner`.
+- When a hook runner is injected, `pre_tool` hook execution events are recorded before tool execution and `post_tool` hook execution events are recorded after tool execution.
+- Existing `PlanChatHooksUseCase` injection behavior remains unchanged for planning-only paths.
+- Session ledger ordering is preserved across hook execution request/completion events, diff/tool events, verification events, and post-hook execution events.
+- Real shell-backed hook command execution remains deferred until explicit approval/risk policy is wired.
+
+Phase 18 implemented:
+- Added `ShellHookExecutor`, which implements `HookExecutorPort` by delegating hook commands to LAEE `LocalExecutorPort` as `shell_exec` actions.
+- Hook shell execution uses the workspace root as `cwd` and includes a configurable timeout.
+- LAEE `SUCCESS` observations are normalized to successful `HookExecutionResult` values; `DENIED` / `ERROR` observations become failed hook results with stderr summaries.
+- `ExecuteChatToolUseCase` now stops before the tool body when an injected `pre_tool` hook runner records a failed hook result.
+- Post-tool hook failure is intentionally recorded as ledger data only; no rollback behavior was added.
+
+Phase 19 implemented:
+- Added a Chat CLI hook executor factory with safe no-op default.
+- `MORPHIC_CHAT_HOOK_EXECUTION=shell` explicitly opts into `ShellHookExecutor`; unset, empty, or `noop` uses `NoopHookExecutor`.
+- Shell hook executor construction reuses LAEE approval mode, audit log path, and undo settings from the app container when available, with conservative local defaults otherwise.
+- Unknown hook execution modes raise a validation error.
+- `morphic chat --doctor --json` now reports `hook_execution_mode`.
+
+Phase 20 implemented:
+- Added `morphic hooks run <hook_type>` for explicit manual hook execution.
+- Manual hook runs create a chat session ledger under `.morphic/sessions/*.jsonl` and record hook execution events.
+- `morphic hooks run <hook_type> --json` emits session id, hook execution mode, diagnostics, events, results, and summary counts.
+- Default manual hook execution remains no-op unless the user explicitly sets `MORPHIC_CHAT_HOOK_EXECUTION=shell`.
+- Shell opt-in manual validation is covered by a test that runs `echo hook-ok` through LAEE `shell_exec` and verifies `.morphic/audit_log.jsonl`.
+
+Phase 21 implemented:
+- Added `/hooks run <hook_type>` handling inside `morphic chat`.
+- REPL hook runs record both the slash command and hook execution events in the current chat session ledger.
+- REPL hook execution preserves the no-op default and respects `MORPHIC_CHAT_HOOK_EXECUTION=shell`.
+- Shell opt-in REPL validation is covered by a test that runs `echo repl-hook-ok` through LAEE and verifies the audit log exists.
+- Deferred `D008 Hook command execution` is now complete; broader chat tool execution UX is split into a separate follow-up.
+
+Phase 22 implemented:
+- Added `NoopToolExecutor`, a safe default `ToolExecutorPort` adapter that records successful tool results without invoking local tools.
+- Added `/tools run <tool_name> [json_arguments]` handling inside `morphic chat`.
+- REPL tool runs record the slash command and route through `ExecuteChatToolUseCase`, producing `tool_call_requested` / `tool_call_completed` events in the current session ledger.
+- Existing hook runner flow is injected around REPL tool runs, so configured `pre_tool` / `post_tool` hooks are recorded.
+- Invalid JSON tool arguments return a user-facing message without crashing the REPL.
+- This starts `D011 General chat tool execution UX beyond explicit hook commands`; LAEE-backed real tool execution remains a follow-up.
+
+Phase 23 implemented:
+- Added a Chat CLI tool executor factory with safe no-op default.
+- `MORPHIC_CHAT_TOOL_EXECUTION=laee` explicitly opts into `LaeeToolExecutor`; unset, empty, or `noop` uses `NoopToolExecutor`.
+- LAEE tool executor construction reuses the same local executor settings as shell-backed hooks.
+- Unknown tool execution modes raise a validation error and surface through `morphic chat --doctor --json` with exit code 2.
+- `morphic chat --doctor --json` now reports `tool_execution_mode`.
+- REPL `/tools run shell_exec {"cmd":"echo tool-ok"}` is covered by an opt-in test that verifies `.morphic/audit_log.jsonl`.
+
+Phase 24 implemented:
+- `/tools run` now reports LAEE denied/error results with `success=False`, `exit_code`, and a visible `error=` summary from stderr.
+- REPL tool execution now assesses risk with `RiskAssessor` from the tool name and JSON arguments before calling `ExecuteChatToolUseCase`.
+- `MORPHIC_CHAT_TOOL_EXECUTION=laee` `/tools run fs_delete ...` is covered by a deny-path test that verifies the target file is preserved and `.morphic/audit_log.jsonl` records the denied action.
+
+Phase 25 implemented:
+- Added `--permission-mode` to both `morphic chat` and `morphic code`.
+- Selected modes use the existing `PermissionMode` values and are persisted in session start ledger events.
+- `/status` already surfaces the active permission mode, so `morphic chat --permission-mode read-only` now reports `mode=read-only`.
+- Read-only mutating `/tools run` attempts now return a user-facing `permission denied: ...` assistant message instead of crashing the REPL.
+
+Phase 26 implemented:
+- Added `RouteChatDirectRuntime`, which delegates a Chat CLI turn to exactly one `RouteToEngineUseCase` execution and records the result as one `IMPLEMENTER` council turn plus the assistant decision.
+- Added `--route-direct` to both `morphic chat` and `morphic code`; optional `--engine <engine_id>` pins the preferred route engine while omission keeps automatic routing.
+- `--route-direct` and `--route-council` are mutually exclusive, and invalid direct engine ids return exit code 2 diagnostics.
+- Direct route failure and empty output are surfaced as errors instead of silently falling back to deterministic local success text.
+- Direct external-engine execution currently requires explicit `--permission-mode danger-full-access`; this temporary gate remains until Morphic permission modes propagate to native CLI permission controls.
+- Strategy memory added at `.serena/memories/morphic_control_plane_strategy.md`: Morphic competes as a native-engine-preserving multi-engine control plane, not as another single-engine CLI clone.
+
+Phase 27 implemented:
+- Added strict provider-independent `AgentEngineEvent` / `AgentEngineEventType` domain entities for native agent lifecycle data.
+- Added a resilient Codex JSONL parser for thread, turn, command/MCP/web tool, file change, plan, reasoning, assistant, completion, failure, and error records while retaining raw payloads.
+- Codex results now expose normalized events, thread/session id, final assistant message, usage, and malformed-line count through metadata.
+- Replaced deprecated Codex `--full-auto` invocation with explicit `--sandbox`; `read-only`, `workspace-write`, and `danger-full-access` map directly from Morphic permission modes.
+- Added Codex `--cd <workspace_root>` propagation so `--workspace` cannot silently execute against the process working directory.
+- `confirm-destructive` is rejected for direct Codex execution because `codex exec` cannot open an interactive approval prompt.
+- Direct route currently requires explicit `--engine codex_cli`; automatic/native routing will reopen after other adapters implement equivalent workspace and permission mappings.
+
+Phase 28 implemented:
+- Direct native runtime turns now retain normalized provider-independent engine events.
+- `SendChatMessageUseCase` persists each engine event independently and in order before its council argument, decision, and assistant response.
+- Raw provider payloads remain present in each event for audit, replay, and forward compatibility.
+- Added `ScopedAgentEnginePort` so workspace and permission propagation is an explicit adapter capability rather than optional arguments that existing drivers could ignore.
+- Scoped routing skips unsupported adapters and can fall back to Codex without executing a permission-unaware engine.
+
+Phase 29 implemented:
+- Added an async subprocess streaming path that drains stdout and stderr concurrently and publishes decoded stdout lines before process completion.
+- Added stateful Codex JSONL decoding so live events retain provider order and the active thread id.
+- Added narrow `StreamingScopedAgentEnginePort` and `StreamingCouncilRuntimePort` capabilities rather than widening all engine/council implementations.
+- Direct streaming chat persists the user message before execution and appends each native event immediately through an application-owned ledger sink.
+- Final Codex result metadata still contains the complete event list for buffered consumers; streaming chat deliberately avoids persisting that list twice.
+- Unit coverage includes a real local subprocess for line/stderr collection; no real Codex task or paid model was invoked.
+
+Phase 30 implemented:
+- `SendChatMessageUseCase` can fan streamed native events out to an optional presentation observer after each ledger append succeeds.
+- Observer failures are logged and isolated from the durable audit path and native execution.
+- Added `NativeEventProgressRenderer` for concise run/tool/file/plan/completion/error lines in Chat REPL and one-shot code execution.
+- Raw provider payloads, generic progress/reasoning, unknown events, and assistant messages are not rendered; event detail is whitespace-normalized and capped at 160 characters.
+- The final assistant response remains rendered once through the existing response path.
+
+Phase 31 implemented:
+- `ChatSession` tracks each native engine session id together with the workspace root and permission mode that created it.
+- Resume reconstructs native session provenance by replaying persisted `context_indexed` and `engine_event` records.
+- Added `ResumableStreamingScopedAgentEnginePort`; routing never treats ordinary streaming support as implicit resume support.
+- Codex resume uses the explicit stored thread id and preserves `--sandbox` plus `--cd` scope; it never uses the ambiguous global `--last` session.
+- Direct runtime fails before engine execution when stored workspace or permission provenance differs from the current session.
+
+Phase 32 implemented:
+- Buffered and streaming native CLI subprocess paths now handle task cancellation explicitly.
+- Cancellation sends `terminate`, waits up to two seconds, and escalates to `kill` only if the process does not exit.
+- The original `CancelledError` is re-raised after cleanup, preserving Ctrl-C/caller cancellation semantics.
+- Unit tests pin graceful termination and verify that cancellation is not converted into a normal engine result.
+
+Phase 33 implemented:
+- `ClaudeCodeDriver` now implements scoped workspace and permission execution.
+- Morphic read-only maps to Claude `plan`, workspace-write to `acceptEdits`, and danger-full-access to explicit `bypassPermissions` plus the dangerous bypass flag.
+- `confirm-destructive` is rejected because Claude headless mode cannot preserve an interactive approval prompt.
+- Removed the user-only setting source and hard-coded tool allowlist, allowing Claude Code to preserve native project/local settings, CLAUDE.md, skills, hooks, MCP servers, plugins, and tool policy.
+- Claude streaming JSONL normalization and native resume remain the next slice; direct Chat CLI mode remains Codex-only until those contracts are implemented.
+
+Phase 34 implemented:
+- Added Claude stream-json normalization for init, assistant text, tool use, tool result, success, and failure records while retaining raw payloads.
+- `ClaudeCodeDriver` now implements the same streaming scoped and explicit resume capabilities as Codex.
+- Claude session id, output, model, usage, total cost, and malformed-line diagnostics are retained in normalized results.
+- Chat CLI direct mode now accepts explicit `--engine claude_code` as well as `codex_cli`; both use the same ledger, progress, provenance, and fail-closed resume path.
+
+Phase 35 implemented:
+- Native resume requests now carry both the provider session id and its owner engine.
+- Preferred-engine/resume-engine mismatches are rejected before route construction.
+- Every non-owner engine in the fallback chain is skipped before availability checks or execution and recorded as `resume_engine_mismatch`.
+- Provider-native session ids can no longer cross from Claude to Codex or Codex to Claude during fallback.
+
+Phase 36 implemented:
+- Streaming turn cancellation now appends `turn_cancelled` after the user message and any native events already delivered to the ledger.
+- The original `CancelledError` still propagates after the durable append, allowing the native subprocess cleanup path to retain its cancellation semantics.
+- `morphic chat` and `morphic code` print `Cancelled.` and exit 130 on Ctrl-C instead of silently terminating.
+- A cancelled turn never emits council decision or assistant success events.
+- Verification: 3,523 unit tests passed; repository-wide Ruff clean.
+
+Phase 37 implemented:
+- Added an injectable `ActiveTurnController` that owns at most one interactive turn child task.
+- Ctrl-C during an active chat turn cancels that turn, completes provider cleanup and durable `turn_cancelled` recording, then returns to the same REPL.
+- The REPL replays the ledger after cancellation so subsequent events continue after every partially persisted event without duplicate sequence numbers.
+- Outer asyncio cancellation remains process-level cancellation; idle chat and one-shot code Ctrl-C behavior remain unchanged.
+- The previous SIGINT handler is restored after every turn, and repeated cancellation requests do not interrupt cleanup.
+- Non-streaming runtimes now persist the user message before execution and append `turn_cancelled` on interruption, matching the streaming replay contract.
+- Verification: 3,528 unit tests passed; repository-wide Ruff clean.
+
+Phase 38 implemented:
+- `morphic chat --control` opts an interactive session into a short-lived active-turn control server bound only to `127.0.0.1` on a random port.
+- A protocol-versioned, session-scoped descriptor carries the port and random authentication token under `.morphic/control/`; directory/file modes are 0700/0600.
+- `morphic chat-control status` and `morphic chat-control cancel` can inspect or cancel the active turn from another terminal, with optional single-session discovery.
+- Invalid tokens, mismatched sessions, unsupported commands, and non-loopback descriptors fail closed without cancelling the turn.
+- The owned descriptor is removed after normal completion or after cancellation cleanup; the listener is disabled by default and never remains permanently open.
+- Verification: 3,536 unit tests passed; repository-wide Ruff clean.
+
+Phase 39 implemented:
+- Added authenticated `morphic chat-control steer <prompt>` over the Phase 38 loopback transport.
+- Replacement prompts must be non-empty and at most 2048 UTF-8 bytes; invalid input is rejected before cancellation.
+- Steer queueing is first-writer-wins, so a later request cannot replace the accepted prompt during cleanup.
+- After `turn_cancelled`, the REPL replays the ledger, appends `turn_steered`, and submits the replacement as a normal `user_message`.
+- Replay restores the same provider-native session id, workspace, and permission mode before the replacement route executes.
+- Slash-prefixed remote prompts bypass local slash command parsing and remain provider input.
+- Verification: 3,542 unit tests passed; repository-wide Ruff clean.
+
+Phase 40 implemented:
+- Added an offline evaluator for one immutable task manifest shared by Codex CLI, Claude Code, and Morphic-controlled trials.
+- The manifest pins task id, goal, workspace revision, verification checks, handoff assertions, and repetition count; results must contain each arm/trial exactly once.
+- Duplicate, missing, mismatched, out-of-range, undeclared-check, undeclared-handoff, and inconsistent recovery records fail closed.
+- Reports expose completion, accepted-patch, verification, median elapsed time, mean cost, mean human interventions, recovery, and context-handoff metrics per arm.
+- Verification and handoff fidelity are derived from predeclared assertions rather than trusted as arbitrary scores.
+- Metric-specific leaders replace a subjective weighted composite score; deterministic JSON has sorted keys and no timestamp.
+- `morphic benchmark agent-cli --manifest ... --results ... [--json]` reads recorded files only and never launches a native engine or paid API.
+- The top-level `benchmarks` package is now included in built distributions.
+- Verification: 3,553 unit tests passed; repository-wide Ruff clean; wheel contents verified.
+
+Phase 41 implemented:
+- Added `morphic benchmark agent-cli-record`; its default path returns a deterministic plan and creates no worktree or process.
+- Recorder config must cover exactly the three arms plus every declared verification check and handoff assertion.
+- Live execution requires `--execute`, `--acknowledge-paid`, and an explicit cost cap covering the configured all-trial maximum estimate.
+- Every arm/trial runs at the pinned revision in a unique detached worktree outside the source repository.
+- Agent, check, and handoff commands receive argv directly without a shell and use a bounded timeout.
+- Worktrees are released in `finally` after normal completion, non-zero command results, or raised runner errors.
+- Evidence stores command/output hashes, byte counts, exit/timeout/elapsed data, and passed assertion names; raw prompts and output are not persisted.
+- Existing evidence is never overwritten; a mode-0600 temporary file is published through an exclusive atomic hard link and then removed.
+- Authorized estimate cap is recorded, while actual provider cost and accepted-patch review remain explicitly pending adjudication.
+- Verification: 3,566 unit tests passed; repository-wide Ruff clean; detached-worktree lifecycle, exclusive evidence publication, and wheel contents verified.
+
+Phase 42 implemented:
+- Recorder agent output is parsed in memory into a normalized receipt before raw stdout is discarded.
+- Codex receipts require usage plus a model/model hint and recompute cost through the existing deterministic calculator.
+- Claude receipts retain the provider-reported total cost; Morphic-controlled commands use a strict `morphic_benchmark_receipt` envelope.
+- Provider-specific cost sources, non-negative usage, recalculated Codex cost, and zero parse errors are required.
+- Evidence becomes `normalized_receipts` only when every trial has a valid receipt; missing receipts are never converted to zero cost.
+- Independent review decisions bind accepted patch, interventions, and recovery to the exact agent argv SHA-256 plus a review artifact SHA-256.
+- `morphic benchmark agent-cli-finalize` joins complete evidence/review matrices into Phase 40 observations without starting an agent or paid API.
+- Finalization recomputes check/handoff outcomes and rejects identity/provider/fingerprint mismatch, missing/duplicate trials, failed-run acceptance, and authorized-cap overage.
+- Final output is timestamp-free, sorted-key JSON and uses the existing exclusive non-overwriting publication path.
+- Verification: 3,582 unit tests passed; repository-wide Ruff clean; all four benchmark modules are present in the built wheel.
+
+Phase 43 implemented:
+- Added explicit `morphic code --benchmark-receipt` while preserving ordinary output when the flag is absent.
+- The final stdout line is a sorted canonical Morphic receipt that aggregates council-turn cost and non-negative normalized completion usage only.
+- Runtime failure and Ctrl-C emit no receipt, so unknown provider cost cannot be misreported as zero and finalization fails closed.
+- Added parseable manifest and recorder configuration examples under `benchmarks/templates/`.
+- Added `morphic benchmark agent-cli-rehearse`, whose commands are fixed internal Python fixtures and cannot be replaced with external agent commands.
+- The rehearsal pins a Git revision and exercises three detached worktrees, all receipt parsers, hashed evidence, review fingerprints, and deterministic finalization at configured and actual cost $0.
+- Rehearsal review fixes `accepted_patch=false`; fixture completion is never represented as patch-quality evidence.
+- Output is a new five-file manifest/config/evidence/reviews/results directory; an existing directory is refused.
+- Real workspace verification completed all three cells with no raw output in evidence and no remaining detached worktree. No paid campaign was executed.
+- Verification: 3,591 unit tests passed; repository-wide Ruff clean; wheel contains the rehearsal module and both JSON templates.
+
+Phase 44 implemented:
+- Added `morphic benchmark agent-cli-preflight` for a deterministic, non-authorizing campaign artifact.
+- Manifest revision must equal the full Git-resolved 40-character commit; symbolic or mismatched revisions fail closed.
+- Operator-declared runtime versions must cover exactly three arms and match each configured command executable.
+- Runtime versions and every arm/check/handoff command receive deterministic SHA-256 fingerprints.
+- Complete manifest/config hashes bind goal, timeout, and model hints without exposing the raw goal.
+- Preflight runs only read-only Git revision resolution; no version command, agent, or paid API is started.
+- Added `agent-cli-review-template` with every expected arm/trial and null human judgment fields.
+- Templates bind exact preflight, normalized evidence, and expanded agent argv SHA-256 values and remain `review_completed=false` until filled.
+- Completed bound reviews use `review_completed=true`; finalization checks evidence binding and optional `--preflight` binding.
+- Binding fields remain optional for backward compatibility with Phase 42 review artifacts.
+- Real zero-cost verification generated a three-arm preflight and three-decision review template on commit `88326ae`; no paid campaign was executed.
+- Verification: 3,605 unit tests passed; repository-wide Ruff clean; wheel contains the preflight module and runtime-version template.
+
+Phase 45 implemented:
+- Added a normalized reviewer policy declaration with operator ID, reviewer allowlist, and minimum distinct reviewer count.
+- Policy SHA-256 is bound into pending templates and completed reviews.
+- Operator self-review, unauthorized reviewers, insufficient diversity, and impossible reviewer minimums fail closed.
+- Reviewer IDs are structural declarations only; no authenticated human identity claim is made.
+- Added read-only `morphic benchmark agent-cli-status` with six deterministic lifecycle stages.
+- Status validates artifact order, manifest/preflight hashes, evidence estimate/matrix, all review bindings, reviewer policy, and recomputed final results.
+- Every status fixes `paid_execution_authorized=false` and cannot start a process or mutate an artifact.
+- Real zero-cost verification reached `review_pending` at commit `d88f1f0`; all input artifact SHA-256 values were identical before and after status.
+- No external agent, version probe, or paid API was started.
+- Verification: 3,621 unit tests passed; repository-wide Ruff clean; wheel contains the campaign status, reviewer policy, and policy template artifacts.
+
+Phase 46 implemented:
+- Added self-fingerprinted reviewer trust declarations bound to one benchmark and exact review policy.
+- Trust roots contain reviewer ID, globally unique key ID, Ed25519 public key, public-key SHA-256, and active/revoked status.
+- Every allowed reviewer needs an active key for new trust authoring; revoked historical keys remain representable for rotation and verification refusal.
+- Trust-bound completed reviews retain the exact reviewer trust SHA-256 in addition to preflight, evidence, and review-policy bindings.
+- Added `morphic benchmark agent-cli-attestation-template`, which emits one canonical signing payload per distinct reviewer without reading a private key.
+- Each statement binds benchmark/task/revision, preflight, evidence, policy, trust, the complete reviews artifact, and that reviewer's decision subset.
+- Finalization requires one valid detached Ed25519 signature per distinct reviewer when a review is trust-bound.
+- Unknown keys, revoked keys, invalid signatures, missing reviewers, and mixed review/policy/trust artifacts fail closed.
+- Campaign status adds `review_attestation_pending`; only a fully verified bundle advances to `review_complete` and `finalized`.
+- Legacy unsigned reviews and six-stage unsigned campaigns retain their previous behavior.
+- Verification: 3,633 unit tests passed; repository-wide Ruff clean; wheel contains the attestation module and reviewer trust template and declares `cryptography>=46.0.5` directly.
+- No external agent, private-key file, version probe, or paid API was started.
+- Security boundary: signatures prove possession of a trust-enrolled key, not real-world identity or independently anchored key enrollment.
+
+Phase 47 implemented:
+- Added a normalized, self-fingerprinted offline Ed25519 organization authority declaration.
+- Anchored reviewer trust includes the exact authority SHA-256; unanchored Phase 46 trust fingerprints remain backward compatible.
+- Added canonical enrollment signing requests for every reviewer key without reading an authority private key.
+- Authority enrollment certificates bind authority, benchmark, policy, exact trust artifact, reviewer/key identity, and reviewer public-key fingerprint.
+- Every active or revoked key retained in trust must have exactly one valid authority certificate; missing, duplicate, mixed, or invalid certificates fail closed.
+- Authority-bound finalization requires both the authority declaration and complete enrollment bundle in addition to Phase 46 reviewer attestations.
+- Added a campaign envelope signing request covering manifest, preflight, evidence, reviews, policy, trust, enrollments, attestations, results, and immutable campaign identity.
+- The envelope fixes `paid_execution_authorized=false`; successful provenance verification never authorizes a recording run.
+- Authority-bound status adds `reviewer_enrollment_pending` and `campaign_envelope_pending` and reaches `finalized` only after the external authority signature verifies.
+- Added `agent-cli-reviewer-enrollment-template` and `agent-cli-campaign-envelope-template`; both exclusively publish deterministic signing payloads and never read private keys.
+- Legacy unsigned and unanchored signed campaigns retain their previous lifecycle and finalization behavior.
+- Verification: 3,646 unit tests passed; repository-wide Ruff clean; wheel contains the authority module plus authority and anchored-trust templates.
+- Real Ed25519 enrollment, reviewer attestation, and final envelope signatures were exercised with in-memory keys only. No external authority, agent, network identity provider, or paid API was started.
+- Security boundary: authority root distribution, certificate expiry, authority revocation/rotation, and transparency logging are not yet anchored.
+
+Phase 48 implemented:
+- Added a versioned authority-root ledger: genesis is out-of-band and each later root carries an exact rotation statement signed by its immediate predecessor.
+- The active Ed25519 root signs the self-fingerprinted generation/revocation ledger; gaps, reuse, unknown revocations, invalid rotations, tampering, and revoked active roots fail closed.
+- Reviewer trust, finalization, and campaign envelopes can bind the exact root-ledger SHA-256 while Phase 47 fingerprints and signing bytes remain backward compatible when the field is absent.
+- Added RFC 6962-style domain-separated SHA-256 Merkle roots, active-root-signed tree heads, and inclusion audit paths for campaign artifacts.
+- Complete old/new transparency logs validate append-only growth by requiring the old entry sequence to be an exact prefix of the new log.
+- Ledger-bound status adds `authority_root_pending` and `transparency_pending`; the exact signed envelope must have a valid inclusion proof before `finalized`.
+- Added private-key-free rotation, ledger, and tree-head signing templates plus offline log and inclusion-proof CLI commands.
+- Verification: 3,655 unit tests passed; repository-wide Ruff clean; no external authority, log service, identity provider, agent, version probe, or paid API ran.
+- Security boundary: genesis delivery and compromise reset remain out-of-band; complete-log prefix verification is not a compact consistency proof or gossip protocol.
+
+Phase 49 implemented:
+- Added RFC 6962 minimal consistency proofs using the specified `SUBPROOF` recursion and compact SHA-256 node paths.
+- Verification reconstructs both prior and current signed roots without requiring either complete log and rejects size, log, ledger, path, fingerprint, root, or signature mismatch.
+- Added self-fingerprinted Ed25519 witness trust with globally unique keys, active/revoked status, and a strict-majority quorum so any two accepted quorums intersect.
+- Witness signatures bind the exact log, old/new sizes and roots, both signed tree-head fingerprints, authority-root ledger, consistency proof, and witness trust.
+- Missing quorum, duplicate witnesses, unknown/revoked keys, invalid signatures, and same-size different-root split views fail closed.
+- Opt-in witnessed campaign status adds `witness_pending`; Phase 48 inclusion-only campaigns remain backward compatible and still finalize without witness inputs.
+- Added offline consistency-proof, witness-trust, and checkpoint-template CLI paths plus a parseable three-witness example declaration.
+- Verification: 3,664 unit tests passed; repository-wide Ruff clean; RFC seven-leaf proof shape, all prefix sizes through twelve leaves, and the committed witness template were exercised.
+- Security boundary: witnesses exchange artifacts out-of-band; Morphic does not yet run a gossip network, attest real-world witness identities, or persist a global checkpoint registry.
+
+Phase 50 implemented:
+- Added a deterministic append-only checkpoint registry whose records bind sequence, prior-record hash, root ledger, witness trust, compact proof, and signed checkpoint.
+- Every replay verifies the complete record hash chain plus authority, consistency-proof, and witness signatures; sequence gaps, altered records/links, partial tails, stale extensions, and witnessed split views fail closed.
+- Registry append uses an exclusive file lock, `O_APPEND`, `fsync`, regular-file checks, and mode 0600; concurrent duplicate appends and authenticated retry are idempotent.
+- Added self-fingerprinted Ed25519 peer trust with globally unique key IDs, active/revoked rotation, and at least one active key per peer.
+- Signed exchange packets bind the source peer to one exact registry record/checkpoint/root; import authenticates the peer before using the same locked conflict-safe append path.
+- Added private-key-free peer-trust, registry status/store/export-template/import CLI paths and a parseable peer-rotation example.
+- Verification: 3,679 unit tests passed; repository-wide Ruff clean; in-memory keys and temporary local files only.
+- Security boundary: no online listener, peer discovery, real-world identity attestation, global consensus, or atomic multi-record range sync is provided.
+
+Phase 51 implemented:
+- Added bounded signed ranges that bind base/head hashes, contiguous sequences, every record fingerprint, registry, source peer, and peer trust.
+- Range import authenticates and validates the complete range before locking, exact-matches existing overlap, and appends only a missing contiguous suffix.
+- Gap, fork, conflicting overlap, invalid signature, or invalid checkpoint chain causes zero mutation; process-level write failure truncates to the original registry size.
+- Added receiver-signed acknowledgements bound to the exact range bundle and applied record/tree head.
+- Added a mode-0600, locked, hash-chained peer cursor ledger with exact retry idempotency and monotonic positions per source/receiver pair.
+- Cursor regression, same-sequence conflicts, invalid acknowledgement signatures, fingerprint tampering, and chain tampering fail closed.
+- Added private-key-free range export/import, acknowledgement-template, cursor store, and cursor status CLI paths.
+- Verification: 3,686 unit tests passed; repository-wide Ruff clean; no external agent, peer listener, or paid API ran.
+- Security boundary: peer trust remains a single snapshot; old trust artifacts are required to replay historical acknowledgements after rotation.
+
+Phase 52 implemented:
+- Added generation-two-and-later peer-trust rollover statements approved by a strict majority of distinct active predecessor peers.
+- Rotation statements bind registry, generation, predecessor/successor trust fingerprints, and the automatically computed quorum.
+- Private-key-free templates emit one signing request per predecessor peer and allow any active key registered for that peer.
+- Minority, duplicate peer, successor-only/revoked key, invalid signature, generation gap/reorder, registry change, trust reuse, and tampering fail closed.
+- Added a contiguous self-fingerprinted peer-trust generation ledger rooted in out-of-band genesis.
+- Historical trust resolution lets one cursor chain verify acknowledgements from before and after key rotation.
+- Cursor store/status accepts exactly one `--peer-trust` or `--peer-trust-ledger`; rotation-template and ledger CLI paths were added.
+- Verification: 3,691 unit tests passed; repository-wide Ruff clean; in-memory signatures only, with no external peer, listener, agent, or paid API.
+- Security boundary: genesis delivery, latest-ledger pinning, stale-ledger rollback detection, real-world identity, and transport remain out-of-band.
+
+Phase 53 implemented:
+- Added an explicit opt-in checkpoint gossip listener bound only to `127.0.0.1` on a random port.
+- A protocol-versioned mode 0600 descriptor binds registry, source peer, random instance, and a 32-byte bearer token.
+- Every connection uses one-use 32-byte client/server nonces and HMAC-SHA256 over protocol, endpoint identity, operation, and payload; responses are authenticated too.
+- Reused nonces, wrong tokens, endpoint/version mismatch, oversized requests, exhausted bounds, timeout, and invalid artifacts fail closed.
+- Fixed limits cover 64 KiB requests, 2 MiB responses, eight concurrent clients, 1,024 retained nonces/requests, two-second request handling, and an operator-bounded listener lifetime.
+- The server verifies pre-signed exact range bundles before listening; fetch clients independently verify them against a trust snapshot or generation ledger.
+- Submitted signed acknowledgements pass through the existing signature, monotonicity, locking, and hash-chained cursor-store path.
+- Added explicit serve/status/fetch/ack CLI paths; max request count, lifetime, cancellation, and context exit close listeners, active writers/tasks, and the owned descriptor.
+- Verification: 3,697 unit tests passed; repository-wide Ruff and focused mypy clean; no external peer, agent, paid API, or non-loopback socket ran.
+- Security boundary: the descriptor token authenticates local transport only; full witness/root verification occurs during registry import. Remote TLS, discovery, automatic signing, and a durable catch-up loop remain out-of-scope.
+
+Phase 54 implemented:
+- Added a bounded resumable pull loop that selects a signed range containing the exact next local registry sequence and atomically imports only the missing suffix.
+- A mode 0600 JSONL sync audit holds one non-blocking exclusive lock for the whole loop and fsyncs a self-fingerprinted hash chain.
+- Deterministic audit events bind the exact loop-policy fingerprint and cover imported ranges, safe retry metadata, registry-ahead crash recovery, trust advancement, and explicit stop reasons; no token, timestamp, or raw exception text is persisted.
+- The verified checkpoint registry remains import truth. If it is ahead of audit after a crash, the pinned historical registry head must match before a recovered event resumes from the current head.
+- Every audit record pins peer-trust generation/trust/ledger fingerprints. Older ledgers and forks at a pinned generation are rejected before contacting the gossip endpoint; contiguous extensions advance the pin.
+- Loop policy bounds rounds, newly imported records, request attempts, and deterministic backoff. Stops report up-to-date, range-gap, record-budget, round-budget, or retry-exhausted.
+- Added a private-key-free gossip-sync CLI using the existing range signature, root/witness/Merkle, registry, and trust-ledger verification paths.
+- Verification: 3,698 unit tests passed; repository-wide Ruff and focused mypy clean; loopback/in-memory test keys only, with no external peer, agent, paid API, or non-loopback listener.
+- Security boundary: the local pin is tamper-evident, not resistant to an attacker who can rewrite the complete audit and registry. Automatic acknowledgement signing, peer discovery, and remote mTLS remain out-of-scope.
+
+Phase 55 implemented:
+- Added private-key-free TLS leaf enrollment statements binding normalized DER and SPKI SHA-256 pins, subject/issuer, serial, validity, SANs, and client/server EKUs to an existing active peer Ed25519 identity signature.
+- Per-peer certificate rotation is a contiguous generation chain. Missing or mismatched predecessors, invalid/inactive identity signatures, registry/trust mismatch, and duplicate active leaf/SPKI pins across peers fail closed.
+- Added a self-fingerprinted TLS trust artifact with deterministic active enrollment resolution. Runtime credentials must match both the active certificate and SPKI pins; an older enrolled certificate cannot start a server or authenticate a client.
+- Added protocol version 2 transport using TLS 1.3 only with required mutual CA validation. The client additionally verifies hostname, explicit server IP allowlist, connected peer address, descriptor trust fingerprint, and active server pins.
+- The server verifies an explicit client IP allowlist, the handshake leaf against an active peer enrollment, and the request's declared client peer ID. Plaintext connections never reach the application protocol and there is no token or plaintext fallback.
+- Preserved 64 KiB request, 2 MiB response, eight-client default, 1,024 nonce/request capacity, timeout, replay, and deterministic listener/client/owned-descriptor cleanup bounds. The mode 0600 descriptor is token-free and TLS private keys must deny group/other access.
+- Added private-key-free enrollment-template, detached-signature enrollment finalization, TLS trust, mTLS serve, and mTLS status CLI paths. Loaded trust artifacts are reverified against the exact peer trust before CUI network use.
+- Verification: 3,700 unit tests passed; repository-wide Ruff, focused mypy, and wheel build are clean. Tests use loopback, local temporary certificates, and in-memory Ed25519 keys only.
+- Security boundary: CA/genesis trust distribution, DNS/address operations, certificate revocation status, private-key custody, peer discovery, automatic signing, and mTLS fetch/ack/sync CLI wiring remain operator/out-of-scope boundaries.
+
+Phase 56 implemented:
+- Added a typed authenticated request-sender protocol beneath status, signed range fetch, and signed acknowledgement submission. Omitting it preserves the existing protocol-v1 loopback behavior and public callers.
+- Added a reusable protocol-v2 mTLS client that retains one exact descriptor, client peer, TLS trust, leaf/key/CA, hostname, server address allowlist, and timeout configuration.
+- Artifact validation remains transport-independent: fetched ranges are still reverified under their exact peer-trust generation, and returned cursor records must contain the exact submitted acknowledgement.
+- The Phase 54 bounded resumable sync loop now accepts the same sender for status and fetch operations. Locking, deterministic audit records, crash recovery, retry delays, budgets, trust rollback/fork rejection, registry import, and stop reasons are unchanged.
+- Added mTLS fetch, acknowledgement, and sync CLI paths. Each rebuilds TLS trust against either the supplied peer-trust snapshot or the active generation of the supplied ledger before network access.
+- The token-free descriptor, TLS 1.3-only mutual authentication, hostname/address checks, active DER/SPKI pins, nonce replay defense, message limits, and deterministic cleanup remain the protocol-v2 boundary.
+- Verification: 3,700 unit tests passed; repository-wide Ruff, focused mypy, and wheel build are clean.
+- Security boundary: handshake expiry is enforced by TLS, but signed explicit revocation, pre-expiry warnings/grace periods, OCSP/CRL policy, peer discovery, and automatic enrollment/ack signing remain out of scope.
+
 Key design decisions:
 - Start with a line-oriented `morphic chat` REPL; defer full-screen Textual UI until the event/session model is stable.
 - `.morphic/` becomes the canonical workspace metadata layer over time.
@@ -111,7 +515,7 @@ Key design decisions:
 - Existing `specs/council-pilot/` remains the lower-level two-engine debate spike; `morphic-chat-cli` is the higher-level terminal UX and harness.
 
 Recommended next implementation step:
-- Continue Deferred `D008` by adding an approved hook command executor or wiring hook planner construction into future CLI tool execution paths.
+- Add peer-signed certificate revocation and deterministic expiry policy before authenticated discovery, without weakening active DER/SPKI pins or allowing transport downgrade.
 
 > Last updated: 2026-05-20
 > Last commit: `feat(router): Goal Classifier Router for planner model selection (TD-195)`

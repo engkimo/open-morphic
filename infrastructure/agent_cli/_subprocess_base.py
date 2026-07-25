@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 
@@ -28,6 +29,7 @@ class SubprocessMixin:
         cmd: list[str],
         timeout: float = 300.0,
         env: dict[str, str] | None = None,
+        cwd: str | None = None,
     ) -> CLIResult:
         """Run a CLI command asynchronously with timeout.
 
@@ -44,6 +46,7 @@ class SubprocessMixin:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
+            cwd=cwd,
         )
         try:
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
@@ -55,6 +58,9 @@ class SubprocessMixin:
                 stderr=stderr_bytes.decode(errors="replace"),
                 returncode=proc.returncode or 0,
             )
+        except asyncio.CancelledError:
+            await self._terminate_process(proc)
+            raise
         except TimeoutError:
             proc.kill()
             await proc.communicate()
@@ -63,6 +69,78 @@ class SubprocessMixin:
                 stderr=f"Command timed out after {timeout}s",
                 returncode=-1,
             )
+
+    async def _run_cli_streaming(
+        self,
+        cmd: list[str],
+        *,
+        timeout: float = 300.0,
+        on_stdout_line: Callable[[str], Awaitable[None]],
+        env: dict[str, str] | None = None,
+        cwd: str | None = None,
+    ) -> CLIResult:
+        """Run a CLI while delivering decoded stdout lines incrementally."""
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+            cwd=cwd,
+        )
+        assert proc.stdout is not None
+        assert proc.stderr is not None
+
+        async def read_stdout() -> str:
+            chunks: list[str] = []
+            while line := await proc.stdout.readline():
+                decoded = line.decode(errors="replace")
+                chunks.append(decoded)
+                await on_stdout_line(decoded.rstrip("\r\n"))
+            return "".join(chunks)
+
+        async def read_stderr() -> str:
+            return (await proc.stderr.read()).decode(errors="replace")
+
+        try:
+            stdout, stderr, _ = await asyncio.wait_for(
+                asyncio.gather(read_stdout(), read_stderr(), proc.wait()),
+                timeout=timeout,
+            )
+            return CLIResult(
+                stdout=stdout,
+                stderr=stderr,
+                returncode=proc.returncode or 0,
+            )
+        except asyncio.CancelledError:
+            await self._terminate_process(proc)
+            raise
+        except TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return CLIResult(
+                stdout="",
+                stderr=f"Command timed out after {timeout}s",
+                returncode=-1,
+            )
+        except Exception:
+            proc.kill()
+            await proc.communicate()
+            raise
+
+    async def _terminate_process(
+        self,
+        proc: asyncio.subprocess.Process,
+        grace_seconds: float = 2.0,
+    ) -> None:
+        """Stop a cancelled child without swallowing caller cancellation."""
+        if proc.returncode is not None:
+            return
+        proc.terminate()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=grace_seconds)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
 
     @staticmethod
     def _check_cli_exists(binary: str) -> bool:

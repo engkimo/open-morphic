@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from application.use_cases.execute_chat_hook import ExecuteChatHookUseCase
 from application.use_cases.plan_chat_hooks import PlanChatHooksUseCase
 from domain.entities.chat_event import ChatEvent, ChatEventType
 from domain.entities.chat_session import ChatSession, PermissionMode
-from domain.entities.hook import HookType
+from domain.entities.hook import HookExecutionResult, HookType
 from domain.ports.chat_session_store import ChatSessionStorePort
 from domain.ports.tool_executor import (
     ToolExecutionRequest,
@@ -35,10 +36,12 @@ class ExecuteChatToolUseCase:
         session_store: ChatSessionStorePort,
         tool_executor: ToolExecutorPort,
         hook_planner: PlanChatHooksUseCase | None = None,
+        hook_runner: ExecuteChatHookUseCase | None = None,
     ) -> None:
         self._session_store = session_store
         self._tool_executor = tool_executor
         self._hook_planner = hook_planner
+        self._hook_runner = hook_runner
 
     async def execute(
         self,
@@ -57,7 +60,15 @@ class ExecuteChatToolUseCase:
 
         current = session
         events: list[ChatEvent] = []
-        if self._hook_planner is not None:
+        if self._hook_runner is not None:
+            hook_result = await self._hook_runner.execute(
+                session=current,
+                hook_type=HookType.PRE_TOOL,
+            )
+            current = hook_result.session
+            events.extend(hook_result.events)
+            self._raise_if_hook_failed(hook_result.hook_results, HookType.PRE_TOOL)
+        elif self._hook_planner is not None:
             hook_result = await self._hook_planner.execute(
                 session=current,
                 hook_type=HookType.PRE_TOOL,
@@ -105,7 +116,17 @@ class ExecuteChatToolUseCase:
             )
             tool_events.append(verification_event)
 
-        if self._hook_planner is not None:
+        if self._hook_runner is not None:
+            for event in tool_events:
+                await self._session_store.append_event(event)
+            events.extend(tool_events)
+            hook_result = await self._hook_runner.execute(
+                session=current,
+                hook_type=HookType.POST_TOOL,
+            )
+            current = hook_result.session
+            events.extend(hook_result.events)
+        elif self._hook_planner is not None:
             for event in tool_events:
                 await self._session_store.append_event(event)
             events.extend(tool_events)
@@ -136,3 +157,12 @@ class ExecuteChatToolUseCase:
         if session.permission_mode is not PermissionMode.READ_ONLY:
             return False
         return risk_level > RiskLevel.SAFE or tool_name not in _READ_ONLY_TOOLS
+
+    def _raise_if_hook_failed(
+        self,
+        hook_results: list[HookExecutionResult],
+        hook_type: HookType,
+    ) -> None:
+        failed = [result for result in hook_results if not result.success]
+        if failed:
+            raise RuntimeError(f"{hook_type.value} hook failed")

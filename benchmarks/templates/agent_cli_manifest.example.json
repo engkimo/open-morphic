@@ -1,0 +1,21 @@
+{
+  "arms": [
+    "codex_cli",
+    "claude_code",
+    "morphic_control"
+  ],
+  "benchmark_id": "agent-cli-local-rehearsal",
+  "repetitions": 1,
+  "schema_version": 1,
+  "task": {
+    "checks": [
+      "local_process"
+    ],
+    "goal": "Exercise the recorded benchmark pipeline without external agents.",
+    "handoff_assertions": [
+      "receipt_contract"
+    ],
+    "id": "local-rehearsal",
+    "workspace_revision": "REPLACE_WITH_GIT_COMMIT"
+  }
+}

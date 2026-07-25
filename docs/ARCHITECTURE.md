@@ -432,7 +432,7 @@ morphic-agent/
 │           ├── marketplace.py       # morphic marketplace {search|install|list|suggest|uninstall} (Sprint 5.3)
 │           ├── evolution.py        # morphic evolution {stats|failures|update|report} (Sprint 6.1)
 │           ├── cognitive.py       # morphic cognitive {state|delete|affinity|handoff|insights} (Sprint 7.5)
-│           └── benchmark.py      # morphic benchmark {run|continuity|dedup} (Sprint 7.6)
+│           └── benchmark.py      # UCL + recorded agent CLI comparison commands
 │
 ├── shared/
 │   └── config.py                    # pydantic-settings (all env vars + marketplace + evolution settings)
@@ -554,8 +554,28 @@ morphic-agent/
 │       ├── test_agent_engines.py        # 37 tests (6 engines live + routing + fallback + availability, Sprint 4.4-4.5)
 │       └── test_ucl_cross_engine.py    # 13 tests (handoff pipeline + adapter fidelity + insight roundtrip + affinity + conflict + benchmarks, Sprint 7.6)
 │
-├── benchmarks/                      # Sprint 7.6: Context continuity + dedup accuracy benchmarks
+├── benchmarks/                      # Deterministic and opt-in live benchmark utilities
 │   ├── __init__.py
+│   ├── agent_cli_adjudication.py   # Evidence/review join into final observations
+│   ├── agent_cli_attestation.py    # Offline Ed25519 reviewer provenance verification
+│   ├── agent_cli_authority.py      # Organization enrollment + signed campaign envelope
+│   ├── agent_cli_transparency.py   # Root rotation ledger + Merkle inclusion proofs
+│   ├── agent_cli_witness.py        # Compact consistency + quorum checkpoints
+│   ├── agent_cli_checkpoint_registry.py # Registry + signed peer range/cursor sync
+│   ├── agent_cli_peer_trust_ledger.py # Majority-signed peer key rollover continuity
+│   ├── agent_cli_gossip_transport.py # Bounded challenge-authenticated loopback protocol
+│   ├── agent_cli_gossip.py        # Transport-neutral signed range/ack operations + service
+│   ├── agent_cli_gossip_sync.py   # Sender-injected trust-pinned pull loop + durable audit
+│   ├── agent_cli_gossip_tls_identity.py # Peer-signed leaf/SPKI enrollment + rotation pins
+│   ├── agent_cli_gossip_tls_transport.py # TLS 1.3 mutual-auth remote gossip protocol
+│   ├── agent_cli_campaign.py       # Read-only lifecycle status across artifacts
+│   ├── agent_cli_comparison.py     # Recorded same-task 3-arm validation and metrics
+│   ├── agent_cli_preflight.py      # Non-authorizing campaign and review bindings
+│   ├── agent_cli_receipts.py       # Codex/Claude/Morphic normalized cost receipts
+│   ├── agent_cli_recorder.py       # Opt-in detached-worktree trial evidence recorder
+│   ├── agent_cli_review_policy.py  # Declared operator/reviewer separation rules
+│   ├── agent_cli_rehearsal.py      # Internal zero-cost end-to-end recorder rehearsal
+│   ├── templates/                  # Parseable agent CLI manifest/recorder examples
 │   ├── context_continuity.py       # AdapterScore, ContinuityResult, run_benchmark() — target >85%
 │   ├── dedup_accuracy.py           # DedupScore, DedupResult, run_benchmark() — target >50%
 │   └── runner.py                   # BenchmarkSuiteResult, run_all() — unified benchmark runner

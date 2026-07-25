@@ -1,0 +1,28 @@
+{
+  "keys": [
+    {
+      "algorithm": "ed25519",
+      "key_id": "witness-1-key-1",
+      "public_key_base64": "QwRr/kCSs+lJlOraFdzCDYqqB7ZY/TlU644O+4vcpd4=",
+      "status": "active",
+      "witness_id": "witness-1"
+    },
+    {
+      "algorithm": "ed25519",
+      "key_id": "witness-2-key-1",
+      "public_key_base64": "TtMvY7818O7vyyXyii4fvchzrig1ZxsMlGD18S5FVqg=",
+      "status": "active",
+      "witness_id": "witness-2"
+    },
+    {
+      "algorithm": "ed25519",
+      "key_id": "witness-3-key-1",
+      "public_key_base64": "iEuIV/TqoWE8YVBNs01L6vNGUXoOMd483dTZtCAdnQs=",
+      "status": "active",
+      "witness_id": "witness-3"
+    }
+  ],
+  "log_id": "example-org-agent-cli",
+  "minimum_distinct_witnesses": 2,
+  "schema_version": 1
+}

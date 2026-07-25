@@ -1,0 +1,21 @@
+{
+  "benchmark_id": "agent-cli-local-rehearsal",
+  "keys": [
+    {
+      "algorithm": "ed25519",
+      "key_id": "REPLACE_WITH_REVIEWER_1_KEY_ID",
+      "public_key_base64": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w=",
+      "reviewer_id": "REPLACE_WITH_REVIEWER_1_ID",
+      "status": "active"
+    },
+    {
+      "algorithm": "ed25519",
+      "key_id": "REPLACE_WITH_REVIEWER_2_KEY_ID",
+      "public_key_base64": "gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=",
+      "reviewer_id": "REPLACE_WITH_REVIEWER_2_ID",
+      "status": "active"
+    }
+  ],
+  "review_policy_sha256": "b2b73f5017d25f3dab6b180cf9c8c2d248f9d341a0fde28c7ba392e103df2b09",
+  "schema_version": 1
+}

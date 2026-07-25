@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from domain.entities.agent_engine_event import AgentEngineEvent
+from domain.entities.chat_session import PermissionMode
 from domain.value_objects.agent_engine import AgentEngineType
 from domain.value_objects.fallback_attempt import FallbackAttempt
 
@@ -68,3 +70,58 @@ class AgentEnginePort(ABC):
 
     @abstractmethod
     def get_capabilities(self) -> AgentEngineCapabilities: ...
+
+
+class ScopedAgentEnginePort(AgentEnginePort):
+    """Agent engine that preserves workspace and permission boundaries."""
+
+    @abstractmethod
+    async def run_task_scoped(
+        self,
+        task: str,
+        *,
+        workspace_root: str,
+        permission_mode: PermissionMode,
+        model: str | None = None,
+        timeout_seconds: float = 300.0,
+    ) -> AgentEngineResult: ...
+
+
+class AgentEngineEventSinkPort(ABC):
+    """Consumes normalized native-engine events as they occur."""
+
+    @abstractmethod
+    async def publish(self, event: AgentEngineEvent) -> None: ...
+
+
+class StreamingScopedAgentEnginePort(ScopedAgentEnginePort):
+    """Scoped engine that can publish events before process completion."""
+
+    @abstractmethod
+    async def run_task_scoped_stream(
+        self,
+        task: str,
+        *,
+        workspace_root: str,
+        permission_mode: PermissionMode,
+        event_sink: AgentEngineEventSinkPort,
+        model: str | None = None,
+        timeout_seconds: float = 300.0,
+    ) -> AgentEngineResult: ...
+
+
+class ResumableStreamingScopedAgentEnginePort(StreamingScopedAgentEnginePort):
+    """Streaming scoped engine that can continue an explicit native session."""
+
+    @abstractmethod
+    async def resume_task_scoped_stream(
+        self,
+        task: str,
+        *,
+        resume_session_id: str,
+        workspace_root: str,
+        permission_mode: PermissionMode,
+        event_sink: AgentEngineEventSinkPort,
+        model: str | None = None,
+        timeout_seconds: float = 300.0,
+    ) -> AgentEngineResult: ...

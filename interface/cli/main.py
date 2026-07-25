@@ -49,6 +49,7 @@ def _register_commands() -> None:
     from interface.cli.chat_command import chat_cmd, code_cmd
     from interface.cli.commands.a2a import a2a_app
     from interface.cli.commands.benchmark import benchmark_app
+    from interface.cli.commands.chat_control import chat_control_app
     from interface.cli.commands.cognitive import cognitive_app
     from interface.cli.commands.context import context_app
     from interface.cli.commands.cost import cost_app
@@ -57,6 +58,7 @@ def _register_commands() -> None:
     from interface.cli.commands.engine import engine_app
     from interface.cli.commands.evolution import evolution_app
     from interface.cli.commands.fallback import fallback_app
+    from interface.cli.commands.hooks import hooks_app
     from interface.cli.commands.learning import learning_app
     from interface.cli.commands.marketplace import marketplace_app
     from interface.cli.commands.mcp import mcp_app
@@ -68,12 +70,18 @@ def _register_commands() -> None:
 
     app.command("chat")(chat_cmd)
     app.command("code")(code_cmd)
+    app.add_typer(
+        chat_control_app,
+        name="chat-control",
+        help="Inspect or cancel an opt-in active chat turn.",
+    )
     app.add_typer(task_app, name="task", help="Create, list, show, and cancel tasks.")
     app.add_typer(plan_app, name="plan", help="Create, review, approve, and reject plans.")
     app.add_typer(model_app, name="model", help="Manage LLM models.")
     app.add_typer(cost_app, name="cost", help="View cost tracking and budget.")
     app.add_typer(mcp_app, name="mcp", help="Manage MCP server.")
     app.add_typer(engine_app, name="engine", help="Manage agent execution engines.")
+    app.add_typer(hooks_app, name="hooks", help="Validate and run Morphic Chat hooks.")
     app.add_typer(
         council_app,
         name="council",
@@ -109,7 +117,7 @@ def _register_commands() -> None:
     app.add_typer(
         benchmark_app,
         name="benchmark",
-        help="Run UCL benchmarks (context continuity, dedup accuracy).",
+        help="Run UCL and recorded agent CLI benchmarks.",
     )
     app.add_typer(
         a2a_app,
