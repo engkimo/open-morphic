@@ -1,5 +1,9 @@
 # Morphic-Agent — Continuation State
 
+## Phase 60 checkpoint (2026-07-25)
+
+- Added offline revocation template and signature-finalization CLI commands.
+
 ## Phase 57 checkpoint (2026-07-23)
 
 - Peer-signed TLS revocation chain and trust-bound revoked-generation filtering implemented.

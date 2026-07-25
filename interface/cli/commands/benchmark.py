@@ -555,6 +555,12 @@ _CHECKPOINT_TLS_TEMPLATE_INPUT = typer.Option(
     readable=True,
     help="Private-key-free TLS enrollment template JSON.",
 )
+_CHECKPOINT_TLS_REVOCATION_TEMPLATE_INPUT = typer.Option(
+    ..., "--revocation-template", exists=True, file_okay=True, dir_okay=False, readable=True
+)
+_CHECKPOINT_TLS_PEER_TRUST_INPUT = typer.Option(
+    ..., "--peer-trust", exists=True, file_okay=True, dir_okay=False, readable=True
+)
 _CHECKPOINT_TLS_KEY_ID_OPTION = typer.Option(
     ...,
     "--key-id",
@@ -1070,12 +1076,8 @@ def preflight_agent_cli_campaign(
     from benchmarks.agent_cli_recorder import AgentCliRecorderConfig
 
     try:
-        manifest = AgentCliManifest.model_validate_json(
-            manifest_path.read_text(encoding="utf-8")
-        )
-        config = AgentCliRecorderConfig.model_validate_json(
-            config_path.read_text(encoding="utf-8")
-        )
+        manifest = AgentCliManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+        config = AgentCliRecorderConfig.model_validate_json(config_path.read_text(encoding="utf-8"))
         versions = RuntimeVersionBundle.model_validate_json(
             runtime_versions_path.read_text(encoding="utf-8")
         )
@@ -1123,9 +1125,7 @@ def create_agent_cli_review_template(
         preflight = CampaignPreflight.model_validate_json(
             preflight_path.read_text(encoding="utf-8")
         )
-        evidence = RecordedEvidence.model_validate_json(
-            evidence_path.read_text(encoding="utf-8")
-        )
+        evidence = RecordedEvidence.model_validate_json(evidence_path.read_text(encoding="utf-8"))
         review_policy_sha256 = None
         reviewer_trust_sha256 = None
         review_policy = None
@@ -1204,9 +1204,7 @@ def create_agent_cli_attestation_template(
     try:
         if review_policy_path is None or reviewer_trust_path is None:
             raise ValueError("--review-policy and --reviewer-trust are required")
-        reviews = AdjudicationReviews.model_validate_json(
-            reviews_path.read_text(encoding="utf-8")
-        )
+        reviews = AdjudicationReviews.model_validate_json(reviews_path.read_text(encoding="utf-8"))
         policy = build_reviewer_policy(
             ReviewerPolicyDeclaration.model_validate_json(
                 review_policy_path.read_text(encoding="utf-8")
@@ -1369,10 +1367,7 @@ def create_agent_cli_authority_root_ledger_template(
         ):
             raise ValueError("authority root revocations must be a string array")
         request = build_authority_root_ledger_request(
-            tuple(
-                AuthorityRootGeneration.model_validate(item)
-                for item in generations_payload
-            ),
+            tuple(AuthorityRootGeneration.model_validate(item) for item in generations_payload),
             revoked_authority_sha256=tuple(revocations),
         )
         if not output_path.parent.exists():
@@ -1587,8 +1582,7 @@ def create_agent_cli_witness_trust(
         typer.echo(trust.to_json())
     else:
         console.print(
-            "Created witness trust "
-            f"minimum_distinct_witnesses={trust.minimum_distinct_witnesses}"
+            f"Created witness trust minimum_distinct_witnesses={trust.minimum_distinct_witnesses}"
         )
 
 
@@ -1722,8 +1716,7 @@ def create_agent_cli_checkpoint_peer_tls_enrollment_template(
         typer.echo(template.to_json())
     else:
         console.print(
-            "Created TLS enrollment signing request "
-            f"peer={peer_id} generation={generation}"
+            f"Created TLS enrollment signing request peer={peer_id} generation={generation}"
         )
 
 
@@ -1787,6 +1780,85 @@ def create_agent_cli_checkpoint_peer_tls_enrollment(
         )
 
 
+@benchmark_app.command("agent-cli-checkpoint-peer-tls-revocation-template")
+def create_agent_cli_checkpoint_peer_tls_revocation_template(
+    tls_trust_path: Path = _CHECKPOINT_TLS_TRUST_INPUT,
+    peer_trust_path: Path = _CHECKPOINT_TLS_PEER_TRUST_INPUT,
+    peer_id: str = typer.Option(..., "--peer-id"),
+    generation: int = typer.Option(..., "--generation", min=1),
+    reason: str = typer.Option(..., "--reason"),
+    revoked_at: str = typer.Option(..., "--revoked-at"),
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Create a private-key-free signed TLS revocation request."""
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointPeerTrust
+    from benchmarks.agent_cli_gossip_tls_identity import (
+        CheckpointPeerTlsTrust,
+        build_checkpoint_peer_tls_revocation_template,
+    )
+
+    try:
+        tls_trust = CheckpointPeerTlsTrust.model_validate_json(
+            tls_trust_path.read_text(encoding="utf-8")
+        )
+        peer_trust = CheckpointPeerTrust.model_validate_json(
+            peer_trust_path.read_text(encoding="utf-8")
+        )
+        template = build_checkpoint_peer_tls_revocation_template(
+            tls_trust,
+            peer_trust,
+            peer_id=peer_id,
+            generation=generation,
+            reason=reason,
+            revoked_at=revoked_at,
+        )
+        if output_path.exists():
+            raise ValueError("TLS revocation template output already exists")
+        _write_new_evidence(output_path, template.to_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI TLS revocation template failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+    typer.echo(template.to_json()) if as_json else console.print("Created TLS revocation template")
+
+
+@benchmark_app.command("agent-cli-checkpoint-peer-tls-revocation")
+def create_agent_cli_checkpoint_peer_tls_revocation(
+    template_path: Path = _CHECKPOINT_TLS_REVOCATION_TEMPLATE_INPUT,
+    peer_trust_path: Path = _CHECKPOINT_TLS_PEER_TRUST_INPUT,
+    key_id: str = _CHECKPOINT_TLS_KEY_ID_OPTION,
+    signature_base64: str = _CHECKPOINT_TLS_SIGNATURE_OPTION,
+    output_path: Path = _PREFLIGHT_OUTPUT_OPTION,
+    as_json: bool = _AGENT_CLI_JSON_OPTION,
+) -> None:
+    """Verify a peer signature and finalize a TLS revocation artifact."""
+    from benchmarks.agent_cli_checkpoint_registry import CheckpointPeerTrust
+    from benchmarks.agent_cli_gossip_tls_identity import (
+        CheckpointPeerTlsRevocationTemplate,
+        build_signed_checkpoint_peer_tls_revocation,
+    )
+
+    try:
+        template = CheckpointPeerTlsRevocationTemplate.model_validate_json(
+            template_path.read_text(encoding="utf-8")
+        )
+        peer_trust = CheckpointPeerTrust.model_validate_json(
+            peer_trust_path.read_text(encoding="utf-8")
+        )
+        revocation = build_signed_checkpoint_peer_tls_revocation(
+            template, peer_trust, key_id=key_id, signature_base64=signature_base64
+        )
+        if output_path.exists():
+            raise ValueError("TLS revocation output already exists")
+        _write_new_evidence(output_path, revocation.model_dump_json())
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Agent CLI TLS revocation failed: {exc}[/red]")
+        raise typer.Exit(code=1) from None
+    typer.echo(revocation.model_dump_json()) if as_json else console.print(
+        "Verified TLS revocation"
+    )
+
+
 @benchmark_app.command("agent-cli-checkpoint-peer-tls-trust")
 def create_agent_cli_checkpoint_peer_tls_trust(
     peer_trust_path: Path = _CHECKPOINT_PEER_TRUST_INPUT,
@@ -1808,9 +1880,7 @@ def create_agent_cli_checkpoint_peer_tls_trust(
             peer_trust_path.read_text(encoding="utf-8")
         )
         payload = json.loads(enrollments_path.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict) or not isinstance(
-            payload.get("enrollments"), list
-        ):
+        if not isinstance(payload, dict) or not isinstance(payload.get("enrollments"), list):
             raise ValueError("TLS enrollments JSON must contain an enrollments array")
         revocations: tuple[CheckpointPeerTlsRevocation, ...] = ()
         if revocations_path is not None:
@@ -1826,8 +1896,7 @@ def create_agent_cli_checkpoint_peer_tls_trust(
         trust = build_checkpoint_peer_tls_trust(
             peer_trust,
             tuple(
-                CheckpointPeerTlsEnrollment.model_validate(item)
-                for item in payload["enrollments"]
+                CheckpointPeerTlsEnrollment.model_validate(item) for item in payload["enrollments"]
             ),
             revocations,
         )
@@ -1915,8 +1984,7 @@ def create_agent_cli_checkpoint_peer_trust_ledger(
             raise ValueError("peer trust generations must be a JSON array")
         ledger = build_checkpoint_peer_trust_ledger(
             tuple(
-                CheckpointPeerTrustGeneration.model_validate(item)
-                for item in generations_payload
+                CheckpointPeerTrustGeneration.model_validate(item) for item in generations_payload
             )
         )
         if not output_path.parent.exists():
@@ -1931,10 +1999,7 @@ def create_agent_cli_checkpoint_peer_trust_ledger(
     if as_json:
         typer.echo(ledger.to_json())
     else:
-        console.print(
-            "Created peer trust ledger "
-            f"active_generation={ledger.active_generation}"
-        )
+        console.print(f"Created peer trust ledger active_generation={ledger.active_generation}")
 
 
 def _load_checkpoint_registry_dependencies(
@@ -2171,9 +2236,7 @@ def export_agent_cli_checkpoint_range_template(
         ).replay(witness_trust, ledger)
         if start_sequence >= snapshot.record_count:
             raise ValueError("checkpoint range start sequence does not exist")
-        records = snapshot.records[
-            start_sequence : start_sequence + max_records
-        ]
+        records = snapshot.records[start_sequence : start_sequence + max_records]
         request = build_checkpoint_range_request(
             records,
             peer_trust,
@@ -2292,9 +2355,7 @@ def create_agent_cli_checkpoint_acknowledgement_template(
             raise ValueError("checkpoint acknowledgement output already exists")
         _write_new_evidence(output_path, request.to_json())
     except (OSError, ValueError) as exc:
-        console.print(
-            f"[red]Agent CLI checkpoint acknowledgement failed: {exc}[/red]"
-        )
+        console.print(f"[red]Agent CLI checkpoint acknowledgement failed: {exc}[/red]")
         raise typer.Exit(code=1) from None
 
     if as_json:
@@ -2314,13 +2375,9 @@ def _load_checkpoint_peer_trust_source(
     from benchmarks.agent_cli_peer_trust_ledger import CheckpointPeerTrustLedger
 
     if (peer_trust_path is None) == (peer_trust_ledger_path is None):
-        raise ValueError(
-            "exactly one of --peer-trust or --peer-trust-ledger is required"
-        )
+        raise ValueError("exactly one of --peer-trust or --peer-trust-ledger is required")
     if peer_trust_path is not None:
-        return CheckpointPeerTrust.model_validate_json(
-            peer_trust_path.read_text(encoding="utf-8")
-        )
+        return CheckpointPeerTrust.model_validate_json(peer_trust_path.read_text(encoding="utf-8"))
     assert peer_trust_ledger_path is not None
     return CheckpointPeerTrustLedger.model_validate_json(
         peer_trust_ledger_path.read_text(encoding="utf-8")
@@ -2381,9 +2438,7 @@ def store_agent_cli_checkpoint_cursor(
     registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
     acknowledgement_path: Path = _CHECKPOINT_ACKNOWLEDGEMENT_INPUT,
     peer_trust_path: Path | None = _OPTIONAL_CHECKPOINT_PEER_TRUST_INPUT,
-    peer_trust_ledger_path: Path | None = (
-        _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT
-    ),
+    peer_trust_ledger_path: Path | None = (_OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT),
     as_json: bool = _AGENT_CLI_JSON_OPTION,
 ) -> None:
     """Verify and durably store one monotonic peer acknowledgement."""
@@ -2424,9 +2479,7 @@ def show_agent_cli_checkpoint_cursor_status(
     cursor_ledger_path: Path = _CHECKPOINT_CURSOR_LEDGER_OPTION,
     registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
     peer_trust_path: Path | None = _OPTIONAL_CHECKPOINT_PEER_TRUST_INPUT,
-    peer_trust_ledger_path: Path | None = (
-        _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT
-    ),
+    peer_trust_ledger_path: Path | None = (_OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT),
     as_json: bool = _AGENT_CLI_JSON_OPTION,
 ) -> None:
     """Replay peer acknowledgements without changing the cursor ledger."""
@@ -2460,10 +2513,7 @@ def _load_checkpoint_gossip_bundles(path: Path) -> tuple[Any, ...]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict) or not isinstance(payload.get("bundles"), list):
         raise ValueError("checkpoint gossip bundles must contain a JSON bundles array")
-    return tuple(
-        SignedCheckpointRangeBundle.model_validate(item)
-        for item in payload["bundles"]
-    )
+    return tuple(SignedCheckpointRangeBundle.model_validate(item) for item in payload["bundles"])
 
 
 @benchmark_app.command("agent-cli-checkpoint-gossip-serve")
@@ -2474,9 +2524,7 @@ def serve_agent_cli_checkpoint_gossip(
     registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
     source_peer_id: str = _CHECKPOINT_SOURCE_PEER_OPTION,
     peer_trust_path: Path | None = _OPTIONAL_CHECKPOINT_PEER_TRUST_INPUT,
-    peer_trust_ledger_path: Path | None = (
-        _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT
-    ),
+    peer_trust_ledger_path: Path | None = (_OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT),
     max_requests: int = _CHECKPOINT_GOSSIP_MAX_REQUESTS_OPTION,
     lifetime_seconds: float = _CHECKPOINT_GOSSIP_LIFETIME_OPTION,
 ) -> None:
@@ -2537,9 +2585,7 @@ def show_agent_cli_checkpoint_gossip_status(
     from benchmarks.agent_cli_gossip import fetch_checkpoint_gossip_status
 
     try:
-        status = _run(
-            fetch_checkpoint_gossip_status(descriptor_path=descriptor_path)
-        )
+        status = _run(fetch_checkpoint_gossip_status(descriptor_path=descriptor_path))
     except (OSError, RuntimeError, ValueError) as exc:
         console.print(f"[red]Agent CLI checkpoint gossip status failed: {exc}[/red]")
         raise typer.Exit(code=1) from None
@@ -2561,9 +2607,7 @@ def serve_agent_cli_checkpoint_gossip_mtls(
     registry_id: str = _CHECKPOINT_REGISTRY_ID_OPTION,
     source_peer_id: str = _CHECKPOINT_SOURCE_PEER_OPTION,
     peer_trust_path: Path | None = _OPTIONAL_CHECKPOINT_PEER_TRUST_INPUT,
-    peer_trust_ledger_path: Path | None = (
-        _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT
-    ),
+    peer_trust_ledger_path: Path | None = (_OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT),
     tls_trust_path: Path = _CHECKPOINT_TLS_TRUST_INPUT,
     certificate_path: Path = _CHECKPOINT_TLS_CERTIFICATE_INPUT,
     private_key_path: Path = _CHECKPOINT_TLS_PRIVATE_KEY_INPUT,
@@ -2632,9 +2676,7 @@ def serve_agent_cli_checkpoint_gossip_mtls(
                     "Checkpoint gossip listening with TLS 1.3 mutual auth "
                     f"descriptor={descriptor_path} max_requests={max_requests}"
                 )
-                await server.serve_until_stopped(
-                    lifetime_timeout_seconds=lifetime_seconds
-                )
+                await server.serve_until_stopped(lifetime_timeout_seconds=lifetime_seconds)
 
         _run(run_server())
     except (OSError, RuntimeError, ValueError) as exc:
@@ -2700,9 +2742,7 @@ def fetch_agent_cli_checkpoint_gossip_mtls_range(
     start_sequence: int = _CHECKPOINT_START_SEQUENCE_OPTION,
     max_records: int = _CHECKPOINT_MAX_RECORDS_OPTION,
     peer_trust_path: Path | None = _OPTIONAL_CHECKPOINT_PEER_TRUST_INPUT,
-    peer_trust_ledger_path: Path | None = (
-        _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT
-    ),
+    peer_trust_ledger_path: Path | None = (_OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT),
     tls_trust_path: Path = _CHECKPOINT_TLS_TRUST_INPUT,
     client_peer_id: str = _CHECKPOINT_TLS_CLIENT_PEER_OPTION,
     certificate_path: Path = _CHECKPOINT_TLS_CERTIFICATE_INPUT,
@@ -2762,9 +2802,7 @@ def submit_agent_cli_checkpoint_gossip_mtls_acknowledgement(
     descriptor_path: Path = _CHECKPOINT_GOSSIP_DESCRIPTOR_INPUT,
     acknowledgement_path: Path = _CHECKPOINT_ACKNOWLEDGEMENT_INPUT,
     peer_trust_path: Path | None = _OPTIONAL_CHECKPOINT_PEER_TRUST_INPUT,
-    peer_trust_ledger_path: Path | None = (
-        _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT
-    ),
+    peer_trust_ledger_path: Path | None = (_OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT),
     tls_trust_path: Path = _CHECKPOINT_TLS_TRUST_INPUT,
     client_peer_id: str = _CHECKPOINT_TLS_CLIENT_PEER_OPTION,
     certificate_path: Path = _CHECKPOINT_TLS_CERTIFICATE_INPUT,
@@ -2823,9 +2861,7 @@ def fetch_agent_cli_checkpoint_gossip_range(
     start_sequence: int = _CHECKPOINT_START_SEQUENCE_OPTION,
     max_records: int = _CHECKPOINT_MAX_RECORDS_OPTION,
     peer_trust_path: Path | None = _OPTIONAL_CHECKPOINT_PEER_TRUST_INPUT,
-    peer_trust_ledger_path: Path | None = (
-        _OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT
-    ),
+    peer_trust_ledger_path: Path | None = (_OPTIONAL_CHECKPOINT_PEER_TRUST_LEDGER_INPUT),
     as_json: bool = _AGENT_CLI_JSON_OPTION,
 ) -> None:
     """Fetch and independently verify one already signed checkpoint range."""
@@ -2929,9 +2965,7 @@ def sync_agent_cli_checkpoint_gossip(
         peer_trust_ledger = CheckpointPeerTrustLedger.model_validate_json(
             peer_trust_ledger_path.read_text(encoding="utf-8")
         )
-        retry_delays = tuple(
-            min(0.05 * (2**index), 1.0) for index in range(max_attempts - 1)
-        )
+        retry_delays = tuple(min(0.05 * (2**index), 1.0) for index in range(max_attempts - 1))
         result = _run(
             run_checkpoint_gossip_sync(
                 descriptor_path=descriptor_path,
@@ -3022,9 +3056,7 @@ def sync_agent_cli_checkpoint_gossip_mtls(
             server_hostname=server_hostname,
             allowed_server_addresses=allowed_server_addresses,
         )
-        retry_delays = tuple(
-            min(0.05 * (2**index), 1.0) for index in range(max_attempts - 1)
-        )
+        retry_delays = tuple(min(0.05 * (2**index), 1.0) for index in range(max_attempts - 1))
         result = _run(
             run_checkpoint_gossip_sync(
                 descriptor_path=descriptor_path,
@@ -3114,18 +3146,12 @@ def create_agent_cli_campaign_envelope_template(
         assert reviewer_authority_path is not None
         assert reviewer_enrollments_path is not None
         assert attestations_path is not None
-        manifest = AgentCliManifest.model_validate_json(
-            manifest_path.read_text(encoding="utf-8")
-        )
+        manifest = AgentCliManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
         preflight = CampaignPreflight.model_validate_json(
             preflight_path.read_text(encoding="utf-8")
         )
-        evidence = RecordedEvidence.model_validate_json(
-            evidence_path.read_text(encoding="utf-8")
-        )
-        reviews = AdjudicationReviews.model_validate_json(
-            reviews_path.read_text(encoding="utf-8")
-        )
+        evidence = RecordedEvidence.model_validate_json(evidence_path.read_text(encoding="utf-8"))
+        reviews = AdjudicationReviews.model_validate_json(reviews_path.read_text(encoding="utf-8"))
         policy = build_reviewer_policy(
             ReviewerPolicyDeclaration.model_validate_json(
                 review_policy_path.read_text(encoding="utf-8")
@@ -3148,9 +3174,7 @@ def create_agent_cli_campaign_envelope_template(
         attestations = ReviewAttestationBundle.model_validate_json(
             attestations_path.read_text(encoding="utf-8")
         )
-        results = RecordedResults.model_validate_json(
-            results_path.read_text(encoding="utf-8")
-        )
+        results = RecordedResults.model_validate_json(results_path.read_text(encoding="utf-8"))
         authority_root_ledger = None
         if authority_root_ledger_path is not None:
             from benchmarks.agent_cli_transparency import SignedAuthorityRootLedger
@@ -3201,12 +3225,8 @@ def show_agent_cli_campaign_status(
     campaign_envelope_path: Path | None = _OPTIONAL_CAMPAIGN_ENVELOPE_INPUT,
     authority_root_ledger_path: Path | None = _OPTIONAL_AUTHORITY_ROOT_LEDGER_INPUT,
     transparency_proof_path: Path | None = _OPTIONAL_TRANSPARENCY_PROOF_INPUT,
-    transparency_consistency_path: Path | None = (
-        _OPTIONAL_TRANSPARENCY_CONSISTENCY_INPUT
-    ),
-    transparency_witness_trust_path: Path | None = (
-        _OPTIONAL_TRANSPARENCY_WITNESS_TRUST_INPUT
-    ),
+    transparency_consistency_path: Path | None = (_OPTIONAL_TRANSPARENCY_CONSISTENCY_INPUT),
+    transparency_witness_trust_path: Path | None = (_OPTIONAL_TRANSPARENCY_WITNESS_TRUST_INPUT),
     witness_checkpoint_path: Path | None = _OPTIONAL_WITNESS_CHECKPOINT_INPUT,
     as_json: bool = _AGENT_CLI_JSON_OPTION,
 ) -> None:
@@ -3221,13 +3241,9 @@ def show_agent_cli_campaign_status(
     )
 
     try:
-        manifest = AgentCliManifest.model_validate_json(
-            manifest_path.read_text(encoding="utf-8")
-        )
+        manifest = AgentCliManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
         preflight = (
-            CampaignPreflight.model_validate_json(
-                preflight_path.read_text(encoding="utf-8")
-            )
+            CampaignPreflight.model_validate_json(preflight_path.read_text(encoding="utf-8"))
             if preflight_path is not None
             else None
         )
@@ -3327,10 +3343,8 @@ def show_agent_cli_campaign_status(
                 TransparencyConsistencyProof,
             )
 
-            transparency_consistency_proof = (
-                TransparencyConsistencyProof.model_validate_json(
-                    transparency_consistency_path.read_text(encoding="utf-8")
-                )
+            transparency_consistency_proof = TransparencyConsistencyProof.model_validate_json(
+                transparency_consistency_path.read_text(encoding="utf-8")
             )
         if transparency_witness_trust_path is not None:
             from benchmarks.agent_cli_witness import (

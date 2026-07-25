@@ -799,3 +799,8 @@ Added private-key-free `CheckpointPeerTlsRevocationTemplate` generation and sign
 finalization. The template binds one enrolled peer/generation, reason, timestamp, trust hash,
 and eligible active identity keys; finalization verifies the detached Ed25519 signature before
 returning the self-fingerprinted revocation artifact.
+## Phase 60 update
+
+The revocation workflow is now exposed through two offline CUI commands: a private-key-free
+template request and detached peer-signature finalization. Existing evidence is never
+overwritten and finalized output remains deterministic JSON.
